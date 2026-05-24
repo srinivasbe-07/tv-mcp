@@ -6,59 +6,58 @@ export class PineTools {
   getTools() {
     return [
       {
-        name: "pine_set_source",
-        description: "Inject Pine Script code into the editor",
+        name: 'pine_set_source',
+        description: 'Inject Pine Script code into the editor',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             source: {
-              type: "string",
-              description: "Pine Script source code",
+              type: 'string',
+              description: 'Pine Script source code',
             },
           },
-          required: ["source"],
+          required: ['source'],
         },
       },
       {
-        name: "pine_smart_compile",
-        description:
-          "Compile the Pine Script with auto-detection and error reporting",
+        name: 'pine_smart_compile',
+        description: 'Compile the Pine Script with auto-detection and error reporting',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             timeoutMs: {
-              type: "number",
-              description: "Compilation timeout in milliseconds (default: 10000)",
+              type: 'number',
+              description: 'Compilation timeout in milliseconds (default: 10000)',
               default: 10000,
             },
           },
         },
       },
       {
-        name: "pine_get_errors",
-        description: "Get compilation errors from the Pine Script",
+        name: 'pine_get_errors',
+        description: 'Get compilation errors from the Pine Script',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {},
         },
       },
       {
-        name: "pine_get_source",
-        description: "Get the current Pine Script source code",
+        name: 'pine_get_source',
+        description: 'Get the current Pine Script source code',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {},
         },
       },
       {
-        name: "pine_save",
-        description: "Save the Pine Script to TradingView cloud",
+        name: 'pine_save',
+        description: 'Save the Pine Script to TradingView cloud',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             name: {
-              type: "string",
-              description: "Name to save the script as",
+              type: 'string',
+              description: 'Name to save the script as',
             },
           },
         },
@@ -68,15 +67,15 @@ export class PineTools {
 
   async handle(toolName, args) {
     switch (toolName) {
-      case "pine_set_source":
+      case 'pine_set_source':
         return await this.setSource(args);
-      case "pine_smart_compile":
+      case 'pine_smart_compile':
         return await this.smartCompile(args);
-      case "pine_get_errors":
+      case 'pine_get_errors':
         return await this.getErrors(args);
-      case "pine_get_source":
+      case 'pine_get_source':
         return await this.getSource(args);
-      case "pine_save":
+      case 'pine_save':
         return await this.save(args);
       default:
         return this.error(`Unknown pine tool: ${toolName}`);
@@ -88,7 +87,7 @@ export class PineTools {
       const { source } = args;
 
       if (!source) {
-        return this.error("Source code is required");
+        return this.error('Source code is required');
       }
 
       // Escape special characters for JavaScript string
@@ -378,7 +377,7 @@ export class PineTools {
       const { name } = args;
 
       if (!name) {
-        return this.error("Script name is required");
+        return this.error('Script name is required');
       }
 
       const script = `
@@ -442,7 +441,7 @@ export class PineTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(data, null, 2),
         },
       ],
@@ -453,7 +452,7 @@ export class PineTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: message,
         },
       ],

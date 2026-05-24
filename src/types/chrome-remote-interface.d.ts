@@ -5,7 +5,7 @@
  * The official types should be preferred; this file declares just enough
  * surface area for our MCP server to compile cleanly.
  */
-declare module "chrome-remote-interface" {
+declare module 'chrome-remote-interface' {
   interface CDPTarget {
     id: string;
     title: string;
@@ -37,7 +37,7 @@ declare module "chrome-remote-interface" {
     Page: {
       enable(): Promise<void>;
       captureScreenshot(params?: {
-        format?: "png" | "jpeg";
+        format?: 'png' | 'jpeg';
         quality?: number;
         fromSurface?: boolean;
       }): Promise<{ data: string }>;

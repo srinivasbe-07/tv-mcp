@@ -6,70 +6,68 @@ export class ChartTools {
   getTools() {
     return [
       {
-        name: "chart_get_state",
+        name: 'chart_get_state',
         description:
-          "Get the current chart state: symbol, timeframe, chart type, and list of active indicators",
+          'Get the current chart state: symbol, timeframe, chart type, and list of active indicators',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {},
         },
       },
       {
-        name: "quote_get",
-        description:
-          "Get the latest quote data: price, OHLC, volume, change percentage",
+        name: 'quote_get',
+        description: 'Get the latest quote data: price, OHLC, volume, change percentage',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {},
         },
       },
       {
-        name: "data_get_ohlcv",
-        description: "Get OHLCV (Open, High, Low, Close, Volume) bars",
+        name: 'data_get_ohlcv',
+        description: 'Get OHLCV (Open, High, Low, Close, Volume) bars',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             summary: {
-              type: "boolean",
-              description: "Return only summary stats + last 5 bars (default: true)",
+              type: 'boolean',
+              description: 'Return only summary stats + last 5 bars (default: true)',
               default: true,
             },
             limit: {
-              type: "number",
-              description: "Number of bars to return (default: 50)",
+              type: 'number',
+              description: 'Number of bars to return (default: 50)',
               default: 50,
             },
           },
         },
       },
       {
-        name: "chart_set_symbol",
-        description: "Change the symbol displayed on the chart",
+        name: 'chart_set_symbol',
+        description: 'Change the symbol displayed on the chart',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             symbol: {
-              type: "string",
-              description:
-                'Symbol to change to (e.g., "AAPL", "BTC/USD", "ES1!")',
+              type: 'string',
+              description: 'Symbol to change to (e.g., "AAPL", "BTC/USD", "ES1!")',
             },
           },
-          required: ["symbol"],
+          required: ['symbol'],
         },
       },
       {
-        name: "chart_set_timeframe",
-        description: "Change the chart timeframe/resolution",
+        name: 'chart_set_timeframe',
+        description: 'Change the chart timeframe/resolution',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             timeframe: {
-              type: "string",
+              type: 'string',
               description:
                 'Timeframe: 1, 5, 15, 30, 60 (minutes), "D" (daily), "W" (weekly), "M" (monthly)',
             },
           },
-          required: ["timeframe"],
+          required: ['timeframe'],
         },
       },
     ];
@@ -77,15 +75,15 @@ export class ChartTools {
 
   async handle(toolName, args) {
     switch (toolName) {
-      case "chart_get_state":
+      case 'chart_get_state':
         return await this.getChartState(args);
-      case "quote_get":
+      case 'quote_get':
         return await this.getQuote(args);
-      case "data_get_ohlcv":
+      case 'data_get_ohlcv':
         return await this.getOHLCV(args);
-      case "chart_set_symbol":
+      case 'chart_set_symbol':
         return await this.setSymbol(args);
-      case "chart_set_timeframe":
+      case 'chart_set_timeframe':
         return await this.setTimeframe(args);
       default:
         return this.error(`Unknown chart tool: ${toolName}`);
@@ -307,7 +305,7 @@ export class ChartTools {
       const { symbol } = args;
 
       if (!symbol) {
-        return this.error("Symbol is required");
+        return this.error('Symbol is required');
       }
 
       const script = `
@@ -361,7 +359,7 @@ export class ChartTools {
       const { timeframe } = args;
 
       if (!timeframe) {
-        return this.error("Timeframe is required");
+        return this.error('Timeframe is required');
       }
 
       const script = `
@@ -412,7 +410,7 @@ export class ChartTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(data, null, 2),
         },
       ],
@@ -423,7 +421,7 @@ export class ChartTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: message,
         },
       ],

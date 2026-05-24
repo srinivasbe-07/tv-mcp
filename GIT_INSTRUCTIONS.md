@@ -14,6 +14,7 @@ git status
 ```
 
 **You should see**:
+
 - Modified files (chart.js, pine.js, alerts.js, etc.)
 - Untracked files (new documentation)
 - Branch: main
@@ -44,6 +45,7 @@ git commit -m "Phase 2 Complete: Real data extraction via CDP for all 16 tools
 ```
 
 **Message Format**:
+
 ```
 [One-line summary]
 
@@ -73,6 +75,7 @@ git log
 ## Common Commit Messages for This Project
 
 ### After Session Work
+
 ```bash
 git commit -m "Session [N]: [Phase name] - [what was accomplished]
 
@@ -81,6 +84,7 @@ git commit -m "Session [N]: [Phase name] - [what was accomplished]
 ```
 
 ### After Phase Completion
+
 ```bash
 git commit -m "Phase [N] Complete: [Phase Name]
 
@@ -91,6 +95,7 @@ git commit -m "Phase [N] Complete: [Phase Name]
 ```
 
 ### After Testing
+
 ```bash
 git commit -m "Phase [N] Testing: Documented results and findings
 
@@ -104,6 +109,7 @@ git commit -m "Phase [N] Testing: Documented results and findings
 ## Example Commits for Each Phase
 
 ### Phase 1 Commit
+
 ```bash
 git commit -m "Phase 1 Complete: Core MCP Infrastructure
 
@@ -116,6 +122,7 @@ git commit -m "Phase 1 Complete: Core MCP Infrastructure
 ```
 
 ### Phase 2 Commit (Just Done)
+
 ```bash
 git commit -m "Phase 2 Complete: Real TradingView Data Extraction via CDP
 
@@ -130,6 +137,7 @@ git commit -m "Phase 2 Complete: Real TradingView Data Extraction via CDP
 ```
 
 ### Phase 3 Commits (For Next Session)
+
 ```bash
 # After testing starts:
 git commit -m "Phase 3: Begin testing all 16 tools with real TradingView"
@@ -200,6 +208,7 @@ git push -u origin main
 ```
 
 ### After Initial Setup:
+
 ```bash
 # Your commits automatically sync when you do:
 git push
@@ -312,12 +321,14 @@ git reset --hard [commit-hash]
 ## Summary
 
 **What to do NOW**:
+
 1. `cd C:\study\MCP\tv-mcp`
 2. `git add .`
 3. `git commit -m "[Your message]"`
 4. `git log --oneline -1` (verify)
 
 **Optional but recommended**:
+
 - Set up GitHub for cloud backup
 - Or copy folder to OneDrive
 

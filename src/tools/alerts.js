@@ -6,52 +6,52 @@ export class AlertTools {
   getTools() {
     return [
       {
-        name: "alert_create",
-        description: "Create a price or volume alert",
+        name: 'alert_create',
+        description: 'Create a price or volume alert',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             symbol: {
-              type: "string",
-              description: "Symbol for the alert",
+              type: 'string',
+              description: 'Symbol for the alert',
             },
             condition: {
-              type: "string",
-              enum: ["above", "below", "crosses"],
-              description: "Alert condition",
+              type: 'string',
+              enum: ['above', 'below', 'crosses'],
+              description: 'Alert condition',
             },
             level: {
-              type: "number",
-              description: "Price level for the alert",
+              type: 'number',
+              description: 'Price level for the alert',
             },
             name: {
-              type: "string",
-              description: "Name for the alert",
+              type: 'string',
+              description: 'Name for the alert',
             },
           },
-          required: ["symbol", "condition", "level"],
+          required: ['symbol', 'condition', 'level'],
         },
       },
       {
-        name: "alert_list",
-        description: "List all active alerts",
+        name: 'alert_list',
+        description: 'List all active alerts',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {},
         },
       },
       {
-        name: "alert_delete",
-        description: "Delete an alert by ID",
+        name: 'alert_delete',
+        description: 'Delete an alert by ID',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             alertId: {
-              type: "string",
-              description: "ID of the alert to delete",
+              type: 'string',
+              description: 'ID of the alert to delete',
             },
           },
-          required: ["alertId"],
+          required: ['alertId'],
         },
       },
     ];
@@ -59,11 +59,11 @@ export class AlertTools {
 
   async handle(toolName, args) {
     switch (toolName) {
-      case "alert_create":
+      case 'alert_create':
         return await this.create(args);
-      case "alert_list":
+      case 'alert_list':
         return await this.list(args);
-      case "alert_delete":
+      case 'alert_delete':
         return await this.delete(args);
       default:
         return this.error(`Unknown alert tool: ${toolName}`);
@@ -75,9 +75,7 @@ export class AlertTools {
       const { symbol, condition, level, name } = args;
 
       if (!symbol || !condition || level === undefined) {
-        return this.error(
-          "Symbol, condition, and level are required"
-        );
+        return this.error('Symbol, condition, and level are required');
       }
 
       const alertId = `alert_${Date.now()}`;
@@ -247,7 +245,7 @@ export class AlertTools {
       const { alertId } = args;
 
       if (!alertId) {
-        return this.error("Alert ID is required");
+        return this.error('Alert ID is required');
       }
 
       const script = `
@@ -310,7 +308,7 @@ export class AlertTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(data, null, 2),
         },
       ],
@@ -321,7 +319,7 @@ export class AlertTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: message,
         },
       ],

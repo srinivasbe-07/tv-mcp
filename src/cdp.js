@@ -1,4 +1,4 @@
-import CDP from "chrome-remote-interface";
+import CDP from 'chrome-remote-interface';
 
 export class CDPManager {
   constructor() {
@@ -27,34 +27,26 @@ export class CDPManager {
       // Enable necessary CDP domains
       const { Page, Runtime, DOM } = this.client;
 
-      await Promise.all([
-        Page?.enable?.(),
-        Runtime?.enable?.(),
-        DOM?.enable?.(),
-      ].filter(Boolean));
+      await Promise.all([Page?.enable?.(), Runtime?.enable?.(), DOM?.enable?.()].filter(Boolean));
 
       this.connected = true;
       this.retryCount = 0;
 
-      console.error(
-        `[CDP] Connected to Chrome DevTools Protocol on port ${this.port}`
-      );
+      console.error(`[CDP] Connected to Chrome DevTools Protocol on port ${this.port}`);
     } catch (error) {
       console.error(`[CDP] Connection failed: ${error.message}`);
 
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
-        console.error(
-          `[CDP] Retrying (${this.retryCount}/${this.maxRetries})...`
-        );
+        console.error(`[CDP] Retrying (${this.retryCount}/${this.maxRetries})...`);
         await this.delay(this.retryDelay);
         return this.connect();
       }
 
       throw new Error(
         `Failed to connect to Chrome DevTools Protocol on port ${this.port} ` +
-        `after ${this.maxRetries} attempts. ` +
-        `Ensure TradingView is running with --remote-debugging-port=${this.port}`
+          `after ${this.maxRetries} attempts. ` +
+          `Ensure TradingView is running with --remote-debugging-port=${this.port}`
       );
     }
   }
@@ -65,7 +57,7 @@ export class CDPManager {
         await this.client.close();
         this.client = null;
         this.connected = false;
-        console.error("[CDP] Connection closed");
+        console.error('[CDP] Connection closed');
       } catch (error) {
         console.error(`[CDP] Error closing connection: ${error.message}`);
       }
@@ -80,7 +72,7 @@ export class CDPManager {
    */
   async executeScript(expression, returnByValue = true) {
     if (!this.client) {
-      throw new Error("CDP not connected");
+      throw new Error('CDP not connected');
     }
 
     try {
@@ -91,17 +83,12 @@ export class CDPManager {
       });
 
       if (result.exceptionDetails) {
-        throw new Error(
-          `Script execution error: ${result.exceptionDetails.text}`
-        );
+        throw new Error(`Script execution error: ${result.exceptionDetails.text}`);
       }
 
       return result.result.value;
     } catch (error) {
-      console.error(
-        `[CDP] Script execution failed: ${error.message}`,
-        expression
-      );
+      console.error(`[CDP] Script execution failed: ${error.message}`, expression);
       throw error;
     }
   }
@@ -111,7 +98,7 @@ export class CDPManager {
    */
   async navigate(url) {
     if (!this.client) {
-      throw new Error("CDP not connected");
+      throw new Error('CDP not connected');
     }
 
     try {
@@ -133,9 +120,7 @@ export class CDPManager {
 
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const exists = await this.executeScript(
-          `document.querySelector('${selector}') !== null`
-        );
+        const exists = await this.executeScript(`document.querySelector('${selector}') !== null`);
         if (exists) {
           return true;
         }
@@ -153,33 +138,33 @@ export class CDPManager {
    * Get page title
    */
   async getPageTitle() {
-    return this.executeScript("document.title");
+    return this.executeScript('document.title');
   }
 
   /**
    * Get current URL
    */
   async getCurrentUrl() {
-    return this.executeScript("window.location.href");
+    return this.executeScript('window.location.href');
   }
 
   /**
    * Take a screenshot
    */
-  async takeScreenshot(region = "chart") {
+  async takeScreenshot(region = 'chart') {
     if (!this.client) {
-      throw new Error("CDP not connected");
+      throw new Error('CDP not connected');
     }
 
     try {
       const { Page } = this.client;
       const screenshot = await Page.captureScreenshot({
-        format: "png",
+        format: 'png',
       });
 
       return {
         data: screenshot.data,
-        type: "png",
+        type: 'png',
       };
     } catch (error) {
       console.error(`[CDP] Screenshot failed: ${error.message}`);

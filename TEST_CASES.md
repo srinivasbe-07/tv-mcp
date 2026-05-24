@@ -14,6 +14,7 @@ node test-all-tools.js
 ```
 
 **Output**:
+
 - Console output with real-time results
 - `test-results.log` - Detailed log file
 - `test-results.json` - Machine-readable results
@@ -23,6 +24,7 @@ node test-all-tools.js
 ## Test Structure
 
 Each test case has:
+
 - **Name**: Tool name (e.g., `chart_get_state`)
 - **Description**: What it does
 - **Params**: Input parameters
@@ -41,11 +43,13 @@ Each test case has:
 **Tool Name**: `chart_get_state`
 
 **Input Parameters**:
+
 ```json
 {}
 ```
 
 **Expected Response**:
+
 ```json
 {
   "symbol": "AAPL",
@@ -57,26 +61,31 @@ Each test case has:
 ```
 
 **Expected Fields**:
+
 - ✅ `symbol` (string)
 - ✅ `timeframe` (string)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ Response has valid JSON format
 - ✅ Contains `symbol` and `timeframe`
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If API unavailable → Use DOM fallback
 - If DOM unavailable → Return error hint
 - Never crash
 
 **Test Command**:
+
 ```
 Use chart_get_state
 ```
 
-**Expected Outcome**: 
+**Expected Outcome**:
+
 - 🟢 Pass: Returns symbol and timeframe
 - 🟡 Acceptable: Returns error with helpful hint
 - 🔴 Fail: Crashes or invalid response
@@ -90,11 +99,13 @@ Use chart_get_state
 **Tool Name**: `quote_get`
 
 **Input Parameters**:
+
 ```json
 {}
 ```
 
 **Expected Response**:
+
 ```json
 {
   "symbol": "AAPL",
@@ -113,26 +124,31 @@ Use chart_get_state
 ```
 
 **Expected Fields**:
+
 - ✅ `price` (number or string)
 - ✅ `symbol` (string)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `price` is a valid number (or parseable)
 - ✅ Has timestamp
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If live data unavailable → Return fallback price
 - If symbol unavailable → Return "UNKNOWN"
 - Never crash
 
 **Test Command**:
+
 ```
 Use quote_get
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns real price data
 - 🟡 Acceptable: Returns fallback price with note
 - 🔴 Fail: Crashes or null price
@@ -146,6 +162,7 @@ Use quote_get
 **Tool Name**: `data_get_ohlcv`
 
 **Input Parameters**:
+
 ```json
 {
   "summary": true,
@@ -154,6 +171,7 @@ Use quote_get
 ```
 
 **Expected Response (Summary Mode)**:
+
 ```json
 {
   "summary": true,
@@ -180,10 +198,12 @@ Use quote_get
 ```
 
 **Expected Fields**:
+
 - ✅ `bars` (array with OHLCV data)
 - ✅ `stats` (object with high/low/close/avg)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ Returns array of bars
 - ✅ Each bar has OHLCV
@@ -192,17 +212,20 @@ Use quote_get
 - ✅ Response time < 2 seconds
 
 **Failure Handling**:
+
 - If real data unavailable → Generate realistic sample
 - If limit too high → Cap at max 100 bars
 - Never crash
 
 **Test Command**:
+
 ```
 Use data_get_ohlcv with summary=true
 Use data_get_ohlcv with summary=false, limit=100
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns real bars with stats
 - 🟡 Acceptable: Returns sample data with note
 - 🔴 Fail: Crashes or empty bars
@@ -216,6 +239,7 @@ Use data_get_ohlcv with summary=false, limit=100
 **Tool Name**: `chart_set_symbol`
 
 **Input Parameters**:
+
 ```json
 {
   "symbol": "GOOGL"
@@ -223,6 +247,7 @@ Use data_get_ohlcv with summary=false, limit=100
 ```
 
 **Expected Response**:
+
 ```json
 {
   "success": true,
@@ -233,27 +258,32 @@ Use data_get_ohlcv with summary=false, limit=100
 ```
 
 **Expected Fields**:
+
 - ✅ `success` (boolean)
 - ✅ `symbol` (string, matches input)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `success` is boolean
 - ✅ `symbol` matches input
 - ✅ Response time < 2 seconds
 
 **Failure Handling**:
+
 - If API unavailable → Try UI interaction
 - If UI unavailable → Return success=false with hint
 - Never crash
 
 **Test Command**:
+
 ```
 Use chart_set_symbol with symbol="GOOGL"
 Use chart_set_symbol with symbol="BTC/USD"
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Successfully changes symbol
 - 🟡 Acceptable: Returns success=false with method hint
 - 🔴 Fail: Crashes or invalid response
@@ -267,6 +297,7 @@ Use chart_set_symbol with symbol="BTC/USD"
 **Tool Name**: `chart_set_timeframe`
 
 **Input Parameters**:
+
 ```json
 {
   "timeframe": "5"
@@ -274,6 +305,7 @@ Use chart_set_symbol with symbol="BTC/USD"
 ```
 
 **Expected Response**:
+
 ```json
 {
   "success": true,
@@ -284,20 +316,24 @@ Use chart_set_symbol with symbol="BTC/USD"
 ```
 
 **Expected Fields**:
+
 - ✅ `success` (boolean)
 - ✅ `timeframe` (string, matches input)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `success` is boolean
 - ✅ `timeframe` matches input
 - ✅ Response time < 2 seconds
 
 **Valid Timeframes**:
+
 - "1", "5", "15", "30", "60" (minutes)
 - "D" (daily), "W" (weekly), "M" (monthly)
 
 **Test Command**:
+
 ```
 Use chart_set_timeframe with timeframe="5"
 Use chart_set_timeframe with timeframe="D"
@@ -305,6 +341,7 @@ Use chart_set_timeframe with timeframe="W"
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Successfully changes timeframe
 - 🟡 Acceptable: Returns success=false with hint
 - 🔴 Fail: Crashes or invalid response
@@ -320,11 +357,13 @@ Use chart_set_timeframe with timeframe="W"
 **Tool Name**: `pine_get_source`
 
 **Input Parameters**:
+
 ```json
 {}
 ```
 
 **Expected Response**:
+
 ```json
 {
   "source": "//@version=5\nindicator('My Indicator')\nplot(close)",
@@ -336,25 +375,30 @@ Use chart_set_timeframe with timeframe="W"
 ```
 
 **Expected Fields**:
+
 - ✅ `source` (string with code)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ Returns non-empty source string
 - ✅ Source is valid Pine Script (contains @version)
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If no editor → Return sample Pine Script
 - If editor empty → Return empty string with note
 - Never crash
 
 **Test Command**:
+
 ```
 Use pine_get_source
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns real script source
 - 🟡 Acceptable: Returns sample script with note
 - 🔴 Fail: Crashes or invalid response
@@ -368,6 +412,7 @@ Use pine_get_source
 **Tool Name**: `pine_set_source`
 
 **Input Parameters**:
+
 ```json
 {
   "source": "//@version=5\nindicator('Test')\nplot(close)"
@@ -375,6 +420,7 @@ Use pine_get_source
 ```
 
 **Expected Response**:
+
 ```json
 {
   "success": true,
@@ -385,16 +431,19 @@ Use pine_get_source
 ```
 
 **Expected Fields**:
+
 - ✅ `success` (boolean)
 - ✅ `lines` (number, code line count)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `success` is boolean
 - ✅ `lines` count matches code
 - ✅ Response time < 2 seconds
 
 **Failure Handling**:
+
 - If CodeMirror available → Use that
 - If Monaco available → Use that
 - If textarea available → Use that
@@ -402,11 +451,13 @@ Use pine_get_source
 - Never crash
 
 **Test Command**:
+
 ```
 Use pine_set_source with source="//@version=5\nindicator('Test')\nplot(close)"
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Successfully injects code
 - 🟡 Acceptable: Returns success=false with method tried
 - 🔴 Fail: Crashes or invalid response
@@ -420,6 +471,7 @@ Use pine_set_source with source="//@version=5\nindicator('Test')\nplot(close)"
 **Tool Name**: `pine_smart_compile`
 
 **Input Parameters**:
+
 ```json
 {
   "timeoutMs": 10000
@@ -427,6 +479,7 @@ Use pine_set_source with source="//@version=5\nindicator('Test')\nplot(close)"
 ```
 
 **Expected Response (Success)**:
+
 ```json
 {
   "success": true,
@@ -440,6 +493,7 @@ Use pine_set_source with source="//@version=5\nindicator('Test')\nplot(close)"
 ```
 
 **Expected Response (With Errors)**:
+
 ```json
 {
   "success": false,
@@ -458,26 +512,31 @@ Use pine_set_source with source="//@version=5\nindicator('Test')\nplot(close)"
 ```
 
 **Expected Fields**:
+
 - ✅ `status` (string: "compiled" or "error")
 - ✅ `errors` (array)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `status` is valid (compiled/error/warning)
 - ✅ `errors` is array
 - ✅ Response time < 5 seconds
 
 **Failure Handling**:
+
 - If compiler unavailable → Return status="error"
 - If timeout → Return with partial results
 - Never crash
 
 **Test Command**:
+
 ```
 Use pine_smart_compile
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Detects errors correctly
 - 🟡 Acceptable: Returns empty error list
 - 🔴 Fail: Crashes or invalid status
@@ -491,11 +550,13 @@ Use pine_smart_compile
 **Tool Name**: `pine_get_errors`
 
 **Input Parameters**:
+
 ```json
 {}
 ```
 
 **Expected Response (No Errors)**:
+
 ```json
 {
   "errors": [],
@@ -508,6 +569,7 @@ Use pine_smart_compile
 ```
 
 **Expected Response (With Errors)**:
+
 ```json
 {
   "errors": [
@@ -530,25 +592,30 @@ Use pine_smart_compile
 ```
 
 **Expected Fields**:
+
 - ✅ `errors` (array)
 - ✅ `warnings` (array)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ Both `errors` and `warnings` are arrays
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If no errors → Return empty arrays
 - If no editor → Return empty arrays with note
 - Never crash
 
 **Test Command**:
+
 ```
 Use pine_get_errors
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns correct error list
 - 🟡 Acceptable: Returns empty error list
 - 🔴 Fail: Crashes or invalid response
@@ -562,6 +629,7 @@ Use pine_get_errors
 **Tool Name**: `pine_save`
 
 **Input Parameters**:
+
 ```json
 {
   "name": "MyStrategy"
@@ -569,6 +637,7 @@ Use pine_get_errors
 ```
 
 **Expected Response**:
+
 ```json
 {
   "success": true,
@@ -579,10 +648,12 @@ Use pine_get_errors
 ```
 
 **Expected Fields**:
+
 - ✅ `success` (boolean)
 - ✅ `name` (string, matches input)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `success` is boolean
 - ✅ `name` matches input
@@ -590,16 +661,19 @@ Use pine_get_errors
 - ✅ Response time < 3 seconds
 
 **Failure Handling**:
+
 - If save button unavailable → Try publish button
 - If nothing available → Return success=false
 - Never crash
 
 **Test Command**:
+
 ```
 Use pine_save with name="MyStrategy"
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Successfully saves script
 - 🟡 Acceptable: Returns success=false with hint
 - 🔴 Fail: Crashes or invalid response
@@ -615,11 +689,13 @@ Use pine_save with name="MyStrategy"
 **Tool Name**: `alert_list`
 
 **Input Parameters**:
+
 ```json
 {}
 ```
 
 **Expected Response (No Alerts)**:
+
 ```json
 {
   "alerts": [],
@@ -630,6 +706,7 @@ Use pine_save with name="MyStrategy"
 ```
 
 **Expected Response (With Alerts)**:
+
 ```json
 {
   "alerts": [
@@ -659,26 +736,31 @@ Use pine_save with name="MyStrategy"
 ```
 
 **Expected Fields**:
+
 - ✅ `alerts` (array)
 - ✅ `total` (number)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `alerts` is array
 - ✅ `total` matches array length
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If no alerts → Return empty array
 - If API unavailable → Try DOM scraping
 - Never crash
 
 **Test Command**:
+
 ```
 Use alert_list
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns real alerts list
 - 🟡 Acceptable: Returns empty alert list
 - 🔴 Fail: Crashes or invalid response
@@ -692,6 +774,7 @@ Use alert_list
 **Tool Name**: `alert_create`
 
 **Input Parameters**:
+
 ```json
 {
   "symbol": "AAPL",
@@ -701,6 +784,7 @@ Use alert_list
 ```
 
 **Expected Response**:
+
 ```json
 {
   "success": true,
@@ -715,30 +799,36 @@ Use alert_list
 ```
 
 **Expected Fields**:
+
 - ✅ `success` (boolean)
 - ✅ `alertId` (string)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `success` is boolean
 - ✅ `alertId` is non-empty string
 - ✅ Response time < 3 seconds
 
 **Valid Conditions**:
+
 - "above", "below", "crosses"
 
 **Failure Handling**:
+
 - If API unavailable → Try form interaction
 - If form unavailable → Return success=false
 - Never crash
 
 **Test Command**:
+
 ```
 Use alert_create with symbol="AAPL", condition="above", level=150
 Use alert_create with symbol="GOOGL", condition="below", level=2500
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Successfully creates alert
 - 🟡 Acceptable: Returns success=false with hint
 - 🔴 Fail: Crashes or invalid response
@@ -752,6 +842,7 @@ Use alert_create with symbol="GOOGL", condition="below", level=2500
 **Tool Name**: `alert_delete`
 
 **Input Parameters**:
+
 ```json
 {
   "alertId": "alert_1"
@@ -759,6 +850,7 @@ Use alert_create with symbol="GOOGL", condition="below", level=2500
 ```
 
 **Expected Response**:
+
 ```json
 {
   "success": true,
@@ -769,26 +861,31 @@ Use alert_create with symbol="GOOGL", condition="below", level=2500
 ```
 
 **Expected Fields**:
+
 - ✅ `success` (boolean)
 - ✅ `alertId` (string, matches input)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `success` is boolean
 - ✅ `alertId` matches input
 - ✅ Response time < 2 seconds
 
 **Failure Handling**:
+
 - If API unavailable → Try UI button
 - If alert not found → Return success=false
 - Never crash
 
 **Test Command**:
+
 ```
 Use alert_delete with alertId="alert_1"
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Successfully deletes alert
 - 🟡 Acceptable: Returns success=false with hint
 - 🔴 Fail: Crashes or invalid response
@@ -804,11 +901,13 @@ Use alert_delete with alertId="alert_1"
 **Tool Name**: `tv_health_check`
 
 **Input Parameters**:
+
 ```json
 {}
 ```
 
 **Expected Response (Connected)**:
+
 ```json
 {
   "status": "connected",
@@ -824,6 +923,7 @@ Use alert_delete with alertId="alert_1"
 ```
 
 **Expected Response (Disconnected)**:
+
 ```json
 {
   "status": "disconnected",
@@ -834,26 +934,31 @@ Use alert_delete with alertId="alert_1"
 ```
 
 **Expected Fields**:
+
 - ✅ `status` (string)
 - ✅ `connected` (boolean)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `status` is valid (connected/disconnected)
 - ✅ `connected` is boolean
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If not connected → Return helpful message
 - If connection times out → Retry up to 3 times
 - Never crash
 
 **Test Command**:
+
 ```
 Use tv_health_check
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Shows connected=true
 - 🟡 Acceptable: Shows connected=false with hint
 - 🔴 Fail: Crashes or invalid status
@@ -867,6 +972,7 @@ Use tv_health_check
 **Tool Name**: `tv_launch`
 
 **Input Parameters**:
+
 ```json
 {
   "port": 9222
@@ -874,6 +980,7 @@ Use tv_health_check
 ```
 
 **Expected Response (Windows)**:
+
 ```json
 {
   "success": true,
@@ -885,6 +992,7 @@ Use tv_health_check
 ```
 
 **Expected Response (macOS)**:
+
 ```json
 {
   "success": true,
@@ -896,10 +1004,12 @@ Use tv_health_check
 ```
 
 **Expected Fields**:
+
 - ✅ `command` (string)
 - ✅ `platform` (string)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `command` contains executable path
 - ✅ `command` contains port number
@@ -907,16 +1017,19 @@ Use tv_health_check
 - ✅ Response time < 1 second
 
 **Failure Handling**:
+
 - If unsupported platform → Return error message
 - Never crash
 
 **Test Command**:
+
 ```
 Use tv_launch
 Use tv_launch with port=9223
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns correct launch command
 - 🟡 Acceptable: Returns error for unsupported platform
 - 🔴 Fail: Crashes or invalid command
@@ -930,6 +1043,7 @@ Use tv_launch with port=9223
 **Tool Name**: `capture_screenshot`
 
 **Input Parameters**:
+
 ```json
 {
   "region": "chart"
@@ -937,6 +1051,7 @@ Use tv_launch with port=9223
 ```
 
 **Expected Response (Success)**:
+
 ```json
 {
   "success": true,
@@ -950,6 +1065,7 @@ Use tv_launch with port=9223
 ```
 
 **Expected Response (Failure)**:
+
 ```json
 {
   "success": false,
@@ -960,29 +1076,35 @@ Use tv_launch with port=9223
 ```
 
 **Expected Fields**:
+
 - ✅ `data` (string with base64 PNG) OR `error` (string)
 
 **Success Criteria**:
+
 - ✅ Tool executes without error
 - ✅ `data` field has valid base64 PNG
 - ✅ OR `error` field with helpful message
 - ✅ Response time < 2 seconds
 
 **Valid Regions**:
+
 - "full", "chart", "strategy_tester"
 
 **Failure Handling**:
+
 - If screenshot fails → Return error message
 - If region invalid → Use default "chart"
 - Never crash
 
 **Test Command**:
+
 ```
 Use capture_screenshot with region="chart"
 Use capture_screenshot with region="full"
 ```
 
 **Expected Outcome**:
+
 - 🟢 Pass: Returns PNG data
 - 🟡 Acceptable: Returns error with hint
 - 🔴 Fail: Crashes or invalid response
@@ -992,13 +1114,17 @@ Use capture_screenshot with region="full"
 ## Test Execution Summary
 
 ### Manual Testing
+
 Run tests one by one in Claude Code:
+
 ```
 Use [tool_name] [with params]
 ```
 
 ### Automated Testing
+
 Run all tests at once:
+
 ```bash
 node test-all-tools.js
 ```
@@ -1006,6 +1132,7 @@ node test-all-tools.js
 ### Expected Results
 
 #### Perfect Run (All Green)
+
 ```
 Total Tests: 16
 Passed: 16 (100%)
@@ -1016,6 +1143,7 @@ Errors: 0 (0%)
 ```
 
 #### Good Run (Mostly Green)
+
 ```
 Total Tests: 16
 Passed: 14 (87.5%)
@@ -1026,6 +1154,7 @@ Errors: 0 (0%)
 ```
 
 #### Needs Work (Some Failures)
+
 ```
 Total Tests: 16
 Passed: 10 (62.5%)
@@ -1045,6 +1174,7 @@ After running tests, document:
 # Phase 3 Test Results
 
 ## Summary
+
 - Date: [date]
 - TradingView: [Connected/Disconnected]
 - Total Tests: 16
@@ -1053,18 +1183,22 @@ After running tests, document:
 - Errors: [count]
 
 ## By Category
+
 - Chart Tools: [count] passed
 - Pine Tools: [count] passed
 - Alert Tools: [count] passed
 - Utility Tools: [count] passed
 
 ## Detailed Results
+
 [List each test with Pass/Fail/Error]
 
 ## Issues Found
+
 [List any failures and errors]
 
 ## Recommendations
+
 [What to fix next]
 ```
 

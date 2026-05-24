@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+# Cancel older runs of the same branch/PR when a new commit arrives.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Static checks, build, audit
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20.x']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type-check
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier format check
+        run: npm run format:check
+
+      - name: Build
+        run: npm run build
+
+      # Unit tests placeholder. The integration suite (test-all-tools.js)
+      # requires a running TradingView Desktop + CDP and is intentionally
+      # excluded from CI. If/when a `test` script is added to package.json,
+      # this step will run it; until then it is a no-op.
+      - name: Unit tests (if defined)
+        run: |
+          if node -e "process.exit(require('./package.json').scripts && require('./package.json').scripts.test ? 0 : 1)"; then
+            npm test --if-present
+          else
+            echo "No 'test' script defined in package.json — skipping."
+          fi
+
+      # npm audit runs last so a vulnerable transitive dep does not block
+      # the rest of the signal. Fails the build on high/critical CVEs.
+      - name: npm audit (high or critical)
+        run: npm audit --audit-level=high

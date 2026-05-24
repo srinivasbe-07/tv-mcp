@@ -21,12 +21,12 @@ src/
 
 ### Tools Registered (16 total)
 
-| Category | Count | Tools |
-|----------|-------|-------|
-| Chart | 5 | chart_get_state, quote_get, data_get_ohlcv, chart_set_symbol, chart_set_timeframe |
-| Pine | 5 | pine_set_source, pine_smart_compile, pine_get_errors, pine_get_source, pine_save |
-| Alerts | 3 | alert_create, alert_list, alert_delete |
-| Utility | 3 | tv_health_check, tv_launch, capture_screenshot |
+| Category | Count | Tools                                                                             |
+| -------- | ----- | --------------------------------------------------------------------------------- |
+| Chart    | 5     | chart_get_state, quote_get, data_get_ohlcv, chart_set_symbol, chart_set_timeframe |
+| Pine     | 5     | pine_set_source, pine_smart_compile, pine_get_errors, pine_get_source, pine_save  |
+| Alerts   | 3     | alert_create, alert_list, alert_delete                                            |
+| Utility  | 3     | tv_health_check, tv_launch, capture_screenshot                                    |
 
 ## Project Structure
 
@@ -34,7 +34,7 @@ src/
 C:\study\MCP\tv-mcp/
 ├── src/
 │   ├── server.js                    ← Main MCP server
-│   ├── cdp.js                       ← CDP connection manager  
+│   ├── cdp.js                       ← CDP connection manager
 │   └── tools/
 │       ├── chart.js                 ← Chart tools
 │       ├── pine.js                  ← Pine Script tools
@@ -59,6 +59,7 @@ npm start
 ```
 
 You should see:
+
 ```
 [2026-05-24T...] Starting TradingView MCP Server v0.1.0
 [2026-05-24T...] Waiting for MCP client connection...
@@ -75,6 +76,7 @@ npm run build
 This creates `dist/server.js` from the TypeScript source.
 
 Then use:
+
 ```bash
 npm run start:dist
 ```
@@ -95,6 +97,7 @@ Edit your MCP configuration file (`~/.claude/.mcp.json` or project `.mcp.json`):
 ```
 
 Or if using built version:
+
 ```json
 {
   "mcpServers": {
@@ -109,11 +112,13 @@ Or if using built version:
 ### Step 4: Verify with TradingView Running
 
 1. Start TradingView with CDP enabled:
+
    ```bash
    "C:\Users\YourUsername\AppData\Local\TradingView\TradingView.exe" --remote-debugging-port=9222
    ```
 
 2. Start the MCP server:
+
    ```bash
    npm start
    ```
@@ -126,6 +131,7 @@ Or if using built version:
 ## Files Modified
 
 ### package.json
+
 ```json
 "scripts": {
   "build": "tsc",
@@ -169,21 +175,25 @@ Or if using built version:
 ## Implementation Details
 
 ### 1. Modular Design
+
 - Separate class for each tool category
 - Easy to extend with new tools
 - Clean separation of concerns
 
 ### 2. Consistent Error Handling
+
 - Try-catch blocks in every async method
 - Detailed error messages
 - Graceful fallbacks
 
 ### 3. Logging
+
 - All output to `tradingview-mcp.log`
 - Console (stderr) for real-time feedback
 - Timestamps on all entries
 
 ### 4. MCP Compliance
+
 - Stdio transport
 - Tool listing and discovery
 - Proper response format
@@ -192,6 +202,7 @@ Or if using built version:
 ## Available Commands (After Setup)
 
 ### In Claude Code
+
 ```
 # Health check
 Use tv_health_check to verify TradingView is connected
@@ -217,6 +228,7 @@ Use capture_screenshot to grab a screenshot
 ## Logging
 
 View logs in real-time:
+
 ```bash
 tail -f tradingview-mcp.log
 ```
@@ -224,14 +236,17 @@ tail -f tradingview-mcp.log
 ## Troubleshooting
 
 ### "CDP not connected"
+
 - Ensure TradingView is running with `--remote-debugging-port=9222`
 - Check that no other process is using port 9222
 
 ### "Tool not found"
+
 - Verify all files are in `src/tools/` directory
 - Check that import statements use correct paths
 
 ### "Build errors"
+
 - Ensure TypeScript is installed: `npm install`
 - Run: `npm run build`
 
@@ -249,6 +264,7 @@ tail -f tradingview-mcp.log
 ## What's Next (Phase 2)
 
 Real TradingView API integration to make tools actually functional with live data:
+
 - Real chart data extraction
 - Real Pine Script compilation
 - Real alert creation
@@ -256,17 +272,17 @@ Real TradingView API integration to make tools actually functional with live dat
 
 ## Quick Summary
 
-| Item | Status |
-|------|--------|
-| Core files | ✅ Integrated |
-| Project structure | ✅ Complete |
-| Dependencies | ✅ Already installed |
-| Package.json | ✅ Updated |
-| Initial testing | ⏳ Ready |
-| Real TradingView integration | ⏳ Phase 2 |
-| CLAUDE.md | ⏳ Phase 4 |
-| Launch scripts | ⏳ Phase 5 |
-| CLI interface | ⏳ Phase 6 |
+| Item                         | Status               |
+| ---------------------------- | -------------------- |
+| Core files                   | ✅ Integrated        |
+| Project structure            | ✅ Complete          |
+| Dependencies                 | ✅ Already installed |
+| Package.json                 | ✅ Updated           |
+| Initial testing              | ⏳ Ready             |
+| Real TradingView integration | ⏳ Phase 2           |
+| CLAUDE.md                    | ⏳ Phase 4           |
+| Launch scripts               | ⏳ Phase 5           |
+| CLI interface                | ⏳ Phase 6           |
 
 ## Files Summary
 

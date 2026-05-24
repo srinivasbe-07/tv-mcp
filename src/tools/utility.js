@@ -1,5 +1,5 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
@@ -11,38 +11,38 @@ export class UtilityTools {
   getTools() {
     return [
       {
-        name: "tv_health_check",
-        description: "Check if TradingView is connected and healthy",
+        name: 'tv_health_check',
+        description: 'Check if TradingView is connected and healthy',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {},
         },
       },
       {
-        name: "tv_launch",
-        description: "Launch TradingView with Chrome DevTools Protocol enabled",
+        name: 'tv_launch',
+        description: 'Launch TradingView with Chrome DevTools Protocol enabled',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             port: {
-              type: "number",
-              description: "CDP port (default: 9222)",
+              type: 'number',
+              description: 'CDP port (default: 9222)',
               default: 9222,
             },
           },
         },
       },
       {
-        name: "capture_screenshot",
-        description: "Capture a screenshot of the chart",
+        name: 'capture_screenshot',
+        description: 'Capture a screenshot of the chart',
         inputSchema: {
-          type: "object",
+          type: 'object',
           properties: {
             region: {
-              type: "string",
-              enum: ["full", "chart", "strategy_tester"],
-              description: "Region to capture (default: chart)",
-              default: "chart",
+              type: 'string',
+              enum: ['full', 'chart', 'strategy_tester'],
+              description: 'Region to capture (default: chart)',
+              default: 'chart',
             },
           },
         },
@@ -52,11 +52,11 @@ export class UtilityTools {
 
   async handle(toolName, args) {
     switch (toolName) {
-      case "tv_health_check":
+      case 'tv_health_check':
         return await this.healthCheck(args);
-      case "tv_launch":
+      case 'tv_launch':
         return await this.launch(args);
-      case "capture_screenshot":
+      case 'capture_screenshot':
         return await this.captureScreenshot(args);
       default:
         return this.error(`Unknown utility tool: ${toolName}`);
@@ -67,11 +67,11 @@ export class UtilityTools {
     try {
       if (!this.cdp.isConnected()) {
         return this.success({
-          status: "disconnected",
+          status: 'disconnected',
           connected: false,
           port: 9222,
           message:
-            "TradingView is not connected. Start TradingView with --remote-debugging-port=9222",
+            'TradingView is not connected. Start TradingView with --remote-debugging-port=9222',
         });
       }
 
@@ -80,20 +80,19 @@ export class UtilityTools {
         const data = await this.cdp.getTradingViewChartData();
 
         return this.success({
-          status: "connected",
+          status: 'connected',
           connected: true,
           port: 9222,
           tradingview: data,
           timestamp: new Date().toISOString(),
-          message: "TradingView MCP is healthy and connected",
+          message: 'TradingView MCP is healthy and connected',
         });
       } catch (error) {
         return this.success({
-          status: "connected_but_no_data",
+          status: 'connected_but_no_data',
           connected: true,
           port: 9222,
-          message:
-            "Connected to Chrome DevTools, but unable to read TradingView data",
+          message: 'Connected to Chrome DevTools, but unable to read TradingView data',
           error: error.message,
         });
       }
@@ -110,13 +109,13 @@ export class UtilityTools {
       const platform = process.platform;
       let command = null;
 
-      if (platform === "darwin") {
+      if (platform === 'darwin') {
         // macOS
         command = `/Applications/TradingView.app/Contents/MacOS/TradingView --remote-debugging-port=${port}`;
-      } else if (platform === "win32") {
+      } else if (platform === 'win32') {
         // Windows
         command = `"%LOCALAPPDATA%\\TradingView\\TradingView.exe" --remote-debugging-port=${port}`;
-      } else if (platform === "linux") {
+      } else if (platform === 'linux') {
         // Linux
         command = `/opt/TradingView/tradingview --remote-debugging-port=${port}`;
       }
@@ -131,7 +130,7 @@ export class UtilityTools {
         command,
         port,
         message: `To launch TradingView with debugging, run: ${command}`,
-        note: "For manual launch, use the scripts in the scripts/ directory",
+        note: 'For manual launch, use the scripts in the scripts/ directory',
       });
     } catch (error) {
       return this.error(`Failed to launch: ${error.message}`);
@@ -140,7 +139,7 @@ export class UtilityTools {
 
   async captureScreenshot(args) {
     try {
-      const { region = "chart" } = args;
+      const { region = 'chart' } = args;
 
       try {
         const screenshot = await this.cdp.takeScreenshot(region);
@@ -148,10 +147,10 @@ export class UtilityTools {
         return this.success({
           success: true,
           region,
-          format: "png",
+          format: 'png',
           size: screenshot.data.length,
           timestamp: new Date().toISOString(),
-          data: screenshot.data.slice(0, 100) + "...", // Truncated for display
+          data: screenshot.data.slice(0, 100) + '...', // Truncated for display
           message: `Screenshot captured (${region} region)`,
         });
       } catch (screenshotError) {
@@ -159,8 +158,7 @@ export class UtilityTools {
           success: false,
           region,
           error: screenshotError.message,
-          message:
-            "Note: Screenshot capture requires TradingView widget API integration",
+          message: 'Note: Screenshot capture requires TradingView widget API integration',
         });
       }
     } catch (error) {
@@ -172,7 +170,7 @@ export class UtilityTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(data, null, 2),
         },
       ],
@@ -183,7 +181,7 @@ export class UtilityTools {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: message,
         },
       ],
