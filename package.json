@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "description": "Minimal TradingView MCP server. Connects to TradingView Desktop via Chrome DevTools Protocol.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "src/server.js",
   "bin": {
-    "tv-mcp": "dist/index.js"
+    "tv-mcp": "src/server.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node src/server.js",
+    "start:dist": "node dist/server.js",
     "dev": "tsc --watch"
   },
   "dependencies": {
