@@ -156,7 +156,7 @@ export class PineTools {
 
   async smartCompile(args) {
     try {
-      const { timeoutMs = 10000 } = args;
+      const { timeoutMs: _timeoutMs = 10000 } = args;
 
       const script = `
         (function() {
@@ -225,7 +225,7 @@ export class PineTools {
     }
   }
 
-  async getErrors(args) {
+  async getErrors(_args) {
     try {
       const script = `
         (function() {
@@ -305,7 +305,7 @@ export class PineTools {
     }
   }
 
-  async getSource(args) {
+  async getSource(_args) {
     try {
       const script = `
         (function() {

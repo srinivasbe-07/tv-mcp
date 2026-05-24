@@ -90,7 +90,7 @@ export class ChartTools {
     }
   }
 
-  async getChartState(args) {
+  async getChartState(_args) {
     try {
       const script = `
         (function() {
@@ -119,7 +119,7 @@ export class ChartTools {
             // Attempt 3: Parse title or meta tags
             if (symbol === "UNKNOWN") {
               const pageTitle = document.title;
-              const match = pageTitle.match(/^([A-Z0-9\\/\.]+)/);
+              const match = pageTitle.match(/^([A-Z0-9/.]+)/);
               if (match) symbol = match[1];
             }
 
@@ -147,7 +147,7 @@ export class ChartTools {
     }
   }
 
-  async getQuote(args) {
+  async getQuote(_args) {
     try {
       const script = `
         (function() {

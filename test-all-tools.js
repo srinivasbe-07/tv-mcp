@@ -8,7 +8,7 @@
  */
 
 import { spawn } from 'child_process';
-import { readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { writeFileSync, appendFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -160,7 +160,7 @@ let results = {
 };
 
 // Utility: Write to log file
-function log(message, isError = false) {
+function log(message, _isError = false) {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] ${message}\n`;
   process.stdout.write(logEntry);
@@ -187,7 +187,7 @@ function validateResponse(response, testCase) {
   if (response.content && Array.isArray(response.content)) {
     try {
       data = JSON.parse(response.content[0].text);
-    } catch (e) {
+    } catch (_e) {
       return { valid: false, reason: 'Could not parse response JSON' };
     }
   }
@@ -355,7 +355,7 @@ async function runAllTests() {
 
   // Try to start server (optional - tests can run without it)
   try {
-    const server = await startServer();
+    const _server = await startServer();
     log('MCP server started successfully');
     log('');
   } catch (error) {

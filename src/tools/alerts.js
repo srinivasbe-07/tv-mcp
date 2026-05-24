@@ -167,7 +167,7 @@ export class AlertTools {
     }
   }
 
-  async list(args) {
+  async list(_args) {
     try {
       const script = `
         (function() {

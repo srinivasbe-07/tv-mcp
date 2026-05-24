@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const _execAsync = promisify(exec);
 
 export class UtilityTools {
   constructor(cdp) {
@@ -63,7 +63,7 @@ export class UtilityTools {
     }
   }
 
-  async healthCheck(args) {
+  async healthCheck(_args) {
     try {
       if (!this.cdp.isConnected()) {
         return this.success({

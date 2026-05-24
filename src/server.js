@@ -22,7 +22,7 @@ function log(message, data = null) {
   process.stderr.write(logEntry);
   try {
     fs.appendFileSync(LOG_FILE, logEntry);
-  } catch (e) {
+  } catch (_e) {
     // Silently fail if we can't write to log file
   }
 }
