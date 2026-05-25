@@ -101,55 +101,51 @@ export class PineTools {
           try {
             const source = '${escapedSource}';
             let injected = false;
+            let via = '';
 
-            // Try to open the Pine Script editor panel if not already open
-            const pineEditorBtn = Array.from(document.querySelectorAll('[class*="tab"], [data-name]'))
-              .find(el => el.textContent?.includes('Pine') || el.getAttribute('data-name')?.includes('pine'));
-            if (pineEditorBtn) {
-              pineEditorBtn.click();
-              await new Promise(r => setTimeout(r, 500));
-            }
-
-            // Attempt 1: CodeMirror 6 — uses .cm-content (contenteditable div)
+            // Attempt 1: CodeMirror 6 (.cm-content is a contenteditable div)
             const cmContent = document.querySelector('.cm-content');
             if (cmContent) {
               cmContent.focus();
-              // Select all and replace
               document.execCommand('selectAll');
               document.execCommand('insertText', false, source);
-              injected = document.querySelector('.cm-content')?.textContent?.length > 0;
+              injected = (cmContent.textContent?.length || 0) > 0;
               if (!injected) {
-                // Fallback: set innerText and dispatch input event
                 cmContent.innerText = source;
                 cmContent.dispatchEvent(new Event('input', { bubbles: true }));
                 injected = true;
               }
+              via = 'codemirror6';
             }
 
-            // Attempt 2: CodeMirror 5 — .CodeMirror with .CodeMirror property
+            // Attempt 2: CodeMirror 5
             if (!injected) {
               const cm5 = document.querySelector('.CodeMirror');
               if (cm5?.CodeMirror) {
                 cm5.CodeMirror.setValue(source);
                 injected = true;
+                via = 'codemirror5';
               }
             }
 
-            // Attempt 3: Use TradingView API
+            // Attempt 3: TradingView internal Pine editor API
             if (!injected && window.TradingViewApi?._pineEditorTestApi) {
               const pineApi = window.TradingViewApi._pineEditorTestApi;
               if (typeof pineApi.setSource === 'function') {
                 pineApi.setSource(source);
                 injected = true;
+                via = 'pine_test_api';
               }
             }
 
-            return {
-              success: injected,
-              lines: source.split('\\n').length,
-              via: injected ? 'editor_injection' : 'failed',
-              message: injected ? 'Source code injected' : 'Could not inject - open Pine Script Editor panel first'
-            };
+            if (!injected) {
+              return {
+                success: false,
+                message: 'Pine Script Editor not open. Right-click an indicator on the chart → Edit script, then retry.',
+              };
+            }
+
+            return { success: true, lines: source.split('\\n').length, via };
           } catch (e) {
             return { error: e.message };
           }

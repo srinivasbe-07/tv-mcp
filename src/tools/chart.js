@@ -143,63 +143,33 @@ export class ChartTools {
       const script = `
         (function() {
           try {
-            let price = 0;
-            let symbol = "UNKNOWN";
-            let open = 0, high = 0, low = 0, volume = 0;
-            let change = 0, changePercent = "0.00";
-
-            // Attempt 1: Use TradingViewApi widget (confirmed working)
             const api = window.TradingViewApi;
             const widget = api?._activeChartWidgetWV?._value;
-            if (widget) {
-              symbol = widget.symbol?.() || symbol;
+            const symbol = widget?.symbol?.() || 'UNKNOWN';
+
+            // Read OHLCV from the center panel legend text (O/H/L/C/Vol labels)
+            const center = document.querySelector('.layout__area--center');
+            const lines = (center?.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean);
+            let open = '', high = '', low = '', close = '', volume = '';
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i] === 'O') open = lines[i + 1] || '';
+              else if (lines[i] === 'H') high = lines[i + 1] || '';
+              else if (lines[i] === 'L') low = lines[i + 1] || '';
+              else if (lines[i] === 'C') close = lines[i + 1] || '';
+              else if (lines[i] === 'Vol') volume = lines[i + 1] || '';
             }
 
-            // Attempt 2: Read OHLCV from chart legend items (visible when cursor on chart)
-            const legendItems = document.querySelectorAll('[class*="legendMainSource"]');
-            legendItems.forEach(el => {
-              const text = el.textContent || '';
-              const nums = text.match(/[\\d,]+\\.?\\d*/g);
-              if (nums && nums.length >= 4) {
-                open  = parseFloat(nums[0].replace(/,/g, '')) || open;
-                high  = parseFloat(nums[1].replace(/,/g, '')) || high;
-                low   = parseFloat(nums[2].replace(/,/g, '')) || low;
-                price = parseFloat(nums[3].replace(/,/g, '')) || price;
-              }
-            });
-
-            // Attempt 3: Try visible price text in the chart area
-            if (price === 0) {
-              const allText = document.querySelectorAll('[class*="last-"]');
-              for (const el of allText) {
-                const txt = el.innerText?.trim();
-                if (txt && /^[\\d,]+\\.?\\d+$/.test(txt)) {
-                  price = parseFloat(txt.replace(/,/g, ''));
-                  break;
-                }
-              }
-            }
-
+            const price = parseFloat((close || '0').replace(/,/g, '')) || 0;
             return {
-              symbol: symbol,
-              price: price > 0 ? price.toFixed(2) : "unavailable",
-              ohlc: {
-                open: open.toFixed(2),
-                high: high.toFixed(2),
-                low: low.toFixed(2),
-                close: price.toFixed(2)
-              },
-              volume: volume,
-              change: change.toFixed(2),
-              changePercent: changePercent,
+              symbol,
+              price: price > 0 ? price.toFixed(2) : 'unavailable',
+              ohlc: { open, high, low, close },
+              volume,
               timestamp: new Date().toISOString(),
-              note: price === 0 ? "Price unavailable - hover cursor over chart to populate legend" : "live"
+              note: price > 0 ? 'live' : 'Move cursor over chart to populate legend values',
             };
           } catch (e) {
-            return {
-              error: e.message,
-              hint: "Could not extract price data - ensure chart is fully loaded"
-            };
+            return { error: e.message };
           }
         })()
       `;
@@ -355,43 +325,59 @@ export class ChartTools {
       const script = `
         (async function() {
           try {
-            // Attempt 1: Use TradingView API
-            if (typeof window !== 'undefined' && window.tradingview) {
-              const chart = window.tradingview.activeChart?.();
-              if (chart && typeof chart.setResolution === 'function') {
-                await chart.setResolution('${timeframe}');
-                return { success: true, timeframe: '${timeframe}', via: 'tradingview_api' };
+            // Attempt 1: TradingViewApi widget methods (setResolution / setInterval)
+            const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
+            if (widget) {
+              const methodNames = ['setResolution', 'setInterval', 'changeResolution', 'changeInterval'];
+              for (const m of methodNames) {
+                if (typeof widget[m] === 'function') {
+                  widget[m]('${timeframe}');
+                  await new Promise(r => setTimeout(r, 300));
+                  return { success: true, timeframe: '${timeframe}', via: m };
+                }
               }
             }
 
-            // Attempt 2: Click the interval title (confirmed: title="Change interval")
-            const intervalEl = document.querySelector('[title="Change interval"]');
-            if (intervalEl) {
-              intervalEl.click();
-              await new Promise(r => setTimeout(r, 500));
+            // Attempt 2: Click the interval button (aria-label="Change interval")
+            const intervalBtn = document.querySelector('[aria-label="Change interval"]');
+            if (intervalBtn) {
+              intervalBtn.click();
+              await new Promise(r => setTimeout(r, 600));
 
-              // Look for dialog/dropdown with timeframe options
-              const allButtons = Array.from(document.querySelectorAll('button, [role="option"], [class*="item"]'));
-              const tfMap = { 'D': 'Day', 'W': 'Week', 'M': 'Month', '1D': 'Day', '1W': 'Week', '1M': 'Month' };
-              const label = tfMap['${timeframe}'] || '${timeframe}';
+              // Resolution → possible display labels
+              const tfLabels = {
+                '1': ['1', '1m', '1 min', '1 minute'],
+                '3': ['3', '3m', '3 min'],
+                '5': ['5', '5m', '5 min'],
+                '15': ['15', '15m'],
+                '30': ['30', '30m'],
+                '45': ['45', '45m'],
+                '60': ['60', '1h', '1H', '1 hour', '60 min'],
+                '120': ['120', '2h', '2H'],
+                '240': ['240', '4h', '4H'],
+                'D': ['D', '1D', 'Day', '1 day'],
+                'W': ['W', '1W', 'Week'],
+                'M': ['M', '1M', 'Month'],
+              };
+              const labels = tfLabels['${timeframe}'] || ['${timeframe}'];
 
-              const match = allButtons.find(b =>
-                b.textContent?.trim() === '${timeframe}' ||
-                b.textContent?.trim() === label ||
-                b.getAttribute('data-value') === '${timeframe}'
-              );
+              const allBtns = Array.from(document.querySelectorAll('button, [role="option"], li'));
+              const match = allBtns.find(b => {
+                const txt = b.textContent?.trim();
+                const al = b.getAttribute('aria-label') || '';
+                return labels.some(l => txt === l || al.startsWith(l + ' ') || al === l);
+              });
 
               if (match) {
                 match.click();
                 return { success: true, timeframe: '${timeframe}', via: 'interval_dropdown' };
               }
 
-              // Close dialog if no match found (press Escape)
               document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
               return { success: false, timeframe: '${timeframe}', message: 'Timeframe option not found in dropdown' };
             }
 
-            return { success: false, timeframe: '${timeframe}', message: 'Timeframe control not found' };
+            return { success: false, timeframe: '${timeframe}', message: 'Interval button not found' };
           } catch (e) {
             return { error: e.message };
           }

@@ -42,13 +42,13 @@ export class AlertTools {
       },
       {
         name: 'alert_delete',
-        description: 'Delete an alert by ID',
+        description: 'Delete an alert by name (the name shown in the Alerts panel)',
         inputSchema: {
           type: 'object',
           properties: {
             alertId: {
               type: 'string',
-              description: 'ID of the alert to delete',
+              description: 'Name of the alert to delete (as shown in the Alerts panel)',
             },
           },
           required: ['alertId'],
@@ -172,53 +172,30 @@ export class AlertTools {
       const script = `
         (function() {
           try {
-            let alerts = [];
-
-            // Attempt 1: Use TradingView API
-            if (window.tradingview && typeof window.tradingview.getAlerts === 'function') {
-              const tvAlerts = window.tradingview.getAlerts();
-              if (Array.isArray(tvAlerts)) {
-                alerts = tvAlerts.map((alert, idx) => ({
-                  id: alert.id || \`alert_\${idx}\`,
-                  symbol: alert.symbol || 'UNKNOWN',
-                  condition: alert.condition || 'unknown',
-                  level: alert.level || 0,
-                  name: alert.name || alert.symbol,
-                  created: alert.created || new Date().toISOString(),
-                  active: alert.active !== false
-                }));
+            const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
+            const alerts = nameEls.map((nameEl, idx) => {
+              let container = nameEl.parentElement;
+              for (let i = 0; i < 6 && container; i++) {
+                if (container.querySelector('[data-name="alert-delete-button"]')) break;
+                container = container.parentElement;
               }
-            }
+              const name = nameEl.innerText?.trim() || \`alert_\${idx}\`;
+              const symbol = container?.querySelector('[data-name="alert-item-ticker"]')?.innerText?.trim() || '';
+              const status = container?.querySelector('[data-name="alert-item-status"]')?.innerText?.trim() || '';
+              return {
+                id: name,
+                name,
+                symbol,
+                status,
+                active: !status.toLowerCase().includes('stop') && !status.toLowerCase().includes('pause'),
+              };
+            });
 
-            // Attempt 2: Scrape from real alerts widget (confirmed class: itemBody-bswc3EEA)
-            if (alerts.length === 0) {
-              const alertWidget = document.querySelector('.widgetbar-widget-alerts');
-              const alertItems = alertWidget
-                ? alertWidget.querySelectorAll('[class*="itemBody"]')
-                : document.querySelectorAll('[class*="itemBody"]');
-
-              alertItems.forEach((item, idx) => {
-                const lines = item.innerText?.split('\\n').map(s => s.trim()).filter(Boolean) || [];
-                const name = lines[0] || \`alert_\${idx}\`;
-                const symbol = lines[1] || 'UNKNOWN';
-                const status = lines[2] || '';
-                alerts.push({
-                  id: \`alert_\${idx}\`,
-                  name: name,
-                  symbol: symbol,
-                  status: status,
-                  active: !status.toLowerCase().includes('stop') && !status.toLowerCase().includes('pause'),
-                  created: new Date().toISOString()
-                });
-              });
-            }
-
-            // If still no alerts, return empty list
             return {
-              alerts: alerts,
+              alerts,
               total: alerts.length,
               active: alerts.filter(a => a.active).length,
-              found: alerts.length > 0
+              found: alerts.length > 0,
             };
           } catch (e) {
             return { error: e.message, alerts: [], total: 0 };
@@ -242,47 +219,27 @@ export class AlertTools {
       }
 
       const script = `
-        (async function() {
+        (function() {
           try {
-            let deleted = false;
-
-            // Attempt 1: Use TradingView API
-            if (window.tradingview && typeof window.tradingview.deleteAlert === 'function') {
-              window.tradingview.deleteAlert('${alertId}');
-              deleted = true;
+            const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
+            const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
+            if (!target) {
+              return { success: false, alertId: '${alertId}', message: 'Alert not found — use the name shown in the Alerts panel' };
             }
 
-            // Attempt 2: Find alert item by name/id and click its Delete button
-            if (!deleted) {
-              const alertWidget = document.querySelector('.widgetbar-widget-alerts');
-              const alertItems = alertWidget
-                ? alertWidget.querySelectorAll('[class*="itemBody"]')
-                : document.querySelectorAll('[class*="itemBody"]');
-
-              for (const item of alertItems) {
-                if (item.innerText?.includes('${alertId}')) {
-                  // Hover to reveal the overlay buttons (Restart/Edit/Delete)
-                  item.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-                  await new Promise(r => setTimeout(r, 200));
-
-                  const deleteBtn = item.querySelector('[title="Delete"]') ||
-                    item.parentElement?.querySelector('[title="Delete"]');
-
-                  if (deleteBtn) {
-                    deleteBtn.click();
-                    deleted = true;
-                  }
-                  break;
-                }
-              }
+            let container = target.parentElement;
+            for (let i = 0; i < 6 && container; i++) {
+              if (container.querySelector('[data-name="alert-delete-button"]')) break;
+              container = container.parentElement;
             }
 
-            return {
-              success: deleted,
-              alertId: '${alertId}',
-              deleted: new Date().toISOString(),
-              message: deleted ? 'Alert deleted successfully' : 'Could not locate alert to delete'
-            };
+            const deleteBtn = container?.querySelector('[data-name="alert-delete-button"]');
+            if (!deleteBtn) {
+              return { success: false, alertId: '${alertId}', message: 'Delete button not found in item container' };
+            }
+
+            deleteBtn.click();
+            return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
           } catch (e) {
             return { error: e.message };
           }
