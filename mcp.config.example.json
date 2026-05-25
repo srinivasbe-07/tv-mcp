@@ -1,0 +1,18 @@
+{
+  "_readme": [
+    "This file shows how to register tv-mcp with Claude.",
+    "Replace C:/path/to/tv-mcp with your actual repo path.",
+    "",
+    "Claude Desktop:  %APPDATA%\\Claude\\claude_desktop_config.json",
+    "Claude Code CLI: ~/.claude.json  (or project .claude/settings.json)",
+    "",
+    "Run setup.ps1 — it prints the exact args string for your machine."
+  ],
+
+  "mcpServers": {
+    "tradingview": {
+      "command": "node",
+      "args": ["C:/path/to/tv-mcp/src/server.js"]
+    }
+  }
+}
