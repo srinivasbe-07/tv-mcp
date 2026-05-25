@@ -84,6 +84,9 @@ export class AlertTools {
       const script = `
         (async function() {
           try {
+            // Count alerts before creation to verify later
+            const countBefore = document.querySelectorAll('[data-name="alert-item-name"]').length;
+
             // Step 1: Open Create Alert dialog
             const createBtn = document.querySelector('[data-name="set-alert-button"]');
             if (!createBtn) return { success: false, message: 'Create Alert button not found' };
@@ -91,7 +94,7 @@ export class AlertTools {
             createBtn.click();
             await new Promise(r => setTimeout(r, 800));
 
-            // Step 2: Symbol search dialog appears first — type and confirm symbol
+            // Step 2: Symbol picker — type and confirm with Enter
             const symbolInput = document.querySelector('input.input-qm7Rg5MB') ||
                                 document.querySelector('input[role="searchbox"]');
             if (symbolInput) {
@@ -100,44 +103,49 @@ export class AlertTools {
               document.execCommand('insertText', false, '${symbol}');
               await new Promise(r => setTimeout(r, 1000));
               symbolInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
-              await new Promise(r => setTimeout(r, 800));
+              await new Promise(r => setTimeout(r, 1200));
             }
 
-            // Step 3: Conditions form — set the price level input
-            const priceInput = document.querySelector('input.input-gr1VjUfr') ||
-                               document.querySelector('[class*="input-gr1VjUfr"]');
-            if (priceInput) {
-              const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-              nativeSetter.call(priceInput, String(${level}));
-              priceInput.dispatchEvent(new Event('input', { bubbles: true }));
-              priceInput.dispatchEvent(new Event('change', { bubbles: true }));
-              await new Promise(r => setTimeout(r, 300));
-            }
+            // Step 3: Conditions form — set price level via execCommand + blur to trigger React
+            const priceInput = document.querySelector('input.input-gr1VjUfr');
+            if (!priceInput) return { success: false, message: 'Conditions form did not open after symbol selection' };
 
-            // Step 4: Click Submit / Create
-            const submitBtn = Array.from(document.querySelectorAll('button')).find(b => {
-              const txt = b.textContent?.trim().toLowerCase();
-              return txt === 'submit' || txt === 'create' || txt === 'save' || txt === 'ok';
-            });
-            if (submitBtn) {
-              submitBtn.click();
-              await new Promise(r => setTimeout(r, 300));
-              return {
-                success: true,
-                alertId: '${alertId}',
-                symbol: '${symbol}',
-                condition: '${condition}',
-                level: ${level},
-                name: '${alertName}',
-                created: new Date().toISOString(),
-              };
-            }
+            priceInput.click();
+            await new Promise(r => setTimeout(r, 100));
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, String(${level}));
+            priceInput.dispatchEvent(new Event('blur', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 500));
+
+            // Step 4: Read the auto-generated alert name from the Message field
+            const form = document.querySelector('.form-h6NNXQD2');
+            const autoName = form?.querySelector('[class*="button-KijOUKJc"]')?.innerText?.trim() || '${alertName}';
+
+            // Step 5: Click the Create button (.submitBtn-m9pp3wEB in footer)
+            const submitBtn = form?.querySelector('[class*="submitBtn-"]') ||
+                              document.querySelector('[class*="submitBtn-"]');
+            if (!submitBtn) return { success: false, message: 'Create button not found in dialog footer' };
+
+            submitBtn.click();
+            await new Promise(r => setTimeout(r, 1200));
+
+            // Step 6: Verify alert was actually saved (count should increase)
+            const countAfter = document.querySelectorAll('[data-name="alert-item-name"]').length;
+            const saved = countAfter > countBefore;
 
             return {
-              success: false,
-              message: 'Alert form opened but Submit button not found — dialog structure may differ',
+              success: saved,
+              alertId: '${alertId}',
               symbol: '${symbol}',
+              condition: '${condition}',
               level: ${level},
+              name: autoName,
+              created: new Date().toISOString(),
+              countBefore,
+              countAfter,
+              message: saved
+                ? 'Alert created — use the name field to delete it'
+                : \`Alert form submitted but count unchanged (\${countBefore} alerts). You may be at your plan limit.\`,
             };
           } catch (e) {
             return { error: e.message };
