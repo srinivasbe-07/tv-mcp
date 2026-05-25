@@ -188,26 +188,31 @@ export class ChartTools {
       const script = `
         (function() {
           try {
-            // Attempt 1: TradingViewApi widget — try getBars / series data methods
-            const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
             let bars = [];
-            if (widget) {
-              const dataSource = widget._series || widget._mainSeries;
-              if (dataSource) {
-                const rawBars = dataSource._data?.bars?.() || dataSource.data?.() || [];
-                bars = Array.from(rawBars).slice(-${limit}).map(b => ({
-                  time: b.time || b.index,
-                  open: b.value?.[1] ?? b.open,
-                  high: b.value?.[2] ?? b.high,
-                  low: b.value?.[3] ?? b.low,
-                  close: b.value?.[4] ?? b.close,
-                  volume: b.value?.[5] ?? b.volume ?? 0,
-                })).filter(b => b.close != null);
+
+            // Primary: walk chart model → mainSeries() → bars() → valueAt(i)
+            // Each bar is [timestamp, open, high, low, close, volume]
+            const model = window.TradingViewApi
+              ?._activeChartWidgetWV?._value
+              ?._chartWidget?._modelWV?._value;
+            const barsStore = model?.mainSeries?.()?.bars?.();
+
+            if (barsStore && barsStore.size() > 0) {
+              const lastIdx = barsStore.lastIndex();
+              const firstIdx = barsStore.firstIndex();
+              const startIdx = Math.max(firstIdx, lastIdx - ${limit} + 1);
+              for (let i = startIdx; i <= lastIdx; i++) {
+                const b = barsStore.valueAt(i);
+                if (!b) continue;
+                const v = Array.isArray(b) ? b : (b.value || []);
+                if (v.length >= 5) {
+                  bars.push({ time: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: v[5] ?? 0 });
+                }
               }
             }
 
-            // Attempt 2: Current bar from center panel OHLCV legend
-            const currentBar = (() => {
+            // Fallback: read single bar from center panel legend
+            if (bars.length === 0) {
               const center = document.querySelector('.layout__area--center');
               const lines = (center?.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean);
               let o='', h='', l='', c='', v='';
@@ -218,18 +223,16 @@ export class ChartTools {
                 else if (lines[i] === 'C') c = lines[i+1] || '';
                 else if (lines[i] === 'Vol') v = lines[i+1] || '';
               }
-              return (c) ? { time: Math.floor(Date.now()/1000), open: o, high: h, low: l, close: c, volume: v } : null;
-            })();
+              if (c) bars = [{ time: Math.floor(Date.now()/1000), open: o, high: h, low: l, close: c, volume: v }];
+            }
 
-            if (bars.length === 0 && currentBar) bars = [currentBar];
-
-            const source = bars.length > 1 ? 'widget_series' : bars.length === 1 ? 'center_panel' : 'unavailable';
+            const source = bars.length > 1 ? 'series_api' : bars.length === 1 ? 'center_panel' : 'unavailable';
 
             if (${summary}) {
               const last5 = bars.slice(-5);
-              const closes = bars.map(b => parseFloat(String(b.close).replace(/,/g,'')) || 0).filter(Boolean);
-              const highs  = bars.map(b => parseFloat(String(b.high).replace(/,/g,'')) || 0).filter(Boolean);
-              const lows   = bars.map(b => parseFloat(String(b.low).replace(/,/g,'')) || 0).filter(Boolean);
+              const closes = bars.map(b => parseFloat(b.close) || 0).filter(Boolean);
+              const highs  = bars.map(b => parseFloat(b.high)  || 0).filter(Boolean);
+              const lows   = bars.map(b => parseFloat(b.low)   || 0).filter(Boolean);
               return {
                 summary: true,
                 source,
@@ -237,9 +240,9 @@ export class ChartTools {
                 bars: last5,
                 stats: closes.length ? {
                   high: Math.max(...highs).toFixed(2),
-                  low: Math.min(...lows).toFixed(2),
+                  low:  Math.min(...lows).toFixed(2),
                   close: closes[closes.length - 1].toFixed(2),
-                  avg: (closes.reduce((a, b) => a + b, 0) / closes.length).toFixed(2),
+                  avg:  (closes.reduce((a, b) => a + b, 0) / closes.length).toFixed(2),
                 } : null,
               };
             }
