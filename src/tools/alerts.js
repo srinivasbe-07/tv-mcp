@@ -84,75 +84,60 @@ export class AlertTools {
       const script = `
         (async function() {
           try {
-            let created = false;
+            // Step 1: Open Create Alert dialog
+            const createBtn = document.querySelector('[data-name="set-alert-button"]');
+            if (!createBtn) return { success: false, message: 'Create Alert button not found' };
 
-            // Attempt 1: Use TradingView alert API
-            if (window.tradingview && typeof window.tradingview.createAlert === 'function') {
-              window.tradingview.createAlert({
+            createBtn.click();
+            await new Promise(r => setTimeout(r, 800));
+
+            // Step 2: Symbol search dialog appears first — type and confirm symbol
+            const symbolInput = document.querySelector('input.input-qm7Rg5MB') ||
+                                document.querySelector('input[role="searchbox"]');
+            if (symbolInput) {
+              symbolInput.focus();
+              document.execCommand('selectAll', false, null);
+              document.execCommand('insertText', false, '${symbol}');
+              await new Promise(r => setTimeout(r, 1000));
+              symbolInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+              await new Promise(r => setTimeout(r, 800));
+            }
+
+            // Step 3: Conditions form — set the price level input
+            const priceInput = document.querySelector('input.input-gr1VjUfr') ||
+                               document.querySelector('[class*="input-gr1VjUfr"]');
+            if (priceInput) {
+              const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+              nativeSetter.call(priceInput, String(${level}));
+              priceInput.dispatchEvent(new Event('input', { bubbles: true }));
+              priceInput.dispatchEvent(new Event('change', { bubbles: true }));
+              await new Promise(r => setTimeout(r, 300));
+            }
+
+            // Step 4: Click Submit / Create
+            const submitBtn = Array.from(document.querySelectorAll('button')).find(b => {
+              const txt = b.textContent?.trim().toLowerCase();
+              return txt === 'submit' || txt === 'create' || txt === 'save' || txt === 'ok';
+            });
+            if (submitBtn) {
+              submitBtn.click();
+              await new Promise(r => setTimeout(r, 300));
+              return {
+                success: true,
+                alertId: '${alertId}',
                 symbol: '${symbol}',
                 condition: '${condition}',
                 level: ${level},
-                name: '${alertName}'
-              });
-              created = true;
-            }
-
-            // Attempt 2: Find and interact with alert button
-            const alertBtn = document.querySelector('[data-testid*="alert"]') ||
-                            document.querySelector('[class*="alert-btn"]') ||
-                            Array.from(document.querySelectorAll('button')).find(btn =>
-                              btn.textContent.toLowerCase().includes('alert')
-                            );
-
-            if (alertBtn && !created) {
-              alertBtn.click();
-              // Wait for dialog to appear
-              await new Promise(r => setTimeout(r, 500));
-
-              // Fill in form fields
-              const symbolInput = document.querySelector('input[placeholder*="symbol"]') ||
-                                 document.querySelector('[name*="symbol"]');
-              const levelInput = document.querySelector('input[placeholder*="level"]') ||
-                               document.querySelector('input[type="number"]');
-              const conditionSelect = document.querySelector('select[name*="condition"]') ||
-                                    document.querySelector('[class*="condition"]');
-
-              if (symbolInput) {
-                symbolInput.value = '${symbol}';
-                symbolInput.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-
-              if (levelInput) {
-                levelInput.value = ${level};
-                levelInput.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-
-              if (conditionSelect) {
-                conditionSelect.value = '${condition}';
-                conditionSelect.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-
-              // Click create/save button
-              const saveBtn = Array.from(document.querySelectorAll('button')).find(btn =>
-                btn.textContent.toLowerCase().includes('create') ||
-                btn.textContent.toLowerCase().includes('save')
-              );
-
-              if (saveBtn) {
-                saveBtn.click();
-                created = true;
-              }
+                name: '${alertName}',
+                created: new Date().toISOString(),
+              };
             }
 
             return {
-              success: created,
-              alertId: '${alertId}',
+              success: false,
+              message: 'Alert form opened but Submit button not found — dialog structure may differ',
               symbol: '${symbol}',
-              condition: '${condition}',
               level: ${level},
-              name: '${alertName}',
-              created: new Date().toISOString(),
-              via: created ? 'api_or_ui' : 'simulated'
             };
           } catch (e) {
             return { error: e.message };

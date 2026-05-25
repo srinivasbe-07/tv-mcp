@@ -188,66 +188,64 @@ export class ChartTools {
       const script = `
         (function() {
           try {
+            // Attempt 1: TradingViewApi widget — try getBars / series data methods
+            const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
             let bars = [];
-
-            // Attempt 1: Use TradingView API if available
-            if (typeof window !== 'undefined' && window.tradingview) {
-              const chart = window.tradingview.activeChart?.();
-              if (chart && typeof chart.getBars === 'function') {
-                bars = chart.getBars(${limit});
-              } else if (chart && typeof chart.lastBar === 'function') {
-                // Fallback: try to get individual bars
-                const lastBar = chart.lastBar?.();
-                if (lastBar) {
-                  bars.push(lastBar);
-                }
+            if (widget) {
+              const dataSource = widget._series || widget._mainSeries;
+              if (dataSource) {
+                const rawBars = dataSource._data?.bars?.() || dataSource.data?.() || [];
+                bars = Array.from(rawBars).slice(-${limit}).map(b => ({
+                  time: b.time || b.index,
+                  open: b.value?.[1] ?? b.open,
+                  high: b.value?.[2] ?? b.high,
+                  low: b.value?.[3] ?? b.low,
+                  close: b.value?.[4] ?? b.close,
+                  volume: b.value?.[5] ?? b.volume ?? 0,
+                })).filter(b => b.close != null);
               }
             }
 
-            // If no API data, generate sample (Phase 2 fallback)
-            if (bars.length === 0) {
-              const now = Date.now();
-              for (let i = ${limit} - 1; i >= 0; i--) {
-                const time = now - (i * 60000);
-                const basePrice = 100 + Math.sin(i / 10) * 5;
-                bars.push({
-                  time: Math.floor(time / 1000),
-                  open: basePrice,
-                  high: basePrice + Math.random() * 2,
-                  low: basePrice - Math.random() * 2,
-                  close: basePrice + (Math.random() - 0.5) * 2,
-                  volume: Math.floor(1000000 + Math.random() * 500000)
-                });
+            // Attempt 2: Current bar from center panel OHLCV legend
+            const currentBar = (() => {
+              const center = document.querySelector('.layout__area--center');
+              const lines = (center?.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean);
+              let o='', h='', l='', c='', v='';
+              for (let i = 0; i < lines.length; i++) {
+                if (lines[i] === 'O') o = lines[i+1] || '';
+                else if (lines[i] === 'H') h = lines[i+1] || '';
+                else if (lines[i] === 'L') l = lines[i+1] || '';
+                else if (lines[i] === 'C') c = lines[i+1] || '';
+                else if (lines[i] === 'Vol') v = lines[i+1] || '';
               }
-            }
+              return (c) ? { time: Math.floor(Date.now()/1000), open: o, high: h, low: l, close: c, volume: v } : null;
+            })();
+
+            if (bars.length === 0 && currentBar) bars = [currentBar];
+
+            const source = bars.length > 1 ? 'widget_series' : bars.length === 1 ? 'center_panel' : 'unavailable';
 
             if (${summary}) {
-              const lastBars = bars.slice(-5);
-              const closes = bars.map(b => parseFloat(b.close) || 0);
-              const highs = bars.map(b => parseFloat(b.high) || 0);
-              const lows = bars.map(b => parseFloat(b.low) || 0);
-
+              const last5 = bars.slice(-5);
+              const closes = bars.map(b => parseFloat(String(b.close).replace(/,/g,'')) || 0).filter(Boolean);
+              const highs  = bars.map(b => parseFloat(String(b.high).replace(/,/g,'')) || 0).filter(Boolean);
+              const lows   = bars.map(b => parseFloat(String(b.low).replace(/,/g,'')) || 0).filter(Boolean);
               return {
                 summary: true,
+                source,
                 count: bars.length,
-                bars: lastBars,
-                stats: {
+                bars: last5,
+                stats: closes.length ? {
                   high: Math.max(...highs).toFixed(2),
                   low: Math.min(...lows).toFixed(2),
                   close: closes[closes.length - 1].toFixed(2),
-                  avg: (closes.reduce((a, b) => a + b) / closes.length).toFixed(2),
-                  totalVolume: bars.reduce((sum, b) => sum + (b.volume || 0), 0)
-                }
-              };
-            } else {
-              return {
-                summary: false,
-                count: bars.length,
-                bars: bars
+                  avg: (closes.reduce((a, b) => a + b, 0) / closes.length).toFixed(2),
+                } : null,
               };
             }
+            return { summary: false, source, count: bars.length, bars };
           } catch (e) {
-            return { error: e.message, fallback: 'sample_data_generated' };
+            return { error: e.message };
           }
         })()
       `;
@@ -270,32 +268,37 @@ export class ChartTools {
       const script = `
         (async function() {
           try {
-            // Attempt 1: Use TradingView API
-            if (typeof window !== 'undefined' && window.tradingview) {
-              const chart = window.tradingview.activeChart?.();
-              if (chart && typeof chart.setSymbol === 'function') {
-                await chart.setSymbol('${symbol}');
-                return { success: true, symbol: '${symbol}', via: 'tradingview_api' };
+            // Attempt 1: TradingViewApi widget.setSymbol()
+            const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
+            if (widget) {
+              const methodNames = ['setSymbol', 'changeSymbol', 'setTicker'];
+              for (const m of methodNames) {
+                if (typeof widget[m] === 'function') {
+                  widget[m]('${symbol}');
+                  await new Promise(r => setTimeout(r, 500));
+                  return { success: true, symbol: '${symbol}', via: m };
+                }
               }
             }
 
-            // Attempt 2: Click the search button then type in the revealed input
-            const searchBtn = document.querySelector('[class*="searchButton"]');
+            // Attempt 2: Keyboard search — stable data-name button + execCommand input
+            const searchBtn = document.querySelector('[data-name="header-toolbar-quick-search"]');
             if (searchBtn) {
               searchBtn.click();
               await new Promise(r => setTimeout(r, 600));
 
-              // Input appears after clicking search button
-              const input = document.querySelector('input[placeholder*="Search"]') ||
-                            document.querySelector('[class*="search"] input') ||
+              // React-controlled input: focus + execCommand to trigger synthetic events
+              const input = document.querySelector('input.input-qm7Rg5MB') ||
+                            document.querySelector('input[role="searchbox"]') ||
                             document.querySelector('input[class*="input"]');
 
               if (input) {
                 input.focus();
-                input.value = '${symbol}';
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                await new Promise(r => setTimeout(r, 400));
+                document.execCommand('selectAll', false, null);
+                document.execCommand('insertText', false, '${symbol}');
+                await new Promise(r => setTimeout(r, 1000));
                 input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+                await new Promise(r => setTimeout(r, 300));
                 return { success: true, symbol: '${symbol}', via: 'search_button' };
               }
             }
