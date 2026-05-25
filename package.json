@@ -8,8 +8,10 @@
     "tv-mcp": "src/server.js"
   },
   "scripts": {
-    "build": "tsc",
     "start": "node src/server.js",
+    "test": "node test.js",
+    "demo": "node demo-tools.js",
+    "build": "tsc",
     "start:dist": "node dist/server.js",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
