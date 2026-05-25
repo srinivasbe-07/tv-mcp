@@ -82,7 +82,7 @@ export class AlertTools {
       const alertName = name || `${symbol} ${condition} ${level}`;
 
       const script = `
-        (function() {
+        (async function() {
           try {
             let created = false;
 

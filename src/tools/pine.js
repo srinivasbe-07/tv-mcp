@@ -159,7 +159,7 @@ export class PineTools {
       const { timeoutMs: _timeoutMs = 10000 } = args;
 
       const script = `
-        (function() {
+        (async function() {
           try {
             let errors = [];
             let warnings = [];

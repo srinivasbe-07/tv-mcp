@@ -80,6 +80,7 @@ export class CDPManager {
       const result = await Runtime.evaluate({
         expression,
         returnByValue,
+        awaitPromise: true,
       });
 
       if (result.exceptionDetails) {

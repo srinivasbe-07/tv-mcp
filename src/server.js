@@ -85,13 +85,13 @@ class TradingViewMCPServer {
         // Route to appropriate tool handler
         let result = null;
 
-        if (name.startsWith('chart_')) {
+        if (name.startsWith('chart_') || name === 'quote_get' || name === 'data_get_ohlcv') {
           result = await this.chartTools.handle(name, args);
         } else if (name.startsWith('pine_')) {
           result = await this.pineTools.handle(name, args);
         } else if (name.startsWith('alert_')) {
           result = await this.alertTools.handle(name, args);
-        } else if (name.startsWith('tv_')) {
+        } else if (name.startsWith('tv_') || name === 'capture_screenshot') {
           result = await this.utilityTools.handle(name, args);
         } else {
           return this.errorResponse(`Unknown tool: ${name}`);

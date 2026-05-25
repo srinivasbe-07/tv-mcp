@@ -309,7 +309,7 @@ export class ChartTools {
       }
 
       const script = `
-        (function() {
+        (async function() {
           try {
             // Attempt 1: Use TradingView API
             if (typeof window !== 'undefined' && window.tradingview) {
@@ -363,7 +363,7 @@ export class ChartTools {
       }
 
       const script = `
-        (function() {
+        (async function() {
           try {
             // Attempt 1: Use TradingView API
             if (typeof window !== 'undefined' && window.tradingview) {
