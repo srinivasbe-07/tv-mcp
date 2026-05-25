@@ -190,32 +190,25 @@ export class AlertTools {
               }
             }
 
-            // Attempt 2: Scrape from alerts panel/dialog
+            // Attempt 2: Scrape from real alerts widget (confirmed class: itemBody-bswc3EEA)
             if (alerts.length === 0) {
-              const alertRows = document.querySelectorAll('[class*="alert-row"]') ||
-                              document.querySelectorAll('[class*="alert-item"]') ||
-                              document.querySelectorAll('[data-testid*="alert"]');
+              const alertWidget = document.querySelector('.widgetbar-widget-alerts');
+              const alertItems = alertWidget
+                ? alertWidget.querySelectorAll('[class*="itemBody"]')
+                : document.querySelectorAll('[class*="itemBody"]');
 
-              alertRows.forEach((row, idx) => {
-                const text = row.textContent || '';
-                const cells = row.querySelectorAll('td, div[class*="cell"]');
-
-                let symbol = 'UNKNOWN';
-                let condition = 'unknown';
-                let level = 0;
-
-                if (cells.length > 0) symbol = cells[0]?.textContent?.trim() || symbol;
-                if (cells.length > 1) condition = cells[1]?.textContent?.trim() || condition;
-                if (cells.length > 2) level = parseFloat(cells[2]?.textContent?.trim()) || 0;
-
+              alertItems.forEach((item, idx) => {
+                const lines = item.innerText?.split('\\n').map(s => s.trim()).filter(Boolean) || [];
+                const name = lines[0] || \`alert_\${idx}\`;
+                const symbol = lines[1] || 'UNKNOWN';
+                const status = lines[2] || '';
                 alerts.push({
                   id: \`alert_\${idx}\`,
+                  name: name,
                   symbol: symbol,
-                  condition: condition,
-                  level: level,
-                  name: \`\${symbol} \${condition} \${level}\`,
-                  created: new Date().toISOString(),
-                  active: true
+                  status: status,
+                  active: !status.toLowerCase().includes('stop') && !status.toLowerCase().includes('pause'),
+                  created: new Date().toISOString()
                 });
               });
             }
@@ -249,7 +242,7 @@ export class AlertTools {
       }
 
       const script = `
-        (function() {
+        (async function() {
           try {
             let deleted = false;
 
@@ -259,28 +252,27 @@ export class AlertTools {
               deleted = true;
             }
 
-            // Attempt 2: Find alert row and click delete button
+            // Attempt 2: Find alert item by name/id and click its Delete button
             if (!deleted) {
-              const alertRows = document.querySelectorAll('[class*="alert-row"]') ||
-                              document.querySelectorAll('[class*="alert-item"]') ||
-                              document.querySelectorAll('[data-testid*="alert"]');
+              const alertWidget = document.querySelector('.widgetbar-widget-alerts');
+              const alertItems = alertWidget
+                ? alertWidget.querySelectorAll('[class*="itemBody"]')
+                : document.querySelectorAll('[class*="itemBody"]');
 
-              for (const row of alertRows) {
-                if (row.textContent.includes('${alertId}')) {
-                  // Found the alert row, look for delete button
-                  const deleteBtn = row.querySelector('[class*="delete"]') ||
-                                   row.querySelector('[title*="Delete"]') ||
-                                   row.querySelector('button[aria-label*="Delete"]') ||
-                                   Array.from(row.querySelectorAll('button')).find(btn =>
-                                     btn.textContent.toLowerCase().includes('delete') ||
-                                     btn.getAttribute('title')?.toLowerCase().includes('delete')
-                                   );
+              for (const item of alertItems) {
+                if (item.innerText?.includes('${alertId}')) {
+                  // Hover to reveal the overlay buttons (Restart/Edit/Delete)
+                  item.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                  await new Promise(r => setTimeout(r, 200));
+
+                  const deleteBtn = item.querySelector('[title="Delete"]') ||
+                    item.parentElement?.querySelector('[title="Delete"]');
 
                   if (deleteBtn) {
                     deleteBtn.click();
                     deleted = true;
-                    break;
                   }
+                  break;
                 }
               }
             }

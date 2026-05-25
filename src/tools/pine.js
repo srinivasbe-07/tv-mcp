@@ -97,40 +97,49 @@ export class PineTools {
         .replace(/\n/g, '\\n');
 
       const script = `
-        (function() {
+        (async function() {
           try {
             const source = '${escapedSource}';
             let injected = false;
 
-            // Attempt 1: Find Pine Script editor via CodeMirror or Monaco
-            const editor = document.querySelector('[class*="pine-editor"]') ||
-                          document.querySelector('[class*="code-editor"]') ||
-                          document.querySelector('.CodeMirror') ||
-                          document.querySelector('[role="textbox"]');
+            // Try to open the Pine Script editor panel if not already open
+            const pineEditorBtn = Array.from(document.querySelectorAll('[class*="tab"], [data-name]'))
+              .find(el => el.textContent?.includes('Pine') || el.getAttribute('data-name')?.includes('pine'));
+            if (pineEditorBtn) {
+              pineEditorBtn.click();
+              await new Promise(r => setTimeout(r, 500));
+            }
 
-            if (editor) {
-              if (editor.CodeMirror) {
-                // CodeMirror editor
-                editor.CodeMirror.setValue(source);
-                injected = true;
-              } else if (editor.className.includes('monaco')) {
-                // Monaco editor
-                editor.innerText = source;
-                injected = true;
-              } else {
-                // Generic textarea/contenteditable
-                editor.value = source;
-                editor.innerText = source;
-                editor.dispatchEvent(new Event('input', { bubbles: true }));
-                editor.dispatchEvent(new Event('change', { bubbles: true }));
+            // Attempt 1: CodeMirror 6 — uses .cm-content (contenteditable div)
+            const cmContent = document.querySelector('.cm-content');
+            if (cmContent) {
+              cmContent.focus();
+              // Select all and replace
+              document.execCommand('selectAll');
+              document.execCommand('insertText', false, source);
+              injected = document.querySelector('.cm-content')?.textContent?.length > 0;
+              if (!injected) {
+                // Fallback: set innerText and dispatch input event
+                cmContent.innerText = source;
+                cmContent.dispatchEvent(new Event('input', { bubbles: true }));
                 injected = true;
               }
             }
 
-            // Attempt 2: Use TradingView API
-            if (!injected && window.tradingview) {
-              if (typeof window.tradingview.setSourceCode === 'function') {
-                window.tradingview.setSourceCode(source);
+            // Attempt 2: CodeMirror 5 — .CodeMirror with .CodeMirror property
+            if (!injected) {
+              const cm5 = document.querySelector('.CodeMirror');
+              if (cm5?.CodeMirror) {
+                cm5.CodeMirror.setValue(source);
+                injected = true;
+              }
+            }
+
+            // Attempt 3: Use TradingView API
+            if (!injected && window.TradingViewApi?._pineEditorTestApi) {
+              const pineApi = window.TradingViewApi._pineEditorTestApi;
+              if (typeof pineApi.setSource === 'function') {
+                pineApi.setSource(source);
                 injected = true;
               }
             }
@@ -139,7 +148,7 @@ export class PineTools {
               success: injected,
               lines: source.split('\\n').length,
               via: injected ? 'editor_injection' : 'failed',
-              message: injected ? 'Source code injected' : 'Could not inject - editor not found'
+              message: injected ? 'Source code injected' : 'Could not inject - open Pine Script Editor panel first'
             };
           } catch (e) {
             return { error: e.message };

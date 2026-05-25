@@ -99,28 +99,19 @@ export class ChartTools {
             let timeframe = "Unknown";
             let indicators = [];
 
-            // Attempt 1: Check window.tradingview API
-            if (typeof window !== 'undefined' && window.tradingview) {
-              const chart = window.tradingview.activeChart?.();
-              if (chart) {
-                symbol = chart.symbol?.() || symbol;
-                timeframe = chart.resolution?.() || timeframe;
-              }
+            // Attempt 1: Use TradingViewApi._activeChartWidgetWV (confirmed working)
+            const api = window.TradingViewApi;
+            const widget = api?._activeChartWidgetWV?._value;
+            if (widget) {
+              symbol = widget.symbol?.() || symbol;
+              timeframe = widget.resolution?.() || timeframe;
             }
 
-            // Attempt 2: Check DOM for symbol/timeframe display
+            // Attempt 2: Fallback to DOM symbol display
             if (symbol === "UNKNOWN") {
               const symbolEl = document.querySelector('[data-testid="header-symbol-title"]') ||
-                             document.querySelector('.js-header-symbol-text') ||
-                             document.querySelector('[class*="symbol"]');
+                             document.querySelector('.js-header-symbol-text');
               if (symbolEl) symbol = symbolEl.textContent?.trim() || symbol;
-            }
-
-            // Attempt 3: Parse title or meta tags
-            if (symbol === "UNKNOWN") {
-              const pageTitle = document.title;
-              const match = pageTitle.match(/^([A-Z0-9/.]+)/);
-              if (match) symbol = match[1];
             }
 
             return {
@@ -155,46 +146,43 @@ export class ChartTools {
             let price = 0;
             let symbol = "UNKNOWN";
             let open = 0, high = 0, low = 0, volume = 0;
-            let change = 0, changePercent = 0;
+            let change = 0, changePercent = "0.00";
 
-            // Attempt 1: Use TradingView charting library if available
-            if (typeof window !== 'undefined' && window.tradingview) {
-              const chart = window.tradingview.activeChart?.();
-              if (chart && chart.lastBar?.()) {
-                const lastBar = chart.lastBar();
-                price = lastBar.close || 0;
-                open = lastBar.open || 0;
-                high = lastBar.high || 0;
-                low = lastBar.low || 0;
-                volume = lastBar.volume || 0;
-              }
+            // Attempt 1: Use TradingViewApi widget (confirmed working)
+            const api = window.TradingViewApi;
+            const widget = api?._activeChartWidgetWV?._value;
+            if (widget) {
+              symbol = widget.symbol?.() || symbol;
             }
 
-            // Attempt 2: Parse from DOM - look for price display
+            // Attempt 2: Read OHLCV from chart legend items (visible when cursor on chart)
+            const legendItems = document.querySelectorAll('[class*="legendMainSource"]');
+            legendItems.forEach(el => {
+              const text = el.textContent || '';
+              const nums = text.match(/[\\d,]+\\.?\\d*/g);
+              if (nums && nums.length >= 4) {
+                open  = parseFloat(nums[0].replace(/,/g, '')) || open;
+                high  = parseFloat(nums[1].replace(/,/g, '')) || high;
+                low   = parseFloat(nums[2].replace(/,/g, '')) || low;
+                price = parseFloat(nums[3].replace(/,/g, '')) || price;
+              }
+            });
+
+            // Attempt 3: Try visible price text in the chart area
             if (price === 0) {
-              const priceEl = document.querySelector('[class*="price"]') ||
-                            document.querySelector('[data-testid*="price"]') ||
-                            document.querySelector('.js-header-price');
-              if (priceEl) {
-                const priceText = priceEl.textContent?.match(/\\d+\\.?\\d*/);
-                if (priceText) price = parseFloat(priceText[0]);
-              }
-            }
-
-            // Attempt 3: Check for change indicators
-            const changeEl = document.querySelector('[class*="change"]') ||
-                           document.querySelector('[data-testid*="change"]');
-            if (changeEl) {
-              const changeText = changeEl.textContent?.match(/([-+]?\\d+\\.?\\d*)/);
-              if (changeText) {
-                change = parseFloat(changeText[1]);
-                changePercent = ((change / price) * 100).toFixed(2);
+              const allText = document.querySelectorAll('[class*="last-"]');
+              for (const el of allText) {
+                const txt = el.innerText?.trim();
+                if (txt && /^[\\d,]+\\.?\\d+$/.test(txt)) {
+                  price = parseFloat(txt.replace(/,/g, ''));
+                  break;
+                }
               }
             }
 
             return {
               symbol: symbol,
-              price: price.toFixed(2),
+              price: price > 0 ? price.toFixed(2) : "unavailable",
               ohlc: {
                 open: open.toFixed(2),
                 high: high.toFixed(2),
@@ -204,7 +192,8 @@ export class ChartTools {
               volume: volume,
               change: change.toFixed(2),
               changePercent: changePercent,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              note: price === 0 ? "Price unavailable - hover cursor over chart to populate legend" : "live"
             };
           } catch (e) {
             return {
@@ -320,27 +309,28 @@ export class ChartTools {
               }
             }
 
-            // Attempt 2: Find and click symbol input then type
-            const symbolInput = document.querySelector('[data-testid="header-symbol-search-input"]') ||
-                              document.querySelector('input[placeholder*="symbol"]') ||
-                              document.querySelector('[class*="symbol-input"]');
+            // Attempt 2: Click the search button then type in the revealed input
+            const searchBtn = document.querySelector('[class*="searchButton"]');
+            if (searchBtn) {
+              searchBtn.click();
+              await new Promise(r => setTimeout(r, 600));
 
-            if (symbolInput) {
-              symbolInput.click();
-              symbolInput.value = '';
-              symbolInput.dispatchEvent(new Event('input', { bubbles: true }));
+              // Input appears after clicking search button
+              const input = document.querySelector('input[placeholder*="Search"]') ||
+                            document.querySelector('[class*="search"] input') ||
+                            document.querySelector('input[class*="input"]');
 
-              for (let char of '${symbol}') {
-                symbolInput.value += char;
-                symbolInput.dispatchEvent(new Event('input', { bubbles: true }));
+              if (input) {
+                input.focus();
+                input.value = '${symbol}';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 400));
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+                return { success: true, symbol: '${symbol}', via: 'search_button' };
               }
-
-              symbolInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-
-              return { success: true, symbol: '${symbol}', via: 'dom_input' };
             }
 
-            return { success: false, symbol: '${symbol}', message: 'Symbol input not found - TradingView may need API integration' };
+            return { success: false, symbol: '${symbol}', message: 'Symbol search button not found' };
           } catch (e) {
             return { error: e.message };
           }
@@ -374,22 +364,31 @@ export class ChartTools {
               }
             }
 
-            // Attempt 2: Find and click timeframe button/dropdown
-            const tfBtn = document.querySelector('[data-testid="header-toolbar-timeframe"]') ||
-                         document.querySelector('[class*="timeframe-btn"]') ||
-                         document.querySelector('[class*="resolution"]');
+            // Attempt 2: Click the interval title (confirmed: title="Change interval")
+            const intervalEl = document.querySelector('[title="Change interval"]');
+            if (intervalEl) {
+              intervalEl.click();
+              await new Promise(r => setTimeout(r, 500));
 
-            if (tfBtn) {
-              tfBtn.click();
+              // Look for dialog/dropdown with timeframe options
+              const allButtons = Array.from(document.querySelectorAll('button, [role="option"], [class*="item"]'));
+              const tfMap = { 'D': 'Day', 'W': 'Week', 'M': 'Month', '1D': 'Day', '1W': 'Week', '1M': 'Month' };
+              const label = tfMap['${timeframe}'] || '${timeframe}';
 
-              // Wait a bit for dropdown to appear, then find matching option
-              const opts = Array.from(document.querySelectorAll('[class*="dropdown"] button, [class*="menu"] button'));
-              const match = opts.find(opt => opt.textContent.includes('${timeframe}'));
+              const match = allButtons.find(b =>
+                b.textContent?.trim() === '${timeframe}' ||
+                b.textContent?.trim() === label ||
+                b.getAttribute('data-value') === '${timeframe}'
+              );
 
               if (match) {
                 match.click();
-                return { success: true, timeframe: '${timeframe}', via: 'dom_button' };
+                return { success: true, timeframe: '${timeframe}', via: 'interval_dropdown' };
               }
+
+              // Close dialog if no match found (press Escape)
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+              return { success: false, timeframe: '${timeframe}', message: 'Timeframe option not found in dropdown' };
             }
 
             return { success: false, timeframe: '${timeframe}', message: 'Timeframe control not found' };
