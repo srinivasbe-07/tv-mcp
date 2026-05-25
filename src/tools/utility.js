@@ -1,7 +1,8 @@
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
+import http from 'http';
 
-const _execAsync = promisify(exec);
+const execAsync = promisify(exec);
 
 export class UtilityTools {
   constructor(cdp) {
@@ -105,36 +106,114 @@ export class UtilityTools {
     try {
       const { port = 9222 } = args;
 
-      // Detect OS and launch TradingView
-      const platform = process.platform;
-      let command = null;
-
-      if (platform === 'darwin') {
-        // macOS
-        command = `/Applications/TradingView.app/Contents/MacOS/TradingView --remote-debugging-port=${port}`;
-      } else if (platform === 'win32') {
-        // Windows
-        command = `"%LOCALAPPDATA%\\TradingView\\TradingView.exe" --remote-debugging-port=${port}`;
-      } else if (platform === 'linux') {
-        // Linux
-        command = `/opt/TradingView/tradingview --remote-debugging-port=${port}`;
+      // Already connected — nothing to do
+      if (this.cdp.isConnected()) {
+        return this.success({
+          success: true,
+          already_running: true,
+          connected: true,
+          port,
+          message: 'TradingView is already running and connected',
+        });
       }
 
-      if (!command) {
+      const platform = process.platform;
+      let tvExe = null;
+
+      if (platform === 'win32') {
+        // Option A: MSIX / Microsoft Store install — path changes on each app update
+        try {
+          const { stdout } = await execAsync(
+            'powershell -Command "(Get-AppxPackage -Name *TradingView* | Select-Object -First 1).InstallLocation"',
+            { timeout: 5000 }
+          );
+          const loc = stdout.trim();
+          if (loc) tvExe = `${loc}\\TradingView.exe`;
+        } catch {}
+
+        // Option B: non-MSIX .exe installer
+        if (!tvExe) {
+          tvExe = `${process.env.LOCALAPPDATA}\\TradingView\\TradingView.exe`;
+        }
+
+        // Kill any existing instance so it restarts with the debug flag
+        try {
+          await execAsync('taskkill /IM TradingView.exe /F', { timeout: 3000 });
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch {} // fine if nothing was running
+
+        spawn(tvExe, [`--remote-debugging-port=${port}`], {
+          detached: true,
+          stdio: 'ignore',
+        }).unref();
+      } else if (platform === 'darwin') {
+        tvExe = '/Applications/TradingView.app/Contents/MacOS/TradingView';
+        try {
+          await execAsync('pkill -f TradingView', { timeout: 3000 });
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch {}
+        spawn(tvExe, [`--remote-debugging-port=${port}`], { detached: true, stdio: 'ignore' }).unref();
+      } else if (platform === 'linux') {
+        tvExe = '/opt/TradingView/tradingview';
+        try {
+          await execAsync('pkill -f tradingview', { timeout: 3000 });
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch {}
+        spawn(tvExe, [`--remote-debugging-port=${port}`], { detached: true, stdio: 'ignore' }).unref();
+      } else {
         return this.error(`Unsupported platform: ${platform}`);
       }
 
+      // Poll localhost:PORT/json/version until CDP is ready (up to 30s)
+      const ready = await this._pollCDP(port, 30000);
+
+      if (ready) {
+        // Reset retry counter so connect() works after previous failures
+        this.cdp.retryCount = 0;
+        await this.cdp.connect();
+        return this.success({
+          success: true,
+          platform,
+          port,
+          message: `TradingView launched and CDP connected on port ${port}`,
+        });
+      }
+
       return this.success({
-        success: true,
+        success: false,
         platform,
-        command,
         port,
-        message: `To launch TradingView with debugging, run: ${command}`,
-        note: 'For manual launch, use the scripts in the scripts/ directory',
+        message: 'TradingView launched but CDP did not respond within 30s',
+        hint:
+          platform === 'win32'
+            ? 'MSIX sandbox may block the debug flag — install the non-MSIX .exe from tradingview.com/desktop'
+            : 'Check that TradingView started correctly',
       });
     } catch (error) {
-      return this.error(`Failed to launch: ${error.message}`);
+      return this.error(`Failed to launch TradingView: ${error.message}`);
     }
+  }
+
+  // Poll http://localhost:PORT/json/version every 1s until it responds or timeout elapses.
+  _pollCDP(port, timeoutMs) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const attempt = () => {
+        const req = http.get(
+          { hostname: 'localhost', port, path: '/json/version', timeout: 1000 },
+          (res) => {
+            res.resume();
+            resolve(true);
+          }
+        );
+        req.on('error', () => {
+          if (Date.now() - start < timeoutMs) setTimeout(attempt, 1000);
+          else resolve(false);
+        });
+        req.on('timeout', () => req.destroy());
+      };
+      attempt();
+    });
   }
 
   async captureScreenshot(args) {

@@ -41,9 +41,7 @@ const TESTS = [
   {
     name: 'tv_launch',
     run: () => utility.handle('tv_launch', {}),
-    assert: (d) => d != null,
-    soft: true,
-    softMsg: 'returns launch info (does not actually relaunch)',
+    assert: (d) => d?.success === true,
   },
   {
     name: 'capture_screenshot',
