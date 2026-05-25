@@ -84,68 +84,57 @@ export class AlertTools {
       const script = `
         (async function() {
           try {
-            // Count alerts before creation to verify later
-            const countBefore = document.querySelectorAll('[data-name="alert-item-name"]').length;
+            // Step 1: Switch chart to target symbol so the dialog inherits it
+            const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
+            if (widget && typeof widget.setSymbol === 'function') {
+              widget.setSymbol('${symbol}');
+              await new Promise(r => setTimeout(r, 900));
+            }
 
-            // Step 1: Open Create Alert dialog
+            // Step 2: Open Create Alert dialog (opens directly to conditions form using current chart symbol)
             const createBtn = document.querySelector('[data-name="set-alert-button"]');
             if (!createBtn) return { success: false, message: 'Create Alert button not found' };
 
             createBtn.click();
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 1000));
 
-            // Step 2: Symbol picker — type and confirm with Enter
-            const symbolInput = document.querySelector('input.input-qm7Rg5MB') ||
-                                document.querySelector('input[role="searchbox"]');
-            if (symbolInput) {
-              symbolInput.focus();
-              document.execCommand('selectAll', false, null);
-              document.execCommand('insertText', false, '${symbol}');
-              await new Promise(r => setTimeout(r, 1000));
-              symbolInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
-              await new Promise(r => setTimeout(r, 1200));
-            }
-
-            // Step 3: Conditions form — set price level via execCommand + blur to trigger React
+            // Step 3: Set price level using React native setter to trigger state update
             const priceInput = document.querySelector('input.input-gr1VjUfr');
             if (!priceInput) return { success: false, message: 'Conditions form did not open after symbol selection' };
 
-            priceInput.click();
+            priceInput.focus();
             await new Promise(r => setTimeout(r, 100));
-            document.execCommand('selectAll', false, null);
-            document.execCommand('insertText', false, String(${level}));
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(priceInput, String(${level}));
+            priceInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 400));
             priceInput.dispatchEvent(new Event('blur', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 600));
 
-            // Step 4: Read the auto-generated alert name from the Message field
+            // Step 4: Click the Create button in the footer
             const form = document.querySelector('.form-h6NNXQD2');
-            const autoName = form?.querySelector('[class*="button-KijOUKJc"]')?.innerText?.trim() || '${alertName}';
-
-            // Step 5: Click the Create button (.submitBtn-m9pp3wEB in footer)
             const submitBtn = form?.querySelector('[class*="submitBtn-"]') ||
                               document.querySelector('[class*="submitBtn-"]');
             if (!submitBtn) return { success: false, message: 'Create button not found in dialog footer' };
 
             submitBtn.click();
-            await new Promise(r => setTimeout(r, 1200));
+            await new Promise(r => setTimeout(r, 2000));
 
-            // Step 6: Verify alert was actually saved (count should increase)
-            const countAfter = document.querySelectorAll('[data-name="alert-item-name"]').length;
-            const saved = countAfter > countBefore;
+            // Step 5: Success = dialog closed (price input no longer in DOM)
+            const dialogStillOpen = !!document.querySelector('input.input-gr1VjUfr');
+            const success = !dialogStillOpen;
 
             return {
-              success: saved,
+              success,
               alertId: '${alertId}',
               symbol: '${symbol}',
               condition: '${condition}',
               level: ${level},
-              name: autoName,
+              name: '${alertName}',
               created: new Date().toISOString(),
-              countBefore,
-              countAfter,
-              message: saved
-                ? 'Alert created — use the name field to delete it'
-                : \`Alert form submitted but count unchanged (\${countBefore} alerts). You may be at your plan limit.\`,
+              message: success
+                ? 'Alert created — dialog closed successfully'
+                : 'Dialog still open — check plan limits or try again',
             };
           } catch (e) {
             return { error: e.message };
@@ -163,26 +152,75 @@ export class AlertTools {
   async list(_args) {
     try {
       const script = `
-        (function() {
+        (async function() {
           try {
-            const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
-            const alerts = nameEls.map((nameEl, idx) => {
-              let container = nameEl.parentElement;
-              for (let i = 0; i < 6 && container; i++) {
-                if (container.querySelector('[data-name="alert-delete-button"]')) break;
-                container = container.parentElement;
+            // Find the virtual-list scroll container by walking up from a known alert item
+            const seedEl = document.querySelector('[data-name="alert-item-name"]');
+            let scroller = null;
+            let node = seedEl?.parentElement;
+            while (node && node !== document.body) {
+              if (node.scrollHeight > node.clientHeight + 10) { scroller = node; break; }
+              node = node.parentElement;
+            }
+
+            // Read currently visible items, keyed by absolute Y-position in the virtual list.
+            // Using absY (not name) as the dedup key correctly handles multiple alerts with the same name.
+            const readCurrent = (byAbsY) => {
+              const scrollerRect = scroller ? scroller.getBoundingClientRect() : null;
+              const scrollTop = scroller ? scroller.scrollTop : 0;
+              const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
+              nameEls.forEach(nameEl => {
+                let container = nameEl.parentElement;
+                for (let i = 0; i < 6 && container; i++) {
+                  if (container.querySelector('[data-name="alert-delete-button"]')) break;
+                  container = container.parentElement;
+                }
+                const name = nameEl.innerText?.trim() || '';
+                const symbol = container?.querySelector('[data-name="alert-item-ticker"]')?.innerText?.trim() || '';
+                const status = container?.querySelector('[data-name="alert-item-status"]')?.innerText?.trim() || '';
+                const rect = nameEl.getBoundingClientRect();
+                const absY = scrollerRect
+                  ? Math.round(rect.top - scrollerRect.top + scrollTop)
+                  : 0;
+                if (!byAbsY.has(absY)) {
+                  byAbsY.set(absY, { name, symbol, status, absY });
+                }
+              });
+            };
+
+            const byAbsY = new Map();
+
+            // Scroll from top through bottom in ~60% viewport steps, wait 600ms each for virtual re-render
+            if (scroller) scroller.scrollTop = 0;
+            await new Promise(r => setTimeout(r, 500));
+            readCurrent(byAbsY);
+
+            if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
+              const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
+              for (let pos = step; pos < maxScroll; pos += step) {
+                scroller.scrollTop = pos;
+                await new Promise(r => setTimeout(r, 600));
+                readCurrent(byAbsY);
               }
-              const name = nameEl.innerText?.trim() || \`alert_\${idx}\`;
-              const symbol = container?.querySelector('[data-name="alert-item-ticker"]')?.innerText?.trim() || '';
-              const status = container?.querySelector('[data-name="alert-item-status"]')?.innerText?.trim() || '';
-              return {
-                id: name,
-                name,
-                symbol,
-                status,
-                active: !status.toLowerCase().includes('stop') && !status.toLowerCase().includes('pause'),
-              };
-            });
+              // Always read at exact bottom too
+              scroller.scrollTop = maxScroll;
+              await new Promise(r => setTimeout(r, 600));
+              readCurrent(byAbsY);
+              // Restore to top
+              scroller.scrollTop = 0;
+              await new Promise(r => setTimeout(r, 300));
+            }
+
+            const alerts = Array.from(byAbsY.values())
+              .sort((a, b) => a.absY - b.absY)
+              .map((item, idx) => ({
+                id: String(idx),
+                name: item.name,
+                symbol: item.symbol,
+                status: item.status,
+                active: !item.status.toLowerCase().includes('stop') && !item.status.toLowerCase().includes('pause'),
+              }));
 
             return {
               alerts,
@@ -212,27 +250,52 @@ export class AlertTools {
       }
 
       const script = `
-        (function() {
+        (async function() {
           try {
-            const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
-            const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
-            if (!target) {
-              return { success: false, alertId: '${alertId}', message: 'Alert not found — use the name shown in the Alerts panel' };
+            // Find scroll container
+            const seedEl = document.querySelector('[data-name="alert-item-name"]');
+            let scroller = null;
+            let node = seedEl?.parentElement;
+            while (node && node !== document.body) {
+              if (node.scrollHeight > node.clientHeight + 10) { scroller = node; break; }
+              node = node.parentElement;
             }
 
-            let container = target.parentElement;
-            for (let i = 0; i < 6 && container; i++) {
-              if (container.querySelector('[data-name="alert-delete-button"]')) break;
-              container = container.parentElement;
+            const tryDelete = () => {
+              const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
+              const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
+              if (!target) return false;
+              let container = target.parentElement;
+              for (let i = 0; i < 6 && container; i++) {
+                if (container.querySelector('[data-name="alert-delete-button"]')) break;
+                container = container.parentElement;
+              }
+              const deleteBtn = container?.querySelector('[data-name="alert-delete-button"]');
+              if (!deleteBtn) return false;
+              deleteBtn.click();
+              return true;
+            };
+
+            // Try at current position first
+            if (tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+
+            // Scroll through list to find and delete the alert
+            if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
+              const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
+              for (let pos = step; pos <= maxScroll; pos += step) {
+                scroller.scrollTop = pos;
+                await new Promise(r => setTimeout(r, 600));
+                if (tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+              }
+              // Try exact bottom too
+              scroller.scrollTop = maxScroll;
+              await new Promise(r => setTimeout(r, 600));
+              if (tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+              scroller.scrollTop = 0;
             }
 
-            const deleteBtn = container?.querySelector('[data-name="alert-delete-button"]');
-            if (!deleteBtn) {
-              return { success: false, alertId: '${alertId}', message: 'Delete button not found in item container' };
-            }
-
-            deleteBtn.click();
-            return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+            return { success: false, alertId: '${alertId}', message: 'Alert not found — use the name shown in the Alerts panel' };
           } catch (e) {
             return { error: e.message };
           }
