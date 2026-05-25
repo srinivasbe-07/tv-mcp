@@ -23,7 +23,9 @@ async function main() {
   console.log('Connected.\n');
 
   // 1. quote_get — find price elements
-  await run('PRICE ELEMENTS', `
+  await run(
+    'PRICE ELEMENTS',
+    `
     (function() {
       const selectors = [
         '[class*="price"]', '[class*="last"]', '[class*="close"]',
@@ -38,10 +40,13 @@ async function main() {
         }));
       }
       return found;
-    })()`);
+    })()`
+  );
 
   // 2. chart_set_symbol — find symbol search input
-  await run('SYMBOL INPUT', `
+  await run(
+    'SYMBOL INPUT',
+    `
     (function() {
       const selectors = [
         '[class*="symbol"]', '[class*="ticker"]', '[class*="search"]',
@@ -56,10 +61,13 @@ async function main() {
         }));
       }
       return found;
-    })()`);
+    })()`
+  );
 
   // 3. chart_set_timeframe — find timeframe buttons
-  await run('TIMEFRAME BUTTONS', `
+  await run(
+    'TIMEFRAME BUTTONS',
+    `
     (function() {
       const selectors = [
         '[class*="timeframe"]', '[class*="interval"]', '[class*="period"]',
@@ -74,10 +82,13 @@ async function main() {
         }));
       }
       return found;
-    })()`);
+    })()`
+  );
 
   // 4. pine_set_source — find code editor
-  await run('CODE EDITOR', `
+  await run(
+    'CODE EDITOR',
+    `
     (function() {
       const selectors = [
         '.cm-editor', '.CodeMirror', '.monaco-editor',
@@ -93,10 +104,13 @@ async function main() {
         }));
       }
       return found;
-    })()`);
+    })()`
+  );
 
   // 5. alert_delete — find alert rows in UI
-  await run('ALERT UI', `
+  await run(
+    'ALERT UI',
+    `
     (function() {
       const selectors = [
         '[class*="alert"]', '[data-name*="alert"]',
@@ -111,10 +125,13 @@ async function main() {
         }));
       }
       return found;
-    })()`);
+    })()`
+  );
 
   // 6. Global TradingView API — what's actually exposed
-  await run('TRADINGVIEW GLOBAL API', `
+  await run(
+    'TRADINGVIEW GLOBAL API',
+    `
     (function() {
       const keys = Object.keys(window).filter(k =>
         k.toLowerCase().includes('trading') ||
@@ -127,7 +144,8 @@ async function main() {
         api[k] = typeof window[k];
       }
       return api;
-    })()`);
+    })()`
+  );
 
   await cdp.disconnect();
 }

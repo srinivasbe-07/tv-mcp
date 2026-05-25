@@ -19,7 +19,9 @@ async function main() {
   console.log('Connected.\n');
 
   // 1. Get active chart widget via TradingViewApi
-  await run('Active chart widget methods', `
+  await run(
+    'Active chart widget methods',
+    `
     (function() {
       const api = window.TradingViewApi;
       if (!api) return 'no TradingViewApi';
@@ -29,10 +31,13 @@ async function main() {
       if (!widget) return 'no widget value';
       const methods = Object.keys(widget).filter(k => typeof widget[k] === 'function');
       return { methodCount: methods.length, methods: methods.slice(0, 40) };
-    })()`);
+    })()`
+  );
 
   // 2. Get symbol and price from chart widget
-  await run('Chart widget symbol/price', `
+  await run(
+    'Chart widget symbol/price',
+    `
     (function() {
       try {
         const api = window.TradingViewApi;
@@ -49,10 +54,13 @@ async function main() {
         }
         return result;
       } catch(e) { return e.message; }
-    })()`);
+    })()`
+  );
 
   // 3. Alert delete button
-  await run('Alert delete button', `
+  await run(
+    'Alert delete button',
+    `
     (function() {
       const alertWidget = document.querySelector('.widgetbar-widget-alerts');
       if (!alertWidget) return 'no alert widget';
@@ -65,10 +73,13 @@ async function main() {
         title: e.getAttribute('title'),
         ariaLabel: e.getAttribute('aria-label')
       }));
-    })()`);
+    })()`
+  );
 
   // 4. Alert item structure
-  await run('Alert items structure', `
+  await run(
+    'Alert items structure',
+    `
     (function() {
       const alertWidget = document.querySelector('.widgetbar-widget-alerts');
       if (!alertWidget) return 'no alert widget';
@@ -78,10 +89,13 @@ async function main() {
         text: e.innerText?.slice(0, 60),
         children: e.children.length
       }));
-    })()`);
+    })()`
+  );
 
   // 5. Timeframe dropdown — click the interval title to reveal options
-  await run('Timeframe interval title', `
+  await run(
+    'Timeframe interval title',
+    `
     (function() {
       const el = document.querySelector('[title="Change interval"]');
       if (!el) return 'not found';
@@ -91,10 +105,13 @@ async function main() {
         text: el.innerText,
         parent: el.parentElement?.className?.slice(0, 100)
       };
-    })()`);
+    })()`
+  );
 
   // 6. Search button — for symbol change
-  await run('Symbol search button', `
+  await run(
+    'Symbol search button',
+    `
     (function() {
       const btn = document.querySelector('[class*="searchButton"]');
       if (!btn) return 'not found';
@@ -105,10 +122,13 @@ async function main() {
         title: btn.getAttribute('title'),
         ariaLabel: btn.getAttribute('aria-label')
       };
-    })()`);
+    })()`
+  );
 
   // 7. Price from DOM — deeper look at lastGroup
-  await run('Price from lastGroup', `
+  await run(
+    'Price from lastGroup',
+    `
     (function() {
       const groups = document.querySelectorAll('[class*="lastGroup"]');
       return Array.from(groups).slice(0, 5).map(g => ({
@@ -116,7 +136,8 @@ async function main() {
         html: g.innerHTML?.slice(0, 200),
         text: g.innerText?.slice(0, 80)
       }));
-    })()`);
+    })()`
+  );
 
   await cdp.disconnect();
 }
