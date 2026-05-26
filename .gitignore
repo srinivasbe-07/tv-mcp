@@ -8,3 +8,4 @@ test-results.json
 position.json
 run-screenshot.js
 run-sensex-update.js
+monitor-config.json

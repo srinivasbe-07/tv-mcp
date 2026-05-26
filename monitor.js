@@ -146,10 +146,21 @@ export function buildSymbol(cfg, strike, type) {
 }
 
 // ---------------------------------------------------------------------------
+// Config file (re-read every tick so live edits apply within 60s)
+// ---------------------------------------------------------------------------
+function loadConfig() {
+  try {
+    return JSON.parse(fs.readFileSync('./monitor-config.json', 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
 // State persistence
 // ---------------------------------------------------------------------------
 let state = { CE: 'closed', PE: 'closed', lastATM: null, lastInstrument: null, lastITMDepth: null, seenHistoryKeys: [] };
-let itmOverride = null; // set by --itm CLI flag
+let itmOverride = null; // set by --itm CLI flag (highest priority)
 
 function loadState() {
   try {
@@ -379,8 +390,12 @@ async function main() {
   console.log(`CE alerts          : ${CE_ALERTS.entry} / ${CE_ALERTS.exit}`);
   console.log(`PE alerts          : ${PE_ALERTS.entry} / ${PE_ALERTS.exit}`);
   console.log(`Position state     : CE=${state.CE.toUpperCase()}  PE=${state.PE.toUpperCase()}`);
-  const todayDepth = itmOverride ?? calcITMDepth(nowIST().getUTCDay(), todayInstr.name);
-  console.log(`ITM depth          : ITM-${todayDepth}${itmOverride !== null ? '  (--itm override)' : '  (day-based)'}`);
+  const startConfig = loadConfig();
+  const startConfigItm = [0, 1, 2].includes(startConfig.itmOverride) ? startConfig.itmOverride : null;
+  const startEffective = itmOverride !== null ? itmOverride : startConfigItm;
+  const todayDepth = startEffective ?? calcITMDepth(nowIST().getUTCDay(), todayInstr.name);
+  const itmSource = itmOverride !== null ? '(--itm flag)' : startConfigItm !== null ? '(monitor-config.json)' : '(day-based)';
+  console.log(`ITM depth          : ITM-${todayDepth}  ${itmSource}`);
   console.log(`Last ATM           : ${state.lastATM || 'unknown'}  (${state.lastInstrument || 'unknown'}, ITM-${state.lastITMDepth ?? '?'})`);
   console.log('\nKeys: [c] toggle CE position  [p] toggle PE position  [u] force update  [q] quit\n');
 
@@ -440,7 +455,11 @@ async function main() {
       const instrName = DAY_INSTRUMENT[dayOfWeek] || 'NIFTY';
       const cfg = INSTRUMENTS[instrName];
 
-      const itmDepth    = calcITMDepth(dayOfWeek, instrName, itmOverride);
+      // Priority: CLI --itm > monitor-config.json itmOverride > day-based rule
+      const config = loadConfig();
+      const configItm = [0, 1, 2].includes(config.itmOverride) ? config.itmOverride : null;
+      const effectiveOverride = itmOverride !== null ? itmOverride : configItm;
+      const itmDepth    = calcITMDepth(dayOfWeek, instrName, effectiveOverride);
       const instrChanged = state.lastInstrument !== null && state.lastInstrument !== instrName;
       const depthChanged = state.lastITMDepth   !== null && state.lastITMDepth   !== itmDepth;
 
