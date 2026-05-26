@@ -9,8 +9,8 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node test-unit.js && node test.js",
-    "test:unit": "node test-unit.js",
+    "test": "node test-unit.js && node test-monitor.js",
+    "test:unit": "node test-unit.js && node test-monitor.js",
     "test:live": "node test.js",
     "demo": "node demo-tools.js",
     "monitor": "node monitor.js",
