@@ -1,0 +1,7 @@
+{
+  "bias": "up",
+  "buyZone": { "top": 23950, "bottom": 23900 },
+  "sellZone": { "top": 24100, "bottom": 24050 },
+  "target": 24100,
+  "active": true
+}
