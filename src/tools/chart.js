@@ -70,6 +70,25 @@ export class ChartTools {
           required: ['timeframe'],
         },
       },
+      {
+        name: 'chart_add_comparison',
+        description:
+          'Add a symbol as a comparison/overlay on the chart. Required before alert_update_symbol can select a new symbol that is not yet in the dropdown.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            symbol: {
+              type: 'string',
+              description: 'Symbol to add as comparison (e.g. "NIFTY260526C23850")',
+            },
+            color: {
+              type: 'string',
+              description: 'Line color hex (default "#2196F3")',
+            },
+          },
+          required: ['symbol'],
+        },
+      },
     ];
   }
 
@@ -85,6 +104,8 @@ export class ChartTools {
         return await this.setSymbol(args);
       case 'chart_set_timeframe':
         return await this.setTimeframe(args);
+      case 'chart_add_comparison':
+        return await this.addComparison(args);
       default:
         return this.error(`Unknown chart tool: ${toolName}`);
     }
@@ -394,6 +415,105 @@ export class ChartTools {
       return this.success(result);
     } catch (error) {
       return this.error(`Failed to set timeframe: ${error.message}`);
+    }
+  }
+
+  async addComparison(args) {
+    try {
+      const { symbol } = args;
+      if (!symbol) return this.error('symbol is required');
+
+      const sym = symbol.toUpperCase();
+
+      // Use the official TradingView "Compare symbols" button flow.
+      // This is the only reliable way to add a comparison that:
+      //   (a) persists across TV restarts (saved to chart layout)
+      //   (b) appears in the alert edit dialog's symbol dropdown
+      //   (c) does NOT change the main chart symbol as a side effect
+      const result = await this.cdp.executeScript(`
+        (async function() {
+          try {
+            // Step 1: Check if symbol is already in the alert dropdown
+            // (open any edit dialog would be needed to check — skip for now, proceed to add)
+
+            // Step 2: Find and click the "Compare symbols" button in the toolbar
+            var allBtns = Array.from(document.querySelectorAll('button'));
+            var compareBtn = allBtns.find(b => b.getAttribute('aria-label') === 'Compare symbols' && b.offsetWidth > 0);
+            if (!compareBtn) return { ok: false, reason: 'Compare symbols button not found in toolbar' };
+
+            compareBtn.click();
+            await new Promise(r => setTimeout(r, 800));
+
+            // Step 3: Find the search input in the Compare dialog
+            var input = document.querySelector('[class*="compareDialog"] input') ||
+                        document.querySelector('[class*="compare"] input[type="text"]') ||
+                        document.querySelector('[class*="search"] input') ||
+                        document.querySelector('input[placeholder*="symbol" i]') ||
+                        document.querySelector('input[placeholder*="Search" i]');
+
+            if (!input) {
+              // Try to dismiss and report
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+              return { ok: false, reason: 'compare_dialog_input_not_found' };
+            }
+
+            // Step 4: Type the symbol
+            input.focus();
+            await new Promise(r => setTimeout(r, 100));
+            // Clear existing text
+            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(input, '');
+            input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 100));
+            // Insert the symbol text
+            nativeSetter.call(input, '${sym}');
+            input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 1200));
+
+            // Step 5: Find matching result in the dropdown list
+            var items = Array.from(document.querySelectorAll('[class*="listItem"], [class*="symbolRow"], [class*="suggest"] li, [class*="result"]'))
+              .filter(el => el.offsetHeight > 0);
+            var targetSym = '${sym}';
+            var match = items.find(function(el) {
+              var txt = el.textContent?.trim().toUpperCase() || '';
+              return txt.includes(targetSym) || txt.includes(targetSym.split(':').pop());
+            });
+
+            if (!match) {
+              // Get available items for debug
+              var available = items.slice(0, 5).map(el => el.textContent?.trim().slice(0, 40));
+              // Close dialog
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+              return { ok: false, reason: 'symbol_not_found_in_results', available: available, typed: targetSym };
+            }
+
+            match.click();
+            await new Promise(r => setTimeout(r, 600));
+
+            return { ok: true, reason: 'added' };
+          } catch(e) {
+            return { ok: false, reason: e.message };
+          }
+        })()
+      `);
+
+      if (!result?.ok) {
+        return this.error(
+          `Could not add "${symbol}" to chart: ${result?.reason || 'unknown error'}` +
+          (result?.available ? `. Results shown: [${result.available.join(', ')}]` : '')
+        );
+      }
+
+      // Allow TradingView time to resolve and render the new series
+      await this.cdp.delay(1500);
+
+      return this.success({
+        success: true,
+        symbol: sym,
+        message: `${sym} added as comparison — now available in alert dropdown`,
+      });
+    } catch (error) {
+      return this.error(`Failed to add comparison: ${error.message}`);
     }
   }
 

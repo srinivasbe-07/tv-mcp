@@ -135,6 +135,43 @@ const TESTS = [
     soft: true,
     softMsg: 'Succeeds only if alert_create persisted',
   },
+
+  // Alert history
+  {
+    name: 'alert_get_history',
+    run: () => alerts.handle('alert_get_history', {}),
+    assert: (d) => Array.isArray(d?.items) && typeof d?.count === 'number',
+    soft: true,
+    softMsg: 'Alert history tab must be visible in Alerts panel',
+  },
+
+  // alert_update_symbol — one test per alert so name-case bugs are caught individually
+  ...['supertrendLongEntry', 'supertrendLongExit', 'supertrendshortEntry', 'supertrendShortExit']
+    .map(alertName => ({
+      name: `alert_update:${alertName.replace('supertrend', '')}`,
+      run: async () => {
+        const listRaw = await alerts.handle('alert_list', {});
+        const listData = parse(listRaw);
+        const entry = listData?.alerts?.find(a => a.name === alertName);
+        const alertSymbol = entry?.symbol?.split(',')[0]?.trim() || null;
+
+        if (!alertSymbol) {
+          return { isError: true, content: [{ type: 'text', text: `Alert "${alertName}" not found in Alerts panel` }] };
+        }
+
+        const stateRaw = await chart.handle('chart_get_state', {});
+        const originalChartSymbol = parse(stateRaw)?.symbol || null;
+
+        await chart.handle('chart_set_symbol', { symbol: alertSymbol });
+        const result = await alerts.handle('alert_update_symbol', { alertName, symbol: alertSymbol });
+
+        if (originalChartSymbol) {
+          await chart.handle('chart_set_symbol', { symbol: originalChartSymbol });
+        }
+        return result;
+      },
+      assert: (d) => d?.success === true,
+    })),
 ];
 
 // ---------------------------------------------------------------------------

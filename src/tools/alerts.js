@@ -54,6 +54,32 @@ export class AlertTools {
           required: ['alertId'],
         },
       },
+      {
+        name: 'alert_update_symbol',
+        description: 'Update the symbol on an existing alert without changing any other settings',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            alertName: {
+              type: 'string',
+              description: 'Name of the alert to update (as shown in the Alerts panel)',
+            },
+            symbol: {
+              type: 'string',
+              description: 'New symbol to set on the alert (e.g. NIFTY260527C23950)',
+            },
+          },
+          required: ['alertName', 'symbol'],
+        },
+      },
+      {
+        name: 'alert_get_history',
+        description: 'Get recently fired alerts from the alert log/history panel',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
     ];
   }
 
@@ -65,6 +91,10 @@ export class AlertTools {
         return await this.list(args);
       case 'alert_delete':
         return await this.delete(args);
+      case 'alert_update_symbol':
+        return await this.updateSymbol(args);
+      case 'alert_get_history':
+        return await this.getHistory(args);
       default:
         return this.error(`Unknown alert tool: ${toolName}`);
     }
@@ -181,7 +211,7 @@ export class AlertTools {
                 const rect = nameEl.getBoundingClientRect();
                 const absY = scrollerRect
                   ? Math.round(rect.top - scrollerRect.top + scrollTop)
-                  : 0;
+                  : Math.round(rect.top * 10);
                 if (!byAbsY.has(absY)) {
                   byAbsY.set(absY, { name, symbol, status, absY });
                 }
@@ -306,6 +336,249 @@ export class AlertTools {
       return this.success(result);
     } catch (error) {
       return this.error(`Failed to delete alert: ${error.message}`);
+    }
+  }
+
+  async updateSymbol(args) {
+    try {
+      const { alertName, symbol } = args;
+      if (!alertName || !symbol) return this.error('alertName and symbol are required');
+
+      // Step 0: Ensure the Alerts panel is open and visible.
+      // Chart symbol switches (e.g. to NSE:NIFTY) can cause TradingView to hide
+      // or switch away from the Alerts panel. Click [data-name="alerts"] if needed,
+      // then wait for alert items to be fully rendered in the DOM.
+      await this.cdp.executeScript(`
+        (async function() {
+          const hasItems = document.querySelector('[data-name="alert-item-name"]');
+          if (!hasItems) {
+            const btn = document.querySelector('[data-name="alerts"]');
+            if (btn) {
+              btn.click();
+              // Wait for items to render — poll up to 3 seconds
+              for (let i = 0; i < 12; i++) {
+                await new Promise(r => setTimeout(r, 250));
+                if (document.querySelector('[data-name="alert-item-name"]')) break;
+              }
+            }
+          }
+        })()
+      `);
+
+      // Step 1: Find and JS-click the edit button for the target alert.
+      // TradingView's edit buttons have visibility:hidden until hover, so CDP physical click
+      // can't hit them (hit-testing skips hidden elements). JS .click() fires directly on
+      // the element regardless of visibility and correctly opens the right alert's dialog.
+      // We walk up from each edit button to its row's name element to ensure correct matching.
+      const clickResult = await this.cdp.executeScript(`
+        (async function() {
+          const findScroller = () => {
+            const seed = document.querySelector('[data-name="alert-item-name"]');
+            let node = seed?.parentElement;
+            while (node && node !== document.body) {
+              if (node.scrollHeight > node.clientHeight + 10) return node;
+              node = node.parentElement;
+            }
+            return null;
+          };
+          const clickEdit = () => {
+            const editBtns = Array.from(document.querySelectorAll('[data-name="alert-edit-button"]'));
+            for (const btn of editBtns) {
+              let node = btn.parentElement;
+              let depth = 0;
+              while (node && depth < 10) {
+                const nameEl = node.querySelector('[data-name="alert-item-name"]');
+                if (nameEl) {
+                  if (nameEl.innerText?.trim() === '${alertName}') { btn.click(); return true; }
+                  break; // wrong alert row — try next button
+                }
+                node = node.parentElement;
+                depth++;
+              }
+            }
+            return false;
+          };
+          // Always scroll to top first — after a previous dialog saves, the virtual list
+          // may be at an arbitrary scroll position where the target item isn't in the DOM.
+          const scroller = findScroller();
+          if (scroller) {
+            scroller.scrollTop = 0;
+            await new Promise(r => setTimeout(r, 300));
+          }
+          if (clickEdit()) return { clicked: true };
+          if (scroller) {
+            const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+            const step = Math.max(80, Math.floor(scroller.clientHeight * 0.6));
+            for (let pos = step; pos <= maxScroll; pos += step) {
+              scroller.scrollTop = pos;
+              await new Promise(r => setTimeout(r, 400));
+              if (clickEdit()) return { clicked: true };
+            }
+            scroller.scrollTop = maxScroll;
+            await new Promise(r => setTimeout(r, 400));
+            if (clickEdit()) return { clicked: true };
+          }
+          return { clicked: false };
+        })()
+      `);
+      if (!clickResult?.clicked) {
+        return this.error(`Alert "${alertName}" not found in Alerts panel`);
+      }
+
+      // Step 2: Wait for edit dialog to open
+      await this.cdp.delay(1500);
+
+      // Step 3: Click the activeArea symbol button in the dialog header to open the dropdown,
+      // then immediately JS-click the matching item — all in one executeScript so the dropdown
+      // cannot close between the two operations (timing window issue with separate CDP calls).
+      const selectResult = await this.cdp.executeScript(`
+        (async function() {
+          const nl = String.fromCharCode(10);
+          const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+          if (!dialog) return { found: false, error: 'no dialog' };
+
+          const headerBtn = [...dialog.querySelectorAll('[class*="activeArea-"]')].find(e => e.clientHeight > 0);
+          if (!headerBtn) return { found: false, error: 'no header button' };
+          const currentSymbol = headerBtn.textContent?.trim() || '';
+
+          // If already correct, skip dropdown interaction entirely
+          if (currentSymbol.toUpperCase() === '${symbol}'.toUpperCase()) {
+            return { found: true, alreadyCorrect: true, currentSymbol };
+          }
+
+          // Open symbol dropdown
+          headerBtn.click();
+          await new Promise(r => setTimeout(r, 600));
+
+          const items = [...document.querySelectorAll('[class*="button-fOp9u5tE"]')]
+            .filter(e => e.offsetWidth > 0 && e.offsetHeight > 0);
+          const available = items.map(e => {
+            const t = e.querySelector('[class*="symbolsDropdownItemTitle-"]');
+            return (t?.textContent?.trim() || e.textContent?.trim())?.split(nl)[0] || '';
+          });
+          const match = items.find((e, i) => available[i]?.toUpperCase() === '${symbol}'.toUpperCase());
+          if (!match) {
+            // Close dropdown
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return { found: false, available, currentSymbol };
+          }
+
+          match.click();
+          await new Promise(r => setTimeout(r, 600));
+          return { found: true, available, currentSymbol };
+        })()
+      `);
+
+      if (!selectResult?.found) {
+        // Close dialog
+        await this.cdp.executeScript(`
+          (function() {
+            const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+            const cancel = [...(dialog?.querySelectorAll('button') || [])].find(b => b.textContent?.trim() === 'Cancel');
+            if (cancel) cancel.click();
+          })()
+        `);
+        return this.error(
+          `Symbol "${symbol}" not in alert dropdown. Available: [${selectResult?.available?.filter(Boolean).join(', ')}]. ` +
+          `Add "${symbol}" to the chart as a comparison first (chart_add_comparison), then retry.`
+        );
+      }
+
+      // Step 5: Click Save and verify dialog closes.
+      // Success criterion: the submitBtn disappears (unique to the edit dialog).
+      // Using dialog/popup class is unreliable — TradingView may show a notification
+      // that matches the same selector right after Save.
+      await this.cdp.delay(300);
+      const saveResult = await this.cdp.executeScript(`
+        (async function() {
+          const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+          if (!dialog) return { success: true, msg: 'Dialog already closed' };
+          const symBtn = [...dialog.querySelectorAll('[class*="activeArea-"]')].find(e => e.clientHeight > 0);
+          const shownSymbol = symBtn?.textContent?.trim() || '';
+          const saveBtn = dialog.querySelector('[class*="submitBtn-"]') ||
+                          [...dialog.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Save');
+          if (!saveBtn) return { success: false, msg: 'Save button not found', shownSymbol };
+          saveBtn.click();
+          // Wait for edit dialog to close — check submitBtn absence (unique to the edit form)
+          for (var i = 0; i < 16; i++) {
+            await new Promise(r => setTimeout(r, 250));
+            if (!document.querySelector('[class*="submitBtn-"]')) {
+              return { success: true, shownSymbol, msg: 'Saved' };
+            }
+          }
+          return { success: false, shownSymbol, msg: 'Dialog still open after Save' };
+        })()
+      `);
+
+      return this.success({
+        success: saveResult?.success || false,
+        alertName,
+        previousSymbol: selectResult?.currentSymbol,
+        newSymbol: symbol,
+        shownInDialog: saveResult?.shownSymbol,
+        message: saveResult?.msg || 'Unknown',
+      });
+    } catch (error) {
+      return this.error(`Failed to update alert symbol: ${error.message}`);
+    }
+  }
+
+  async getHistory(_args) {
+    try {
+      const script = `
+        (function() {
+          try {
+            // Alert log items in the history tab
+            const selectors = [
+              '[data-name="alert-log-item"]',
+              '[data-name="alert-history-item"]',
+              '[class*="alertLogItem"]',
+              '[class*="historyItem"]',
+            ];
+            let items = [];
+            for (const sel of selectors) {
+              items = Array.from(document.querySelectorAll(sel));
+              if (items.length > 0) break;
+            }
+
+            if (items.length === 0) {
+              // Fallback: read text rows from the alert log tab panel
+              const logPanel = document.querySelector('[data-name="alert-log-list"]') ||
+                               document.querySelector('[class*="alertLog"]');
+              if (logPanel) {
+                const rows = Array.from(logPanel.querySelectorAll('div[class]'))
+                  .filter(d => d.children.length >= 2 && d.clientHeight > 10 && d.clientHeight < 80);
+                return {
+                  items: rows.slice(0, 20).map(r => ({ text: r.innerText?.trim() })),
+                  source: 'fallback_rows',
+                  count: rows.length,
+                };
+              }
+              return { items: [], count: 0, message: 'Alert history tab may not be visible' };
+            }
+
+            return {
+              items: items.slice(0, 20).map(el => ({
+                name: el.querySelector('[data-name="alert-log-item-name"]')?.innerText?.trim() ||
+                      el.querySelector('[class*="name"]')?.innerText?.trim() || '',
+                time: el.querySelector('[data-name="alert-log-item-time"]')?.innerText?.trim() ||
+                      el.querySelector('[class*="time"]')?.innerText?.trim() || '',
+                symbol: el.querySelector('[data-name="alert-log-item-symbol"]')?.innerText?.trim() ||
+                        el.querySelector('[class*="symbol"]')?.innerText?.trim() || '',
+                message: el.querySelector('[class*="message"]')?.innerText?.trim() || '',
+              })),
+              count: items.length,
+            };
+          } catch (e) {
+            return { error: e.message, items: [] };
+          }
+        })()
+      `;
+
+      const result = await this.cdp.executeScript(script);
+      return this.success(result);
+    } catch (error) {
+      return this.error(`Failed to get alert history: ${error.message}`);
     }
   }
 

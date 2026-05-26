@@ -33,9 +33,9 @@ if (!toolName || toolName === '--help' || toolName === '-h') {
   console.log('Usage: node cli.js <tool-name> [--key value ...]');
   console.log('');
   console.log('Tools:');
-  console.log('  Chart:   chart_get_state, quote_get, data_get_ohlcv, chart_set_symbol, chart_set_timeframe');
+  console.log('  Chart:   chart_get_state, quote_get, data_get_ohlcv, chart_set_symbol, chart_set_timeframe, chart_add_comparison');
   console.log('  Pine:    pine_get_source, pine_set_source, pine_smart_compile, pine_get_errors, pine_save');
-  console.log('  Alerts:  alert_create, alert_list, alert_delete');
+  console.log('  Alerts:  alert_create, alert_list, alert_delete, alert_update_symbol, alert_get_history');
   console.log('  Utility: tv_health_check, tv_launch, capture_screenshot');
   console.log('');
   console.log('Examples:');
@@ -75,10 +75,11 @@ const utility = new UtilityTools(cdp);
 
 const ROUTE = {
   chart_get_state: chart, quote_get: chart, data_get_ohlcv: chart,
-  chart_set_symbol: chart, chart_set_timeframe: chart,
+  chart_set_symbol: chart, chart_set_timeframe: chart, chart_add_comparison: chart,
   pine_get_source: pine, pine_set_source: pine, pine_smart_compile: pine,
   pine_get_errors: pine, pine_save: pine,
   alert_create: alerts, alert_list: alerts, alert_delete: alerts,
+  alert_update_symbol: alerts, alert_get_history: alerts,
   tv_health_check: utility, tv_launch: utility, capture_screenshot: utility,
 };
 

@@ -94,6 +94,46 @@ export class CDPManager {
     }
   }
 
+  // Simulate a real hardware mouse click at screen coordinates via CDP Input API.
+  // More reliable than JS element.click() for React synthetic event handlers.
+  async clickAt(x, y) {
+    const { Input } = this.client;
+    await Input.dispatchMouseEvent({ type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    await Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  }
+
+  // Move mouse to coordinates (triggers CSS :hover without clicking).
+  async hoverAt(x, y) {
+    const { Input } = this.client;
+    await Input.dispatchMouseEvent({ type: 'mouseMoved', x, y });
+  }
+
+  // Simulate a right-click at screen coordinates.
+  async rightClickAt(x, y) {
+    const { Input } = this.client;
+    await Input.dispatchMouseEvent({ type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
+    await Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
+  }
+
+  // Insert text at the current focused element via CDP Input API.
+  // Unlike keyDown+char+keyUp triplets, this does NOT cause React to double characters.
+  async insertText(text) {
+    const { Input } = this.client;
+    await Input.insertText({ text });
+  }
+
+  // Get an element's center screen coordinates via CDP DOM API
+  async getElementCenter(selector) {
+    const { DOM } = this.client;
+    const doc = await DOM.getDocument();
+    const { nodeId } = await DOM.querySelector({ nodeId: doc.root.nodeId, selector });
+    if (!nodeId) return null;
+    const { model } = await DOM.getBoxModel({ nodeId });
+    if (!model) return null;
+    const [x1, y1, x2, y2, , , x4, y4] = model.border;
+    return { x: (x1 + x2 + x4) / 3, y: (y1 + y2 + y4) / 3 };
+  }
+
   /**
    * Navigate to a URL
    */
