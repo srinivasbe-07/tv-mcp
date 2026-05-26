@@ -183,7 +183,9 @@ async function main() {
       try {
         const result = JSON.parse(raw?.content?.[0]?.text);
         createdAlertName = result?.name || null;
-      } catch (_e) { /* ignore parse errors */ }
+      } catch (_e) {
+        /* ignore parse errors */
+      }
       return raw;
     },
     5

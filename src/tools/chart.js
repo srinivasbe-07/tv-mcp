@@ -500,7 +500,7 @@ export class ChartTools {
       if (!result?.ok) {
         return this.error(
           `Could not add "${symbol}" to chart: ${result?.reason || 'unknown error'}` +
-          (result?.available ? `. Results shown: [${result.available.join(', ')}]` : '')
+            (result?.available ? `. Results shown: [${result.available.join(', ')}]` : '')
         );
       }
 

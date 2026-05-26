@@ -20,7 +20,11 @@ const alerts = new AlertTools(cdp);
 const utility = new UtilityTools(cdp);
 
 function parse(raw) {
-  try { return JSON.parse(raw?.content?.[0]?.text); } catch { return null; }
+  try {
+    return JSON.parse(raw?.content?.[0]?.text);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -53,7 +57,8 @@ const TESTS = [
   {
     name: 'chart_get_state',
     run: () => chart.handle('chart_get_state', {}),
-    assert: (d) => typeof d?.symbol === 'string' && d.symbol.length > 0 && typeof d?.timeframe === 'string',
+    assert: (d) =>
+      typeof d?.symbol === 'string' && d.symbol.length > 0 && typeof d?.timeframe === 'string',
   },
   {
     name: 'quote_get',
@@ -98,9 +103,10 @@ const TESTS = [
   // Pine — write (needs editor open; graceful soft-fail if not)
   {
     name: 'pine_set_source',
-    run: () => pine.handle('pine_set_source', {
-      source: "//@version=5\nindicator('MCP Test', overlay=true)\nplot(close)",
-    }),
+    run: () =>
+      pine.handle('pine_set_source', {
+        source: "//@version=5\nindicator('MCP Test', overlay=true)\nplot(close)",
+      }),
     assert: (d) => d?.success === true || (d?.success === false && typeof d?.message === 'string'),
     soft: true,
     softMsg: 'Pine editor not open (right-click indicator -> Edit script)',
@@ -121,9 +127,13 @@ const TESTS = [
   },
   {
     name: 'alert_create',
-    run: () => alerts.handle('alert_create', {
-      symbol: 'NSE:NIFTY', condition: 'above', level: 40000, name: 'MCP-test-ci',
-    }),
+    run: () =>
+      alerts.handle('alert_create', {
+        symbol: 'NSE:NIFTY',
+        condition: 'above',
+        level: 40000,
+        name: 'MCP-test-ci',
+      }),
     assert: (d) => typeof d?.success === 'boolean',
     soft: true,
     softMsg: 'Plan limit may silently reject; dialog closes either way',
@@ -146,32 +156,39 @@ const TESTS = [
   },
 
   // alert_update_symbol — one test per alert so name-case bugs are caught individually
-  ...['supertrendLongEntry', 'supertrendLongExit', 'supertrendshortEntry', 'supertrendShortExit']
-    .map(alertName => ({
-      name: `alert_update:${alertName.replace('supertrend', '')}`,
-      run: async () => {
-        const listRaw = await alerts.handle('alert_list', {});
-        const listData = parse(listRaw);
-        const entry = listData?.alerts?.find(a => a.name === alertName);
-        const alertSymbol = entry?.symbol?.split(',')[0]?.trim() || null;
+  ...[
+    'supertrendLongEntry',
+    'supertrendLongExit',
+    'supertrendshortEntry',
+    'supertrendShortExit',
+  ].map((alertName) => ({
+    name: `alert_update:${alertName.replace('supertrend', '')}`,
+    run: async () => {
+      const listRaw = await alerts.handle('alert_list', {});
+      const listData = parse(listRaw);
+      const entry = listData?.alerts?.find((a) => a.name === alertName);
+      const alertSymbol = entry?.symbol?.split(',')[0]?.trim() || null;
 
-        if (!alertSymbol) {
-          return { isError: true, content: [{ type: 'text', text: `Alert "${alertName}" not found in Alerts panel` }] };
-        }
+      if (!alertSymbol) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Alert "${alertName}" not found in Alerts panel` }],
+        };
+      }
 
-        const stateRaw = await chart.handle('chart_get_state', {});
-        const originalChartSymbol = parse(stateRaw)?.symbol || null;
+      const stateRaw = await chart.handle('chart_get_state', {});
+      const originalChartSymbol = parse(stateRaw)?.symbol || null;
 
-        await chart.handle('chart_set_symbol', { symbol: alertSymbol });
-        const result = await alerts.handle('alert_update_symbol', { alertName, symbol: alertSymbol });
+      await chart.handle('chart_set_symbol', { symbol: alertSymbol });
+      const result = await alerts.handle('alert_update_symbol', { alertName, symbol: alertSymbol });
 
-        if (originalChartSymbol) {
-          await chart.handle('chart_set_symbol', { symbol: originalChartSymbol });
-        }
-        return result;
-      },
-      assert: (d) => d?.success === true,
-    })),
+      if (originalChartSymbol) {
+        await chart.handle('chart_set_symbol', { symbol: originalChartSymbol });
+      }
+      return result;
+    },
+    assert: (d) => d?.success === true,
+  })),
 ];
 
 // ---------------------------------------------------------------------------
@@ -221,7 +238,9 @@ async function main() {
     const state = parse(await chart.handle('chart_get_state', {}));
     if (state?.symbol) originalSymbol = state.symbol;
     if (state?.timeframe) originalTf = state.timeframe;
-  } catch (_e) { /* ignore — chart state unavailable */ }
+  } catch (_e) {
+    /* ignore — chart state unavailable */
+  }
 
   const suiteStart = Date.now();
   const counts = { PASS: 0, SOFT: 0, FAIL: 0, ERROR: 0 };
@@ -237,7 +256,7 @@ async function main() {
     const label = statusLabel(r.status).padEnd(PAD_STATUS + 14); // extra for escape codes
     const timing = `${r.ms}ms`.padStart(6);
     const note = r.status === 'SOFT' && t.softMsg ? `  (${t.softMsg})` : '';
-    const fail = (r.status === 'FAIL' || r.status === 'ERROR') ? `\n       ${r.detail}` : '';
+    const fail = r.status === 'FAIL' || r.status === 'ERROR' ? `\n       ${r.detail}` : '';
     console.log(`  ${label} ${timing}${note}${fail}`);
   }
 
@@ -246,7 +265,9 @@ async function main() {
   try {
     await chart.handle('chart_set_symbol', { symbol: originalSymbol });
     await chart.handle('chart_set_timeframe', { timeframe: originalTf });
-  } catch (_e) { /* ignore restore errors */ }
+  } catch (_e) {
+    /* ignore restore errors */
+  }
 
   await cdp.disconnect();
 
@@ -257,7 +278,7 @@ async function main() {
   console.log('\n' + '─'.repeat(55));
   console.log(
     `Results: \x1b[32m${counts.PASS} passed\x1b[0m, \x1b[33m${counts.SOFT} soft\x1b[0m, ` +
-    `\x1b[31m${counts.FAIL} failed, ${counts.ERROR} errors\x1b[0m | ${(totalMs / 1000).toFixed(1)}s`
+      `\x1b[31m${counts.FAIL} failed, ${counts.ERROR} errors\x1b[0m | ${(totalMs / 1000).toFixed(1)}s`
   );
 
   if (failing === 0) {
@@ -270,4 +291,7 @@ async function main() {
   process.exit(failing > 0 ? 1 : 0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

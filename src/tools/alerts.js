@@ -480,7 +480,7 @@ export class AlertTools {
         `);
         return this.error(
           `Symbol "${symbol}" not in alert dropdown. Available: [${selectResult?.available?.filter(Boolean).join(', ')}]. ` +
-          `Add "${symbol}" to the chart as a comparison first (chart_add_comparison), then retry.`
+            `Add "${symbol}" to the chart as a comparison first (chart_add_comparison), then retry.`
         );
       }
 

@@ -34,7 +34,7 @@ import readline from 'readline';
 const POLL_MS = 60_000;
 const STATE_FILE = './position.json';
 
-const CE_ALERTS = { entry: 'supertrendLongEntry',  exit: 'supertrendLongExit'  };
+const CE_ALERTS = { entry: 'supertrendLongEntry', exit: 'supertrendLongExit' };
 const PE_ALERTS = { entry: 'supertrendshortEntry', exit: 'supertrendShortExit' };
 
 // Day-of-week instrument routing (IST weekday: 1=Mon … 5=Fri)
@@ -53,32 +53,32 @@ export function calcITMDepth(dayOfWeek, instrument, cliOverride = null) {
 export const INSTRUMENTS = {
   NIFTY: {
     name: 'NIFTY',
-    spotSymbol:     'NSE:NIFTY',
+    spotSymbol: 'NSE:NIFTY',
     strikeInterval: 50,
-    itmDepth:       2,
-    expiryDay:      2,        // Tuesday
-    symbolPrefix:   'NIFTY',
+    itmDepth: 2,
+    expiryDay: 2, // Tuesday
+    symbolPrefix: 'NIFTY',
   },
   SENSEX: {
     name: 'SENSEX',
-    spotSymbol:     'BSE:SENSEX',
+    spotSymbol: 'BSE:SENSEX',
     strikeInterval: 100,
-    itmDepth:       2,
-    expiryDay:      4,        // Thursday (holiday shifts handled automatically)
-    symbolPrefix:   'BSX',
+    itmDepth: 2,
+    expiryDay: 4, // Thursday (holiday shifts handled automatically)
+    symbolPrefix: 'BSX',
   },
 };
 
 // IST = UTC + 5h30m
-const MARKET_OPEN_MIN  = 9  * 60 + 15;  // 09:15
-const MARKET_CLOSE_MIN = 15 * 60 + 30;  // 15:30
+const MARKET_OPEN_MIN = 9 * 60 + 15; // 09:15
+const MARKET_CLOSE_MIN = 15 * 60 + 30; // 15:30
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function nowIST() {
   const now = new Date();
-  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+  const istMs = now.getTime() + 5.5 * 60 * 60 * 1000;
   return new Date(istMs);
 }
 
@@ -92,7 +92,7 @@ function isMarketHours() {
 
 function istTimeStr() {
   const t = nowIST();
-  return `${String(t.getUTCHours()).padStart(2,'0')}:${String(t.getUTCMinutes()).padStart(2,'0')}:${String(t.getUTCSeconds()).padStart(2,'0')}`;
+  return `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:${String(t.getUTCSeconds()).padStart(2, '0')}`;
 }
 
 function log(msg) {
@@ -159,7 +159,14 @@ function loadConfig() {
 // ---------------------------------------------------------------------------
 // State persistence
 // ---------------------------------------------------------------------------
-let state = { CE: 'closed', PE: 'closed', lastATM: null, lastInstrument: null, lastITMDepth: null, seenHistoryKeys: [] };
+let state = {
+  CE: 'closed',
+  PE: 'closed',
+  lastATM: null,
+  lastInstrument: null,
+  lastITMDepth: null,
+  seenHistoryKeys: [],
+};
 let itmOverride = null; // set by --itm CLI flag (highest priority)
 
 function loadState() {
@@ -168,13 +175,17 @@ function loadState() {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       state = { ...state, ...saved };
     }
-  } catch (_e) { /* ignore missing/corrupt state file */ }
+  } catch (_e) {
+    /* ignore missing/corrupt state file */
+  }
 }
 
 function saveState() {
   try {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +300,7 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
   log(`  Switching chart to ${symbol}`);
   await cdpChart.handle('chart_set_symbol', { symbol: `NSE:${symbol}` });
   // Wait for TradingView to settle after chart switch before interacting with alerts panel
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise((r) => setTimeout(r, 3000));
 
   for (const [role, name] of Object.entries(alertDefs)) {
     log(`  Updating ${side} ${role}: "${name}" → ${symbol}`);
@@ -297,12 +308,17 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         log(`  Retrying ${name} (attempt 2)...`);
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 2000));
       }
       try {
         const r = await cdpAlerts.handle('alert_update_symbol', { alertName: name, symbol });
         if (r?.isError) {
-          lastResult = { name, symbol, success: false, error: r?.content?.[0]?.text || 'unknown error' };
+          lastResult = {
+            name,
+            symbol,
+            success: false,
+            error: r?.content?.[0]?.text || 'unknown error',
+          };
         } else {
           const data = JSON.parse(r?.content?.[0]?.text || '{}');
           lastResult = { name, symbol, success: data.success, message: data.message };
@@ -319,7 +335,7 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
     }
     results.push(lastResult);
     // Gap between edit dialogs — allow TV to settle after save animation
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 1500));
   }
   return results;
 }
@@ -373,10 +389,10 @@ async function main() {
   // Parse CLI overrides: node monitor.js --ce open --pe closed --itm 1
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length - 1; i++) {
-    if (argv[i] === '--ce')  state.CE = argv[i+1] === 'open' ? 'open' : 'closed';
-    if (argv[i] === '--pe')  state.PE = argv[i+1] === 'open' ? 'open' : 'closed';
+    if (argv[i] === '--ce') state.CE = argv[i + 1] === 'open' ? 'open' : 'closed';
+    if (argv[i] === '--pe') state.PE = argv[i + 1] === 'open' ? 'open' : 'closed';
     if (argv[i] === '--itm') {
-      const v = parseInt(argv[i+1], 10);
+      const v = parseInt(argv[i + 1], 10);
       itmOverride = [0, 1, 2].includes(v) ? v : null; // 0=ATM, 1=ITM-1, 2=ITM-2
     }
   }
@@ -386,18 +402,31 @@ async function main() {
   const todayInstr = INSTRUMENTS[DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY'];
   console.log('\n=== Intraday Alert Monitor (NIFTY / SENSEX) ===');
   console.log(`Today's instrument : ${todayInstr.name}  (spot: ${todayInstr.spotSymbol})`);
-  console.log(`Strike step        : ${todayInstr.strikeInterval}  |  ITM depth : ${todayInstr.itmDepth}  |  Poll : ${POLL_MS/1000}s`);
+  console.log(
+    `Strike step        : ${todayInstr.strikeInterval}  |  ITM depth : ${todayInstr.itmDepth}  |  Poll : ${POLL_MS / 1000}s`
+  );
   console.log(`CE alerts          : ${CE_ALERTS.entry} / ${CE_ALERTS.exit}`);
   console.log(`PE alerts          : ${PE_ALERTS.entry} / ${PE_ALERTS.exit}`);
   console.log(`Position state     : CE=${state.CE.toUpperCase()}  PE=${state.PE.toUpperCase()}`);
   const startConfig = loadConfig();
-  const startConfigItm = [0, 1, 2].includes(startConfig.itmOverride) ? startConfig.itmOverride : null;
+  const startConfigItm = [0, 1, 2].includes(startConfig.itmOverride)
+    ? startConfig.itmOverride
+    : null;
   const startEffective = itmOverride !== null ? itmOverride : startConfigItm;
   const todayDepth = startEffective ?? calcITMDepth(nowIST().getUTCDay(), todayInstr.name);
-  const itmSource = itmOverride !== null ? '(--itm flag)' : startConfigItm !== null ? '(monitor-config.json)' : '(day-based)';
+  const itmSource =
+    itmOverride !== null
+      ? '(--itm flag)'
+      : startConfigItm !== null
+        ? '(monitor-config.json)'
+        : '(day-based)';
   console.log(`ITM depth          : ITM-${todayDepth}  ${itmSource}`);
-  console.log(`Last ATM           : ${state.lastATM || 'unknown'}  (${state.lastInstrument || 'unknown'}, ITM-${state.lastITMDepth ?? '?'})`);
-  console.log('\nKeys: [c] toggle CE position  [p] toggle PE position  [u] force update  [q] quit\n');
+  console.log(
+    `Last ATM           : ${state.lastATM || 'unknown'}  (${state.lastInstrument || 'unknown'}, ITM-${state.lastITMDepth ?? '?'})`
+  );
+  console.log(
+    '\nKeys: [c] toggle CE position  [p] toggle PE position  [u] force update  [q] quit\n'
+  );
 
   const cdp = new CDPManager();
   try {
@@ -410,7 +439,7 @@ async function main() {
   }
 
   const cdpAlerts = new AlertTools(cdp);
-  const cdpChart  = new ChartTools(cdp);
+  const cdpChart = new ChartTools(cdp);
 
   // Keyboard shortcuts
   if (process.stdin.isTTY) {
@@ -459,12 +488,14 @@ async function main() {
       const config = loadConfig();
       const configItm = [0, 1, 2].includes(config.itmOverride) ? config.itmOverride : null;
       const effectiveOverride = itmOverride !== null ? itmOverride : configItm;
-      const itmDepth    = calcITMDepth(dayOfWeek, instrName, effectiveOverride);
+      const itmDepth = calcITMDepth(dayOfWeek, instrName, effectiveOverride);
       const instrChanged = state.lastInstrument !== null && state.lastInstrument !== instrName;
-      const depthChanged = state.lastITMDepth   !== null && state.lastITMDepth   !== itmDepth;
+      const depthChanged = state.lastITMDepth !== null && state.lastITMDepth !== itmDepth;
 
-      if (instrChanged) log(`Instrument changed: ${state.lastInstrument} → ${instrName} — forcing sync`);
-      if (depthChanged) log(`ITM depth changed: ITM-${state.lastITMDepth} → ITM-${itmDepth} — forcing sync`);
+      if (instrChanged)
+        log(`Instrument changed: ${state.lastInstrument} → ${instrName} — forcing sync`);
+      if (depthChanged)
+        log(`ITM depth changed: ITM-${state.lastITMDepth} → ITM-${itmDepth} — forcing sync`);
 
       // 2. Check alert history for position changes
       const history = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
@@ -484,14 +515,16 @@ async function main() {
       const atm = calcATM(spot, cfg.strikeInterval);
       const atmShifted = state.lastATM !== null && state.lastATM !== atm;
 
-      log(`${instrName}: ${spot.toFixed(2)}  ATM: ${atm}  ITM-${itmDepth}  (prev ATM: ${state.lastATM || '?'})  CE:${state.CE.toUpperCase()}  PE:${state.PE.toUpperCase()}`);
+      log(
+        `${instrName}: ${spot.toFixed(2)}  ATM: ${atm}  ITM-${itmDepth}  (prev ATM: ${state.lastATM || '?'})  CE:${state.CE.toUpperCase()}  PE:${state.PE.toUpperCase()}`
+      );
 
       if (!atmShifted && !depthChanged && !instrChanged && !force) {
         saveState();
         return;
       }
 
-      if (atmShifted)   log(`ATM shifted: ${state.lastATM} → ${atm}`);
+      if (atmShifted) log(`ATM shifted: ${state.lastATM} → ${atm}`);
 
       const ceStrike = atm - itmDepth * cfg.strikeInterval;
       const peStrike = atm + itmDepth * cfg.strikeInterval;
@@ -516,7 +549,6 @@ async function main() {
       state.lastInstrument = instrName;
       state.lastITMDepth = itmDepth;
       saveState();
-
     } catch (e) {
       log(`[ERROR] ${e.message}`);
     }
@@ -532,5 +564,8 @@ async function main() {
 
 // Only auto-run when invoked directly, not when imported for tests
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch(e => { console.error(e); process.exit(1); });
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 }

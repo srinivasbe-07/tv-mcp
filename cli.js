@@ -33,9 +33,15 @@ if (!toolName || toolName === '--help' || toolName === '-h') {
   console.log('Usage: node cli.js <tool-name> [--key value ...]');
   console.log('');
   console.log('Tools:');
-  console.log('  Chart:   chart_get_state, quote_get, data_get_ohlcv, chart_set_symbol, chart_set_timeframe, chart_add_comparison');
-  console.log('  Pine:    pine_get_source, pine_set_source, pine_smart_compile, pine_get_errors, pine_save');
-  console.log('  Alerts:  alert_create, alert_list, alert_delete, alert_update_symbol, alert_get_history');
+  console.log(
+    '  Chart:   chart_get_state, quote_get, data_get_ohlcv, chart_set_symbol, chart_set_timeframe, chart_add_comparison'
+  );
+  console.log(
+    '  Pine:    pine_get_source, pine_set_source, pine_smart_compile, pine_get_errors, pine_save'
+  );
+  console.log(
+    '  Alerts:  alert_create, alert_list, alert_delete, alert_update_symbol, alert_get_history'
+  );
   console.log('  Utility: tv_health_check, tv_launch, capture_screenshot');
   console.log('');
   console.log('Examples:');
@@ -51,7 +57,10 @@ function parseArgs(argv) {
     if (argv[i].startsWith('--')) {
       const key = argv[i].slice(2);
       const raw = argv[i + 1];
-      if (!raw || raw.startsWith('--')) { args[key] = true; continue; }
+      if (!raw || raw.startsWith('--')) {
+        args[key] = true;
+        continue;
+      }
       if (raw === 'true') args[key] = true;
       else if (raw === 'false') args[key] = false;
       else if (raw !== '' && !isNaN(raw)) args[key] = Number(raw);
@@ -74,13 +83,25 @@ const alerts = new AlertTools(cdp);
 const utility = new UtilityTools(cdp);
 
 const ROUTE = {
-  chart_get_state: chart, quote_get: chart, data_get_ohlcv: chart,
-  chart_set_symbol: chart, chart_set_timeframe: chart, chart_add_comparison: chart,
-  pine_get_source: pine, pine_set_source: pine, pine_smart_compile: pine,
-  pine_get_errors: pine, pine_save: pine,
-  alert_create: alerts, alert_list: alerts, alert_delete: alerts,
-  alert_update_symbol: alerts, alert_get_history: alerts,
-  tv_health_check: utility, tv_launch: utility, capture_screenshot: utility,
+  chart_get_state: chart,
+  quote_get: chart,
+  data_get_ohlcv: chart,
+  chart_set_symbol: chart,
+  chart_set_timeframe: chart,
+  chart_add_comparison: chart,
+  pine_get_source: pine,
+  pine_set_source: pine,
+  pine_smart_compile: pine,
+  pine_get_errors: pine,
+  pine_save: pine,
+  alert_create: alerts,
+  alert_list: alerts,
+  alert_delete: alerts,
+  alert_update_symbol: alerts,
+  alert_get_history: alerts,
+  tv_health_check: utility,
+  tv_launch: utility,
+  capture_screenshot: utility,
 };
 
 const handler = ROUTE[toolName];
@@ -132,4 +153,7 @@ async function main() {
   await cdp.disconnect();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
