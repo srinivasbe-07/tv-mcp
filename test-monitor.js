@@ -196,6 +196,28 @@ test('Tue (2) = 1', () => NIFTY_ITM_BY_DAY[2] === 1);
 test('Fri (5) = 2', () => NIFTY_ITM_BY_DAY[5] === 2);
 
 // ---------------------------------------------------------------------------
+// monitor-config.json override priority
+// Mirrors the inline logic in tick():
+//   configItm = [0,1,2].includes(config.itmOverride) ? config.itmOverride : null
+//   effectiveOverride = cliOverride !== null ? cliOverride : configItm
+// ---------------------------------------------------------------------------
+function resolveOverride(cliOverride, configOverride) {
+  const configItm = [0, 1, 2].includes(configOverride) ? configOverride : null;
+  return cliOverride !== null ? cliOverride : configItm;
+}
+
+section('config-file override priority');
+test('config=1, no CLI → ITM-1 on Mon NIFTY',     () => calcITMDepth(1, 'NIFTY',  resolveOverride(null, 1)) === 1);
+test('config=2, no CLI → ITM-2 on Mon NIFTY',     () => calcITMDepth(1, 'NIFTY',  resolveOverride(null, 2)) === 2);
+test('config=0 (ATM), no CLI → 0 on Fri NIFTY',   () => calcITMDepth(5, 'NIFTY',  resolveOverride(null, 0)) === 0);
+test('CLI=2 beats config=0',                       () => calcITMDepth(1, 'NIFTY',  resolveOverride(2,    0)) === 2);
+test('CLI=1 beats config=2',                       () => calcITMDepth(5, 'NIFTY',  resolveOverride(1,    2)) === 1);
+test('config=null → falls through to day rule',    () => calcITMDepth(1, 'NIFTY',  resolveOverride(null, null)) === 1);
+test('config=undefined → falls through to day rule', () => calcITMDepth(1, 'NIFTY', resolveOverride(null, undefined)) === 1);
+test('config=99 (invalid) → falls through to day rule', () => calcITMDepth(1, 'NIFTY', resolveOverride(null, 99)) === 1);
+test('config=1 on SENSEX → ITM-1 override',        () => calcITMDepth(3, 'SENSEX', resolveOverride(null, 1)) === 1);
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 const total = pass + fail;
