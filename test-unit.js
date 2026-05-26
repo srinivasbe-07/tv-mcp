@@ -155,7 +155,7 @@ console.log('\ngetExpiryDateFrom (holiday handling):');
 
 // Tuesday Apr 14 2026 is a holiday (Dr. Ambedkar Jayanti) — should use Monday Apr 13
 const monApr13  = new Date(Date.UTC(2026, 3, 13)); // Mon Apr 13
-const tueApr14  = new Date(Date.UTC(2026, 3, 14)); // Tue Apr 14 — HOLIDAY
+const _tueApr14  = new Date(Date.UTC(2026, 3, 14)); // Tue Apr 14 — HOLIDAY (unused, kept for context)
 const holidays  = new Set(['2026-04-14']);
 
 const fromMonHoliday = getExpiryDateFrom(monApr13, holidays);

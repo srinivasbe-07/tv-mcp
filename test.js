@@ -221,7 +221,7 @@ async function main() {
     const state = parse(await chart.handle('chart_get_state', {}));
     if (state?.symbol) originalSymbol = state.symbol;
     if (state?.timeframe) originalTf = state.timeframe;
-  } catch {}
+  } catch (_e) { /* ignore — chart state unavailable */ }
 
   const suiteStart = Date.now();
   const counts = { PASS: 0, SOFT: 0, FAIL: 0, ERROR: 0 };
@@ -246,13 +246,12 @@ async function main() {
   try {
     await chart.handle('chart_set_symbol', { symbol: originalSymbol });
     await chart.handle('chart_set_timeframe', { timeframe: originalTf });
-  } catch {}
+  } catch (_e) { /* ignore restore errors */ }
 
   await cdp.disconnect();
 
   // Summary
   const totalMs = Date.now() - suiteStart;
-  const passing = counts.PASS + counts.SOFT;
   const failing = counts.FAIL + counts.ERROR;
 
   console.log('\n' + '─'.repeat(55));

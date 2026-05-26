@@ -165,7 +165,7 @@ export class CDPManager {
         if (exists) {
           return true;
         }
-      } catch (error) {
+      } catch (_error) {
         // Ignore errors and retry
       }
 
@@ -192,7 +192,7 @@ export class CDPManager {
   /**
    * Take a screenshot
    */
-  async takeScreenshot(region = 'chart') {
+  async takeScreenshot(_region = 'chart') {
     if (!this.client) {
       throw new Error('CDP not connected');
     }

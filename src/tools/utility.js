@@ -129,7 +129,7 @@ export class UtilityTools {
           );
           const loc = stdout.trim();
           if (loc) tvExe = `${loc}\\TradingView.exe`;
-        } catch {}
+        } catch (_e) { /* ignore: MSIX package not installed */ }
 
         // Option B: non-MSIX .exe installer
         if (!tvExe) {
@@ -140,7 +140,7 @@ export class UtilityTools {
         try {
           await execAsync('taskkill /IM TradingView.exe /F', { timeout: 3000 });
           await new Promise((r) => setTimeout(r, 2000));
-        } catch {} // fine if nothing was running
+        } catch (_e) { /* fine if nothing was running */ }
 
         spawn(tvExe, [`--remote-debugging-port=${port}`], {
           detached: true,
@@ -151,14 +151,14 @@ export class UtilityTools {
         try {
           await execAsync('pkill -f TradingView', { timeout: 3000 });
           await new Promise((r) => setTimeout(r, 2000));
-        } catch {}
+        } catch (_e) { /* fine if nothing was running */ }
         spawn(tvExe, [`--remote-debugging-port=${port}`], { detached: true, stdio: 'ignore' }).unref();
       } else if (platform === 'linux') {
         tvExe = '/opt/TradingView/tradingview';
         try {
           await execAsync('pkill -f tradingview', { timeout: 3000 });
           await new Promise((r) => setTimeout(r, 2000));
-        } catch {}
+        } catch (_e) { /* fine if nothing was running */ }
         spawn(tvExe, [`--remote-debugging-port=${port}`], { detached: true, stdio: 'ignore' }).unref();
       } else {
         return this.error(`Unsupported platform: ${platform}`);

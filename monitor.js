@@ -168,13 +168,13 @@ function loadState() {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       state = { ...state, ...saved };
     }
-  } catch {}
+  } catch (_e) { /* ignore missing/corrupt state file */ }
 }
 
 function saveState() {
   try {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-  } catch {}
+  } catch (_e) { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
