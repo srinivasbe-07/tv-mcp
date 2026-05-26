@@ -16,6 +16,9 @@
  * Usage:  node monitor.js
  *         node monitor.js --ce open      (manual override: mark CE as open)
  *         node monitor.js --pe closed    (manual override: mark PE as closed)
+ *         node monitor.js --itm 0        (force ATM strike, overrides day rule)
+ *         node monitor.js --itm 1        (force ITM-1, overrides day rule)
+ *         node monitor.js --itm 2        (force ITM-2, overrides day rule)
  */
 
 import { CDPManager } from './src/cdp.js';
@@ -361,7 +364,10 @@ async function main() {
   for (let i = 0; i < argv.length - 1; i++) {
     if (argv[i] === '--ce')  state.CE = argv[i+1] === 'open' ? 'open' : 'closed';
     if (argv[i] === '--pe')  state.PE = argv[i+1] === 'open' ? 'open' : 'closed';
-    if (argv[i] === '--itm') itmOverride = parseInt(argv[i+1], 10) || null;
+    if (argv[i] === '--itm') {
+      const v = parseInt(argv[i+1], 10);
+      itmOverride = [0, 1, 2].includes(v) ? v : null; // 0=ATM, 1=ITM-1, 2=ITM-2
+    }
   }
 
   loadState();

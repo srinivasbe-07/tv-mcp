@@ -13,6 +13,8 @@ import {
   loadHolidays,
   DAY_INSTRUMENT,
   INSTRUMENTS,
+  NIFTY_ITM_BY_DAY,
+  calcITMDepth,
 } from './monitor.js';
 
 // ---------------------------------------------------------------------------
@@ -169,6 +171,29 @@ test('SENSEX 75450 → PE strike 75700', () => {
   const pe  = atm + cfg.itmDepth * cfg.strikeInterval; // 75700
   return pe === 75700;
 });
+
+// ---------------------------------------------------------------------------
+// calcITMDepth — day-based rule + user override
+// ---------------------------------------------------------------------------
+section('calcITMDepth — day-based (no override)');
+test('Mon (1) NIFTY → ITM-1',   () => calcITMDepth(1, 'NIFTY') === 1);
+test('Tue (2) NIFTY → ITM-1',   () => calcITMDepth(2, 'NIFTY') === 1);
+test('Fri (5) NIFTY → ITM-2',   () => calcITMDepth(5, 'NIFTY') === 2);
+test('Wed (3) SENSEX → ITM-2',  () => calcITMDepth(3, 'SENSEX') === 2);
+test('Thu (4) SENSEX → ITM-2',  () => calcITMDepth(4, 'SENSEX') === 2);
+test('SENSEX ignores day rule',  () => calcITMDepth(1, 'SENSEX') === 2); // Mon SENSEX still 2
+
+section('calcITMDepth — user override takes priority');
+test('override 0 (ATM) on Mon NIFTY',  () => calcITMDepth(1, 'NIFTY',  0) === 0);
+test('override 1 on Fri NIFTY',        () => calcITMDepth(5, 'NIFTY',  1) === 1);
+test('override 2 on Mon NIFTY',        () => calcITMDepth(1, 'NIFTY',  2) === 2);
+test('override 1 on SENSEX',           () => calcITMDepth(3, 'SENSEX', 1) === 1);
+test('override null = use day rule',   () => calcITMDepth(1, 'NIFTY',  null) === 1);
+
+section('NIFTY_ITM_BY_DAY mapping');
+test('Mon (1) = 1', () => NIFTY_ITM_BY_DAY[1] === 1);
+test('Tue (2) = 1', () => NIFTY_ITM_BY_DAY[2] === 1);
+test('Fri (5) = 2', () => NIFTY_ITM_BY_DAY[5] === 2);
 
 // ---------------------------------------------------------------------------
 // Summary
