@@ -348,6 +348,55 @@ async function cleanupFiredAlerts(cdpAlerts) {
 }
 
 // ---------------------------------------------------------------------------
+// Draw horizontal lines on the chart for key levels
+// ---------------------------------------------------------------------------
+let drawnLevelIds = [];
+
+async function drawDayLevels(cdp, levelObjects) {
+  const removeScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart) return;
+        ${JSON.stringify(drawnLevelIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+      } catch(_e) {}
+    })()
+  `;
+  await cdp.executeScript(removeScript).catch(() => {});
+  drawnLevelIds = [];
+
+  const drawScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart || typeof chart.createShape !== 'function') return { error: 'Drawing API not available' };
+        const levels = ${JSON.stringify(levelObjects)};
+        const ids = [];
+        for (const { price, label, color } of levels) {
+          try {
+            const id = chart.createShape(
+              { price },
+              { shape: 'horizontal_line', lock: false,
+                overrides: { linecolor: color, linewidth: 1, linestyle: 2,
+                             showLabel: true, text: label } }
+            );
+            if (id) ids.push(id);
+          } catch(_e) {}
+        }
+        return { ids };
+      } catch(e) { return { error: e.message }; }
+    })()
+  `;
+  const result = await cdp.executeScript(drawScript).catch(() => null);
+  if (result?.ids?.length) {
+    drawnLevelIds = result.ids;
+    log(`Drew ${result.ids.length} level lines on chart`);
+  } else {
+    log(`Level lines: ${result?.error || 'drawing API not available'}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
 let last15mCheckAt = 0;
@@ -407,6 +456,13 @@ async function tick(cdp, cdpAlerts) {
       cachedDayLevels = completed.flatMap((b) => [b.high, b.low]);
       lastDayLevelDate = todayStr;
       log(`Day levels (last 3 days): ${cachedDayLevels.map((l) => l.toFixed(0)).join(', ')}`);
+
+      // Draw horizontal lines on chart — D-1 is yesterday, D-2 two days ago, D-3 three days ago
+      const levelObjects = completed.flatMap((b, i) => [
+        { price: b.high, label: `D-${3 - i} H`, color: '#FF4444' },
+        { price: b.low, label: `D-${3 - i} L`, color: '#22BB44' },
+      ]);
+      await drawDayLevels(cdp, levelObjects);
     }
 
     const allLevels = [...cachedDayLevels, ...(cfg.importantLevels || [])];
