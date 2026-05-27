@@ -476,7 +476,7 @@ async function tick(cdp, cdpAlerts) {
       const curr = bars1m[bars1m.length - 2]; // last completed candle
       const prev = bars1m[bars1m.length - 3];
 
-      // ── Zone break: every tick — re-pauses immediately if zone still broken
+      // ── Zone break: 1-min close below/above zone → pause, user must re-enable
       const zoneBroken = cfg.bias === 'up' ? curr.close < zone.bottom : curr.close > zone.top;
 
       if (zoneBroken) {
