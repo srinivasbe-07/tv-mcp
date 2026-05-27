@@ -32,6 +32,13 @@ export class CDPManager {
       this.connected = true;
       this.retryCount = 0;
 
+      // Mark disconnected if the WebSocket drops unexpectedly
+      this.client.on('disconnect', () => {
+        this.connected = false;
+        this.client = null;
+        console.error('[CDP] Connection lost');
+      });
+
       console.error(`[CDP] Connected to Chrome DevTools Protocol on port ${this.port}`);
     } catch (error) {
       console.error(`[CDP] Connection failed: ${error.message}`);

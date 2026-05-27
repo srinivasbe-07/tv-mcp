@@ -21,6 +21,7 @@
  *         node monitor.js --itm 2        (force ITM-2, overrides day rule)
  */
 
+import CDP from 'chrome-remote-interface';
 import { CDPManager } from '../src/cdp.js';
 import { AlertTools } from '../src/tools/alerts.js';
 import { ChartTools } from '../src/tools/chart.js';
@@ -33,6 +34,13 @@ import readline from 'readline';
 // ---------------------------------------------------------------------------
 const POLL_MS = 60_000;
 const STATE_FILE = './config/position.json';
+const LOG_FILE = './logs/monitor.log';
+
+// ---------------------------------------------------------------------------
+// Logging — writes to console + log file
+// ---------------------------------------------------------------------------
+fs.mkdirSync('./logs', { recursive: true });
+const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
 
 const CE_ALERTS = { entry: 'supertrendLongEntry', exit: 'supertrendLongExit' };
 const PE_ALERTS = { entry: 'supertrendshortEntry', exit: 'supertrendShortExit' };
@@ -96,7 +104,9 @@ function istTimeStr() {
 }
 
 function log(msg) {
-  console.log(`[${istTimeStr()}] ${msg}`);
+  const line = `[${istTimeStr()}] ${msg}`;
+  console.log(line);
+  logStream.write(line + '\n');
 }
 
 export function calcATM(spot, strikeInterval) {
@@ -167,7 +177,11 @@ let state = {
   lastITMDepth: null,
   seenHistoryKeys: [],
 };
-let itmOverride = null; // set by --itm CLI flag (highest priority)
+let itmOverride = null;  // set by --itm CLI flag (highest priority)
+let pendingATM = null;   // ATM seen last tick — confirmed only if seen twice in a row
+
+// Minimum valid spot price per instrument (rejects background tab garbage reads)
+const MIN_SPOT = { NIFTY: 15000, SENSEX: 50000 };
 
 function loadState() {
   try {
@@ -189,10 +203,57 @@ function saveState() {
 }
 
 // ---------------------------------------------------------------------------
+// Background tab — used for price reads so the main chart is never touched
+// ---------------------------------------------------------------------------
+async function openBackgroundTab(port = 9222, timeoutMs = 90_000) {
+  try {
+    // Find the main TradingView chart URL
+    const targets = await CDP.List({ port });
+    const chartTarget = targets.find((t) => t.url && t.url.includes('tradingview'));
+    if (!chartTarget) throw new Error('No TradingView chart target found');
+
+    // Open a new tab with the same URL
+    const newTarget = await CDP.New({ port, url: chartTarget.url });
+    const client = await CDP({ target: newTarget.id, port });
+    await Promise.all([client.Page.enable(), client.Runtime.enable()]);
+
+    // Wait for TradingViewApi to be ready
+    log(`Background tab: waiting for TradingView to load (up to ${timeoutMs / 1000}s)...`);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const r = await client.Runtime.evaluate({
+        expression: 'typeof window.TradingViewApi !== "undefined"',
+        returnByValue: true,
+      }).catch(() => ({ result: { value: false } }));
+      if (r?.result?.value === true) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    log('Background tab ready — main chart will not be disturbed for price reads');
+
+    return {
+      executeScript: async (expression) => {
+        const result = await client.Runtime.evaluate({
+          expression,
+          returnByValue: true,
+          awaitPromise: true,
+        });
+        if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+        return result.result.value;
+      },
+      close: () => client.close().catch(() => {}),
+    };
+  } catch (e) {
+    log(`Background tab unavailable (${e.message}) — price reads will use main chart`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CDP scripts
 // ---------------------------------------------------------------------------
-// Gets spot price by briefly switching chart to the given symbol, reading price, then restoring.
-// Takes ~3s but is reliable regardless of watchlist/layout state.
+// Gets spot price using background tab (no main chart disturbance) or falls
+// back to switching the main chart if background tab is unavailable.
 async function getSpot(cdp, spotSymbol) {
   const script = `
     (async function() {
@@ -297,28 +358,23 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
 
   // Switch chart to the target symbol so it appears as $ChartMainSeries$ in the alert dropdown.
   // The dropdown only shows: alert's current symbol + chart's current main symbol.
-  log(`  Switching chart to ${symbol}`);
-  await cdpChart.handle('chart_set_symbol', { symbol: `NSE:${symbol}` });
+  const exchange = cfg.spotSymbol.split(':')[0]; // 'NSE' for NIFTY, 'BSE' for SENSEX
+  const qualifiedSymbol = `${exchange}:${symbol}`;
+  log(`  Switching chart to ${qualifiedSymbol}`);
+  await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
   // Wait for TradingView to settle after chart switch before interacting with alerts panel
   await new Promise((r) => setTimeout(r, 3000));
 
   for (const [role, name] of Object.entries(alertDefs)) {
-    log(`  Updating ${side} ${role}: "${name}" → ${symbol}`);
     let lastResult = null;
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (attempt > 0) {
-        log(`  Retrying ${name} (attempt 2)...`);
-        await new Promise((r) => setTimeout(r, 2000));
-      }
+      const attemptLabel = attempt === 0 ? '' : ' [retry]';
+      log(`  [${side}:${role}]${attemptLabel} "${name}" → ${symbol}`);
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
       try {
         const r = await cdpAlerts.handle('alert_update_symbol', { alertName: name, symbol });
         if (r?.isError) {
-          lastResult = {
-            name,
-            symbol,
-            success: false,
-            error: r?.content?.[0]?.text || 'unknown error',
-          };
+          lastResult = { name, symbol, success: false, error: r?.content?.[0]?.text || 'unknown error' };
         } else {
           const data = JSON.parse(r?.content?.[0]?.text || '{}');
           lastResult = { name, symbol, success: data.success, message: data.message };
@@ -326,12 +382,13 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
       } catch (e) {
         lastResult = { name, symbol, success: false, error: e.message };
       }
+      const detail = lastResult?.message || lastResult?.error || '';
+      if (lastResult?.success) {
+        log(`  [OK]   "${name}" updated to ${symbol}${detail ? ' — ' + detail : ''}`);
+      } else {
+        log(`  [FAIL] "${name}" not updated${detail ? ' — ' + detail : ''}`);
+      }
       if (lastResult?.success) break;
-    }
-    if (lastResult?.success) {
-      log(`  [OK] ${name} → ${symbol}`);
-    } else {
-      log(`  [WARN] ${name}: ${lastResult?.error || lastResult?.message || 'failed'}`);
     }
     results.push(lastResult);
     // Gap between edit dialogs — allow TV to settle after save animation
@@ -340,8 +397,8 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
   return results;
 }
 
-function processHistoryForPositionChanges(historyItems) {
-  const seenSet = new Set(state.seenHistoryKeys);
+export function processHistoryForPositionChanges(historyItems, stateObj) {
+  const seenSet = new Set(stateObj.seenHistoryKeys);
   let changed = false;
 
   for (const item of historyItems) {
@@ -351,26 +408,26 @@ function processHistoryForPositionChanges(historyItems) {
 
     const name = item.name;
     if (name === CE_ALERTS.entry) {
-      if (state.CE !== 'open') {
-        state.CE = 'open';
+      if (stateObj.CE !== 'open') {
+        stateObj.CE = 'open';
         changed = true;
         log(`[POSITION] CE OPENED  (alert: ${name})`);
       }
     } else if (name === CE_ALERTS.exit) {
-      if (state.CE !== 'closed') {
-        state.CE = 'closed';
+      if (stateObj.CE !== 'closed') {
+        stateObj.CE = 'closed';
         changed = true;
         log(`[POSITION] CE CLOSED  (alert: ${name})`);
       }
     } else if (name === PE_ALERTS.entry) {
-      if (state.PE !== 'open') {
-        state.PE = 'open';
+      if (stateObj.PE !== 'open') {
+        stateObj.PE = 'open';
         changed = true;
         log(`[POSITION] PE OPENED  (alert: ${name})`);
       }
     } else if (name === PE_ALERTS.exit) {
-      if (state.PE !== 'closed') {
-        state.PE = 'closed';
+      if (stateObj.PE !== 'closed') {
+        stateObj.PE = 'closed';
         changed = true;
         log(`[POSITION] PE CLOSED  (alert: ${name})`);
       }
@@ -378,7 +435,7 @@ function processHistoryForPositionChanges(historyItems) {
   }
 
   // Keep only last 200 seen keys to avoid unbounded growth
-  state.seenHistoryKeys = [...seenSet].slice(-200);
+  stateObj.seenHistoryKeys = [...seenSet].slice(-200);
   return changed;
 }
 
@@ -428,6 +485,10 @@ async function main() {
     '\nKeys: [c] toggle CE position  [p] toggle PE position  [u] force update  [q] quit\n'
   );
 
+  // Prevent process crash on unhandled errors
+  process.on('uncaughtException', (e) => log(`[CRASH] ${e.message}`));
+  process.on('unhandledRejection', (e) => log(`[CRASH] ${e?.message || e}`));
+
   const cdp = new CDPManager();
   try {
     await cdp.connect();
@@ -441,6 +502,9 @@ async function main() {
   const cdpAlerts = new AlertTools(cdp);
   const cdpChart = new ChartTools(cdp);
 
+  // Open a background tab for price reads — keeps main chart undisturbed
+  let bgCDP = await openBackgroundTab();
+
   // Keyboard shortcuts
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
@@ -450,6 +514,7 @@ async function main() {
       if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
         log('Exiting...');
         saveState();
+        if (bgCDP) bgCDP.close();
         await cdp.disconnect();
         process.exit(0);
       }
@@ -474,6 +539,9 @@ async function main() {
 
   async function tick(cdp, cdpChart, cdpAlerts, force = false) {
     try {
+      // Fail fast if CDP dropped — jump straight to reconnect logic below
+      if (!cdp.isConnected()) throw new Error('CDP not connected');
+
       if (!isMarketHours() && !force) {
         log('Outside market hours — waiting');
         return;
@@ -500,14 +568,14 @@ async function main() {
       // 2. Check alert history for position changes
       const history = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
       if (Array.isArray(history)) {
-        processHistoryForPositionChanges(history);
+        processHistoryForPositionChanges(history, state);
       }
 
-      // 3. Get spot price (briefly switches chart to spot symbol then restores)
-      const spot = await getSpot(cdp, cfg.spotSymbol);
+      // 3. Get spot price via background tab (main chart untouched); fallback to main if needed
+      const spot = await getSpot(bgCDP || cdp, cfg.spotSymbol);
 
-      if (!spot) {
-        log(`${instrName} spot unavailable — chart may not have loaded`);
+      if (!spot || spot < (MIN_SPOT[instrName] || 10000)) {
+        log(`${instrName} spot invalid (${spot}) — ignoring tick`);
         saveState();
         return;
       }
@@ -518,6 +586,21 @@ async function main() {
       log(
         `${instrName}: ${spot.toFixed(2)}  ATM: ${atm}  ITM-${itmDepth}  (prev ATM: ${state.lastATM || '?'})  CE:${state.CE.toUpperCase()}  PE:${state.PE.toUpperCase()}`
       );
+
+      // Debounce: require ATM to hold for 2 consecutive ticks before updating alerts
+      if (atmShifted && !force) {
+        if (pendingATM === atm) {
+          log(`ATM confirmed: ${state.lastATM} → ${atm}`);
+          pendingATM = null;
+        } else {
+          log(`ATM pending confirmation: ${state.lastATM} → ${atm} (will update next tick if it holds)`);
+          pendingATM = atm;
+          saveState();
+          return;
+        }
+      } else {
+        if (!atmShifted) pendingATM = null; // price came back — cancel pending
+      }
 
       if (!atmShifted && !depthChanged && !instrChanged && !force) {
         saveState();
@@ -531,7 +614,7 @@ async function main() {
 
       // 4. Update CE alerts if no CE position
       if (state.CE === 'closed') {
-        log(`Updating CE alerts → ITM-2 strike: ${ceStrike}`);
+        log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
         await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg);
       } else {
         log(`CE position OPEN — skipping CE symbol update`);
@@ -539,7 +622,7 @@ async function main() {
 
       // 5. Update PE alerts if no PE position
       if (state.PE === 'closed') {
-        log(`Updating PE alerts → ITM-2 strike: ${peStrike}`);
+        log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
         await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg);
       } else {
         log(`PE position OPEN — skipping PE symbol update`);
@@ -551,6 +634,18 @@ async function main() {
       saveState();
     } catch (e) {
       log(`[ERROR] ${e.message}`);
+      if (!cdp.isConnected()) {
+        log('CDP disconnected — reconnecting in 5s...');
+        await new Promise((r) => setTimeout(r, 5000));
+        try {
+          await cdp.connect();
+          if (bgCDP) { bgCDP.close(); bgCDP = null; }
+          bgCDP = await openBackgroundTab(9222, 15_000);
+          log('CDP reconnected');
+        } catch (re) {
+          log(`Reconnect failed: ${re.message} — will retry next tick`);
+        }
+      }
     }
   }
 
@@ -558,8 +653,17 @@ async function main() {
   await tick(cdp, cdpChart, cdpAlerts, forceFirst);
   forceFirst = false;
 
-  // Poll loop
-  setInterval(() => tick(cdp, cdpChart, cdpAlerts, false), POLL_MS);
+  // Poll loop — skip tick if previous one is still running
+  let tickRunning = false;
+  setInterval(async () => {
+    if (tickRunning) { log('Tick skipped — previous still running'); return; }
+    tickRunning = true;
+    try {
+      await tick(cdp, cdpChart, cdpAlerts, false);
+    } finally {
+      tickRunning = false;
+    }
+  }, POLL_MS);
 }
 
 // Only auto-run when invoked directly, not when imported for tests

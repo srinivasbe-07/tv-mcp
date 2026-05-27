@@ -15,6 +15,7 @@ import {
   INSTRUMENTS,
   NIFTY_ITM_BY_DAY,
   calcITMDepth,
+  processHistoryForPositionChanges,
 } from '../monitors/monitor.js';
 
 // ---------------------------------------------------------------------------
@@ -226,6 +227,128 @@ test('config=99 (invalid) → falls through to day rule', () =>
   calcITMDepth(1, 'NIFTY', resolveOverride(null, 99)) === 1);
 test('config=1 on SENSEX → ITM-1 override', () =>
   calcITMDepth(3, 'SENSEX', resolveOverride(null, 1)) === 1);
+
+// ---------------------------------------------------------------------------
+// processHistoryForPositionChanges
+// ---------------------------------------------------------------------------
+function makeState(overrides = {}) {
+  return { CE: 'closed', PE: 'closed', seenHistoryKeys: [], ...overrides };
+}
+
+const CE_ENTRY  = 'supertrendLongEntry';
+const CE_EXIT   = 'supertrendLongExit';
+const PE_ENTRY  = 'supertrendshortEntry';
+const PE_EXIT   = 'supertrendShortExit';
+
+section('processHistoryForPositionChanges — basic transitions');
+test('CE entry → CE becomes open', () => {
+  const s = makeState();
+  processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s);
+  return s.CE === 'open';
+});
+test('CE entry → returns changed=true', () => {
+  const s = makeState();
+  return processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s) === true;
+});
+test('CE exit → CE becomes closed', () => {
+  const s = makeState({ CE: 'open' });
+  processHistoryForPositionChanges([{ name: CE_EXIT, time: '10:00' }], s);
+  return s.CE === 'closed';
+});
+test('PE entry → PE becomes open', () => {
+  const s = makeState();
+  processHistoryForPositionChanges([{ name: PE_ENTRY, time: '09:15' }], s);
+  return s.PE === 'open';
+});
+test('PE exit → PE becomes closed', () => {
+  const s = makeState({ PE: 'open' });
+  processHistoryForPositionChanges([{ name: PE_EXIT, time: '10:00' }], s);
+  return s.PE === 'closed';
+});
+
+section('processHistoryForPositionChanges — no spurious changes');
+test('empty history → changed=false', () => {
+  const s = makeState();
+  return processHistoryForPositionChanges([], s) === false;
+});
+test('unknown alert name → no state change', () => {
+  const s = makeState();
+  processHistoryForPositionChanges([{ name: 'someOtherAlert', time: '09:15' }], s);
+  return s.CE === 'closed' && s.PE === 'closed';
+});
+test('CE already open, entry again → changed=false', () => {
+  const s = makeState({ CE: 'open' });
+  return processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s) === false;
+});
+test('PE already closed, exit again → changed=false', () => {
+  const s = makeState({ PE: 'closed' });
+  return processHistoryForPositionChanges([{ name: PE_EXIT, time: '10:00' }], s) === false;
+});
+
+section('processHistoryForPositionChanges — deduplication (seenHistoryKeys)');
+test('same alert seen twice → only processed once', () => {
+  const s = makeState();
+  const item = { name: CE_ENTRY, time: '09:15' };
+  processHistoryForPositionChanges([item], s);
+  const changed2 = processHistoryForPositionChanges([item], s);
+  return s.CE === 'open' && changed2 === false;
+});
+test('same name, different time → treated as new alert', () => {
+  const s = makeState({ CE: 'open' });
+  // entry at 09:15 already seen, exit at 09:30 is new
+  s.seenHistoryKeys = [`${CE_ENTRY}|09:15`];
+  processHistoryForPositionChanges([{ name: CE_EXIT, time: '09:30' }], s);
+  return s.CE === 'closed';
+});
+test('seenHistoryKeys grows with new items', () => {
+  const s = makeState();
+  processHistoryForPositionChanges([
+    { name: CE_ENTRY, time: '09:15' },
+    { name: PE_ENTRY, time: '09:16' },
+  ], s);
+  return s.seenHistoryKeys.length === 2;
+});
+test('seenHistoryKeys trimmed to 200', () => {
+  const s = makeState();
+  // Pre-fill with 199 seen keys
+  s.seenHistoryKeys = Array.from({ length: 199 }, (_, i) => `alert|${i}`);
+  processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s);
+  return s.seenHistoryKeys.length === 200;
+});
+test('seenHistoryKeys capped at 200 even with 201 items', () => {
+  const s = makeState();
+  s.seenHistoryKeys = Array.from({ length: 200 }, (_, i) => `alert|${i}`);
+  processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s);
+  return s.seenHistoryKeys.length === 200;
+});
+
+section('processHistoryForPositionChanges — CE/PE independence');
+test('CE change does not affect PE', () => {
+  const s = makeState({ PE: 'open' });
+  processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s);
+  return s.PE === 'open';
+});
+test('PE change does not affect CE', () => {
+  const s = makeState({ CE: 'open' });
+  processHistoryForPositionChanges([{ name: PE_EXIT, time: '10:00' }], s);
+  return s.CE === 'open';
+});
+test('batch: CE entry + PE entry in one call', () => {
+  const s = makeState();
+  processHistoryForPositionChanges([
+    { name: CE_ENTRY, time: '09:15' },
+    { name: PE_ENTRY, time: '09:15' },
+  ], s);
+  return s.CE === 'open' && s.PE === 'open';
+});
+test('batch: full cycle CE open → close in one call', () => {
+  const s = makeState();
+  processHistoryForPositionChanges([
+    { name: CE_ENTRY, time: '09:15' },
+    { name: CE_EXIT,  time: '10:00' },
+  ], s);
+  return s.CE === 'closed';
+});
 
 // ---------------------------------------------------------------------------
 // Summary

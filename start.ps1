@@ -1,51 +1,97 @@
-# start.ps1 -- One command: launch TradingView + start the MCP server
-# Usage:  .\start.ps1               (launches TV then MCP server)
-#         .\start.ps1 -SkipTV       (MCP server only, TV already running)
-#         .\start.ps1 -Port 9223    (alternate CDP port)
+﻿# start.ps1 -- Launch TradingView with CDP, then start the monitor
+# Usage:  .\start.ps1
+#         .\start.ps1 --itm 1      (pass extra args to monitor.js)
 
 param(
-    [switch]$SkipTV,
-    [int]$Port = 9222
+    [int]$Port = 9222,
+    [int]$TimeoutSec = 120,
+    [Parameter(ValueFromRemainingArguments)]
+    [string[]]$MonitorArgs
 )
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# -- Step 1: Check if TradingView + CDP already running
+try {
+    $null = Invoke-WebRequest -Uri "http://localhost:$Port/json/version" `
+        -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
+    Write-Host "TradingView CDP already running on port $Port" -ForegroundColor Green
+} catch {
 
-# Step 1: Launch TradingView
-if (-not $SkipTV) {
-    Write-Host "=== Step 1: Launching TradingView ===" -ForegroundColor Cyan
-    & "$root\launch-tv.ps1" -Port $Port
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "TradingView launch failed. Aborting." -ForegroundColor Red
+    # -- Step 2: Find TradingView executable
+    $tvPath = $null
+
+    $candidate = "$env:LOCALAPPDATA\TradingView\TradingView.exe"
+    if (Test-Path $candidate) { $tvPath = $candidate }
+
+    if (-not $tvPath) {
+        $pkg = Get-AppxPackage -Name *TradingView* -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($pkg) {
+            $candidate = Join-Path $pkg.InstallLocation "TradingView.exe"
+            if (Test-Path $candidate) { $tvPath = $candidate }
+        }
+    }
+
+    if (-not $tvPath) {
+        Write-Host "ERROR: TradingView not found." -ForegroundColor Red
+        Write-Host "Install from https://www.tradingview.com/desktop/" -ForegroundColor Yellow
         exit 1
     }
-    Write-Host ""
-} else {
-    Write-Host "Skipping TradingView launch (-SkipTV)." -ForegroundColor DarkGray
-    try {
-        $null = Invoke-WebRequest -Uri "http://localhost:$Port/json/version" `
-            -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
-        Write-Host "CDP confirmed on port $Port." -ForegroundColor Green
-    } catch {
-        Write-Host "WARNING: CDP not responding on port $Port." -ForegroundColor Yellow
-        Write-Host "Start TradingView with:  .\launch-tv.ps1" -ForegroundColor Yellow
+
+    # Kill existing instance if it has no CDP
+    $running = Get-Process -Name TradingView -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Host "Closing existing TradingView instance (no CDP)..." -ForegroundColor Yellow
+        $running | Stop-Process -Force
+        Start-Sleep -Seconds 2
     }
-    Write-Host ""
+
+    Write-Host "Launching TradingView with --remote-debugging-port=$Port ..." -ForegroundColor Cyan
+    Start-Process -FilePath $tvPath -ArgumentList "--remote-debugging-port=$Port"
+
+    # -- Step 3: Wait for CDP
+    Write-Host "Waiting for CDP on port $Port (cold start can take up to ${TimeoutSec}s) ..." -ForegroundColor Cyan
+    $elapsed = 0
+    $ready = $false
+
+    while ($elapsed -lt $TimeoutSec) {
+        Start-Sleep -Seconds 1
+        $elapsed++
+        try {
+            $null = Invoke-WebRequest -Uri "http://localhost:$Port/json/version" `
+                -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop
+            $ready = $true
+            break
+        } catch {}
+        if ($elapsed % 10 -eq 0) {
+            Write-Host "  still waiting... ($elapsed/$TimeoutSec s)" -ForegroundColor DarkGray
+        }
+    }
+
+    if (-not $ready) {
+        Write-Host ""
+        Write-Host "Still waiting for CDP (TradingView is slow to start) ..." -ForegroundColor Yellow
+        while (-not $ready) {
+            Start-Sleep -Seconds 5
+            try {
+                $null = Invoke-WebRequest -Uri "http://localhost:$Port/json/version" `
+                    -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
+                $ready = $true
+            } catch {
+                Write-Host "  still waiting..." -ForegroundColor DarkGray
+            }
+        }
+    }
+
+    Write-Host "TradingView CDP is ready on port $Port" -ForegroundColor Green
 }
 
-# Step 2: Start MCP server
-Write-Host "=== Step 2: Starting tv-mcp MCP server ===" -ForegroundColor Cyan
-
-if (-not (Test-Path "$root\node_modules")) {
-    Write-Host "node_modules not found. Running npm install..." -ForegroundColor Yellow
-    Set-Location $root
-    npm install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "npm install failed. Run setup.ps1 first." -ForegroundColor Red
-        exit 1
-    }
+# -- Step 4: Start the monitor (auto-restarts on crash, stops cleanly on [q])
+Write-Host ""
+Write-Host "Starting monitor... (press [q] to quit)" -ForegroundColor Cyan
+while ($true) {
+    node monitors/monitor.js @MonitorArgs
+    $code = $LASTEXITCODE
+    if ($code -eq 0) { break }
     Write-Host ""
+    Write-Host "Monitor stopped (code $code) — restarting in 5s..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 5
 }
-
-Write-Host "Server starting (Ctrl+C to stop)..." -ForegroundColor Green
-Set-Location $root
-node src/server.js
