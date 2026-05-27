@@ -77,7 +77,9 @@ function loadConfig() {
 function saveConfig(cfg) {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +150,9 @@ function isInZone(candle, zone) {
 function isLiquidityGrab(curr, prev, bias) {
   if (bias === 'up') {
     // Shooting star or doji that wicks above prev high but closes below it
-    return curr.high > prev.high && curr.close < prev.high && (isShootingStar(curr) || isDoji(curr));
+    return (
+      curr.high > prev.high && curr.close < prev.high && (isShootingStar(curr) || isDoji(curr))
+    );
   } else {
     // Hammer or doji that wicks below prev low but closes above it
     return curr.low < prev.low && curr.close > prev.low && (isHammer(curr) || isDoji(curr));
@@ -246,7 +250,9 @@ async function createTradeAlerts(cdpAlerts, bias, candle, target, symbol) {
     try {
       await cdpAlerts.handle('alert_delete', { alertId: name });
       await new Promise((r) => setTimeout(r, 500));
-    } catch (_e) { /* ignore — alert may not exist */ }
+    } catch (_e) {
+      /* ignore — alert may not exist */
+    }
   }
 
   // Create Entry
@@ -292,8 +298,14 @@ async function tick(cdp, cdpAlerts) {
     }
 
     const cfg = loadConfig();
-    if (!cfg) { log(`${CONFIG_FILE} missing — skipping`); return; }
-    if (!cfg.active) { log('Paused (active: false) — edit trade-config.json to resume'); return; }
+    if (!cfg) {
+      log(`${CONFIG_FILE} missing — skipping`);
+      return;
+    }
+    if (!cfg.active) {
+      log('Paused (active: false) — edit trade-config.json to resume');
+      return;
+    }
 
     const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
     const symbol = INSTRUMENTS[instrName];
@@ -304,7 +316,9 @@ async function tick(cdp, cdpAlerts) {
       return;
     }
 
-    log(`${instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${cfg.target}`);
+    log(
+      `${instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${cfg.target}`
+    );
 
     // ── 1-min pattern check ────────────────────────────────────────────────
     const bars1m = await fetchBars(cdp, symbol, '1', 5);
@@ -319,15 +333,17 @@ async function tick(cdp, cdpAlerts) {
         log(`1-min candle H:${curr.high} L:${curr.low} — outside zone`);
       } else {
         const pattern =
-          cfg.bias === 'up'
-            ? detectBullishPattern(curr, prev)
-            : detectBearishPattern(curr, prev);
+          cfg.bias === 'up' ? detectBullishPattern(curr, prev) : detectBearishPattern(curr, prev);
 
         if (pattern) {
-          log(`[SIGNAL] ${pattern} in zone! O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`);
+          log(
+            `[SIGNAL] ${pattern} in zone! O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`
+          );
           await createTradeAlerts(cdpAlerts, cfg.bias, curr, cfg.target, symbol);
         } else {
-          log(`Candle in zone — no pattern yet (O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`);
+          log(
+            `Candle in zone — no pattern yet (O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`
+          );
         }
       }
     }
@@ -344,7 +360,9 @@ async function tick(cdp, cdpAlerts) {
 
         if (prev15 && isLiquidityGrab(curr15, prev15, cfg.bias)) {
           const newBias = cfg.bias === 'up' ? 'down' : 'up';
-          log(`[FLIP] Liquidity grab on 15-min → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`);
+          log(
+            `[FLIP] Liquidity grab on 15-min → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
+          );
           cfg.bias = newBias;
           saveConfig(cfg);
         } else {
@@ -374,7 +392,8 @@ async function main() {
   console.log(`Sell Zone : ${cfg.sellZone?.bottom} – ${cfg.sellZone?.top}`);
   console.log(`Target    : ${cfg.target}`);
   console.log(`Active    : ${cfg.active}`);
-  if (!cfg.active) console.log('  ⚠  Monitor is PAUSED — set "active": true in trade-config.json when ready');
+  if (!cfg.active)
+    console.log('  ⚠  Monitor is PAUSED — set "active": true in trade-config.json when ready');
   console.log('\nKeys: [a] toggle active  [f] manual flip bias  [q] quit\n');
 
   const cdp = new CDPManager();
@@ -400,7 +419,11 @@ async function main() {
       }
       if (key.name === 'a') {
         const c = loadConfig();
-        if (c) { c.active = !c.active; saveConfig(c); log(`Monitor ${c.active ? 'ACTIVE' : 'PAUSED'}`); }
+        if (c) {
+          c.active = !c.active;
+          saveConfig(c);
+          log(`Monitor ${c.active ? 'ACTIVE' : 'PAUSED'}`);
+        }
       }
       if (key.name === 'f') {
         const c = loadConfig();
@@ -418,5 +441,8 @@ async function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((e) => { console.error(e); process.exit(1); });
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 }
