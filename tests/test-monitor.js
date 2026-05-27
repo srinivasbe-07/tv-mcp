@@ -15,7 +15,7 @@ import {
   INSTRUMENTS,
   NIFTY_ITM_BY_DAY,
   calcITMDepth,
-} from './monitor.js';
+} from '../monitors/monitor.js';
 
 // ---------------------------------------------------------------------------
 // Minimal test runner

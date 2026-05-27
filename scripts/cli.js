@@ -18,11 +18,11 @@
  *   node cli.js tv_health_check
  */
 
-import { CDPManager } from './src/cdp.js';
-import { ChartTools } from './src/tools/chart.js';
-import { PineTools } from './src/tools/pine.js';
-import { AlertTools } from './src/tools/alerts.js';
-import { UtilityTools } from './src/tools/utility.js';
+import { CDPManager } from '../src/cdp.js';
+import { ChartTools } from '../src/tools/chart.js';
+import { PineTools } from '../src/tools/pine.js';
+import { AlertTools } from '../src/tools/alerts.js';
+import { UtilityTools } from '../src/tools/utility.js';
 
 // ---------------------------------------------------------------------------
 // Arg parsing

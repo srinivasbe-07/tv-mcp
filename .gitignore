@@ -8,5 +8,5 @@ test-results.json
 position.json
 run-screenshot.js
 run-sensex-update.js
-monitor-config.json
-trade-config.json
+config/monitor-config.json
+config/trade-config.json

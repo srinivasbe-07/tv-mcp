@@ -21,9 +21,9 @@
  *         node monitor.js --itm 2        (force ITM-2, overrides day rule)
  */
 
-import { CDPManager } from './src/cdp.js';
-import { AlertTools } from './src/tools/alerts.js';
-import { ChartTools } from './src/tools/chart.js';
+import { CDPManager } from '../src/cdp.js';
+import { AlertTools } from '../src/tools/alerts.js';
+import { ChartTools } from '../src/tools/chart.js';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import readline from 'readline';
@@ -106,7 +106,7 @@ export function calcATM(spot, strikeInterval) {
 // Load NSE holidays from holidays.json — returns a Set of 'YYYY-MM-DD' strings
 export function loadHolidays() {
   try {
-    const raw = JSON.parse(fs.readFileSync('./holidays.json', 'utf8'));
+    const raw = JSON.parse(fs.readFileSync('./config/holidays.json', 'utf8'));
     return new Set(raw.holidays || []);
   } catch {
     return new Set();
@@ -150,7 +150,7 @@ export function buildSymbol(cfg, strike, type) {
 // ---------------------------------------------------------------------------
 function loadConfig() {
   try {
-    return JSON.parse(fs.readFileSync('./monitor-config.json', 'utf8'));
+    return JSON.parse(fs.readFileSync('./config/monitor-config.json', 'utf8'));
   } catch {
     return {};
   }

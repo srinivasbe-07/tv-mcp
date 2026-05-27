@@ -2,11 +2,11 @@
 /**
  * Live demo: runs each tool one by one with pauses so you can watch the UI.
  */
-import { CDPManager } from './src/cdp.js';
-import { ChartTools } from './src/tools/chart.js';
-import { AlertTools } from './src/tools/alerts.js';
-import { PineTools } from './src/tools/pine.js';
-import { UtilityTools } from './src/tools/utility.js';
+import { CDPManager } from '../src/cdp.js';
+import { ChartTools } from '../src/tools/chart.js';
+import { AlertTools } from '../src/tools/alerts.js';
+import { PineTools } from '../src/tools/pine.js';
+import { UtilityTools } from '../src/tools/utility.js';
 
 const cdp = new CDPManager();
 const chart = new ChartTools(cdp);

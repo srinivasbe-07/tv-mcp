@@ -60,4 +60,4 @@ if ($Itm -ne '') { $monitorArgs = @('--itm', $Itm) }
 Write-Host "Keys: [c] toggle CE  [p] toggle PE  [u] force update  [q] quit" -ForegroundColor DarkGray
 Write-Host ""
 
-node monitor.js @monitorArgs
+node monitors/monitor.js @monitorArgs

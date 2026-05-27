@@ -21,13 +21,13 @@
  * Keys:   [a] toggle active  [f] manual flip bias  [q] quit
  */
 
-import { CDPManager } from './src/cdp.js';
-import { AlertTools } from './src/tools/alerts.js';
+import { CDPManager } from '../src/cdp.js';
+import { AlertTools } from '../src/tools/alerts.js';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import readline from 'readline';
 
-const CONFIG_FILE = './trade-config.json';
+const CONFIG_FILE = './config/trade-config.json';
 const POLL_MS = 60_000;
 const MARKET_OPEN_MIN = 9 * 60 + 15;
 const MARKET_CLOSE_MIN = 15 * 60 + 30;
