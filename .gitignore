@@ -5,6 +5,7 @@ test-results.json
 .env
 .DS_Store
 *.png
+position.json
 config/position.json
 run-screenshot.js
 run-sensex-update.js
