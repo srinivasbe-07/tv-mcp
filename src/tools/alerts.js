@@ -17,8 +17,9 @@ export class AlertTools {
             },
             condition: {
               type: 'string',
-              enum: ['above', 'below', 'crosses'],
-              description: 'Alert condition',
+              enum: ['above', 'below', 'crosses', 'crosses_up', 'crosses_down'],
+              description:
+                'Alert condition — crosses_up: crossing up, crosses_down: crossing down, above: greater than, below: less than',
             },
             level: {
               type: 'number',
@@ -27,6 +28,19 @@ export class AlertTools {
             name: {
               type: 'string',
               description: 'Name for the alert',
+            },
+            message: {
+              type: 'string',
+              description: 'Alert notification message (also sent as webhook body)',
+            },
+            webhook: {
+              type: 'string',
+              description: 'Webhook URL to call when alert fires',
+            },
+            once: {
+              type: 'boolean',
+              description:
+                'If true, alert fires only once then stops (default: false = every time)',
             },
           },
           required: ['symbol', 'condition', 'level'],
@@ -102,7 +116,7 @@ export class AlertTools {
 
   async create(args) {
     try {
-      const { symbol, condition, level, name } = args;
+      const { symbol, condition, level, name, message, webhook, once } = args;
 
       if (!symbol || !condition || level === undefined) {
         return this.error('Symbol, condition, and level are required');
@@ -110,6 +124,9 @@ export class AlertTools {
 
       const alertId = `alert_${Date.now()}`;
       const alertName = name || `${symbol} ${condition} ${level}`;
+      const alertMessage = message || '';
+      const webhookUrl = webhook || '';
+      const fireOnce = once === true;
 
       const script = `
         (async function() {
@@ -121,14 +138,56 @@ export class AlertTools {
               await new Promise(r => setTimeout(r, 900));
             }
 
-            // Step 2: Open Create Alert dialog (opens directly to conditions form using current chart symbol)
+            // Step 2: Open Create Alert dialog
             const createBtn = document.querySelector('[data-name="set-alert-button"]');
             if (!createBtn) return { success: false, message: 'Create Alert button not found' };
 
             createBtn.click();
             await new Promise(r => setTimeout(r, 1000));
 
-            // Step 3: Set price level using React native setter to trigger state update
+            // Step 3: Set condition type (Crossing Up / Crossing Down / Greater Than / Less Than)
+            const condMap = {
+              crosses_up:   'Crossing Up',
+              crosses_down: 'Crossing Down',
+              crosses:      'Crossing',
+              above:        'Greater Than',
+              below:        'Less Than',
+            };
+            const condLabel = condMap['${condition}'];
+            if (condLabel) {
+              // Find the condition dropdown button (shows current condition text, e.g. "Greater Than")
+              const condBtn = Array.from(document.querySelectorAll('button, [class*="select-"]')).find(el => {
+                const txt = el.textContent?.trim();
+                return txt === 'Greater Than' || txt === 'Less Than' ||
+                       txt === 'Crossing' || txt === 'Crossing Up' || txt === 'Crossing Down';
+              });
+              if (condBtn && condBtn.textContent?.trim() !== condLabel) {
+                condBtn.click();
+                await new Promise(r => setTimeout(r, 400));
+                const option = Array.from(document.querySelectorAll('[class*="item-"], [role="option"], li'))
+                  .find(el => el.textContent?.trim() === condLabel);
+                if (option) {
+                  option.click();
+                  await new Promise(r => setTimeout(r, 300));
+                }
+              }
+            }
+
+            // Step 4: Set "Only Once" frequency if requested
+            if (${fireOnce}) {
+              const onceBtn = Array.from(
+                document.querySelectorAll('button, [class*="button-"], [role="radio"], [class*="item-"]')
+              ).find(el => {
+                const txt = el.textContent?.trim();
+                return txt === 'Only Once' || txt === 'Once' || txt === 'Only once';
+              });
+              if (onceBtn) {
+                onceBtn.click();
+                await new Promise(r => setTimeout(r, 200));
+              }
+            }
+
+            // Step 5: Set price level
             const priceInput = document.querySelector('input.input-gr1VjUfr');
             if (!priceInput) return { success: false, message: 'Conditions form did not open after symbol selection' };
 
@@ -139,9 +198,70 @@ export class AlertTools {
             priceInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
             await new Promise(r => setTimeout(r, 400));
             priceInput.dispatchEvent(new Event('blur', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 600));
+            await new Promise(r => setTimeout(r, 400));
 
-            // Step 4: Click the Create button in the footer
+            // Step 6: Set alert name
+            const nameInput = Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).find(i =>
+              i !== priceInput && (
+                i.placeholder?.toLowerCase().includes('name') ||
+                i.closest('[class*="nameInput"]') ||
+                i.closest('[class*="alertName"]')
+              )
+            );
+            if (nameInput && '${alertName}') {
+              nativeSetter.call(nameInput, '${alertName}');
+              nameInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+              await new Promise(r => setTimeout(r, 200));
+            }
+
+            // Step 7: Set message (textarea on Conditions tab)
+            const msgArea = document.querySelector('textarea');
+            if (msgArea && '${alertMessage}') {
+              const taSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+              taSetter.call(msgArea, '${alertMessage}');
+              msgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+              await new Promise(r => setTimeout(r, 200));
+            }
+
+            // Step 8: Webhook — navigate to Notifications tab, enable webhook, set URL
+            if ('${webhookUrl}') {
+              const allTabs = Array.from(document.querySelectorAll('[role="tab"], [class*="tab-"], [class*="Tab"]'));
+              const notifTab = allTabs.find(e =>
+                e.textContent?.trim().toLowerCase().includes('notification')
+              );
+              if (notifTab) {
+                notifTab.click();
+                await new Promise(r => setTimeout(r, 600));
+
+                // Enable webhook checkbox if not already checked
+                const allLabels = Array.from(document.querySelectorAll('label'));
+                const webhookLabel = allLabels.find(l =>
+                  l.textContent?.toLowerCase().includes('webhook')
+                );
+                if (webhookLabel) {
+                  const chk = webhookLabel.querySelector('input[type="checkbox"]') ||
+                    document.getElementById(webhookLabel.htmlFor);
+                  if (chk && !chk.checked) {
+                    chk.click();
+                    await new Promise(r => setTimeout(r, 400));
+                  }
+                }
+
+                // Set webhook URL in the input that appears after enabling
+                const webhookInput = Array.from(document.querySelectorAll('input[type="text"], input[type="url"], input:not([type])')).find(i =>
+                  i.placeholder?.toLowerCase().includes('webhook') ||
+                  i.placeholder?.toLowerCase().includes('url') ||
+                  i.closest('[class*="webhook"]')
+                );
+                if (webhookInput) {
+                  nativeSetter.call(webhookInput, '${webhookUrl}');
+                  webhookInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                  await new Promise(r => setTimeout(r, 200));
+                }
+              }
+            }
+
+            // Step 9: Click Create/Save button
             const form = document.querySelector('.form-h6NNXQD2');
             const submitBtn = form?.querySelector('[class*="submitBtn-"]') ||
                               document.querySelector('[class*="submitBtn-"]');
@@ -150,7 +270,7 @@ export class AlertTools {
             submitBtn.click();
             await new Promise(r => setTimeout(r, 2000));
 
-            // Step 5: Success = dialog closed (price input no longer in DOM)
+            // Step 10: Success = dialog closed
             const dialogStillOpen = !!document.querySelector('input.input-gr1VjUfr');
             const success = !dialogStillOpen;
 
@@ -161,6 +281,7 @@ export class AlertTools {
               condition: '${condition}',
               level: ${level},
               name: '${alertName}',
+              webhookSet: !!'${webhookUrl}',
               created: new Date().toISOString(),
               message: success
                 ? 'Alert created — dialog closed successfully'

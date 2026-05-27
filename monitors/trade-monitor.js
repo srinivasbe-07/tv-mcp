@@ -6,18 +6,14 @@
  * When Hammer / Engulfing / Doji forms in the zone:
  *   → Creates 3 alerts: TradeEntry, TradeSL, TradeTarget
  *
- * Watches 15-min candles for liquidity grab → auto-flips bias.
+ * Watches 15-min candles for liquidity grab near key levels → auto-flips bias.
+ * Key levels = last 3 days H/L (auto-fetched) + importantLevels (configured).
+ * Tolerance = 50pts NIFTY / 100pts SENSEX.
  *
- * Config: trade-config.json (edit any time — re-read every tick)
- * {
- *   "bias": "up",
- *   "buyZone":  { "top": 23950, "bottom": 23900 },
- *   "sellZone": { "top": 24100, "bottom": 24050 },
- *   "target": 24100,
- *   "active": true
- * }
+ * Config: config/trade-config.json (re-read every tick)
+ *         config/algotest-config.json (loaded once at startup)
  *
- * Usage:  node trade-monitor.js
+ * Usage:  node monitors/trade-monitor.js
  * Keys:   [a] toggle active  [f] manual flip bias  [q] quit
  */
 
@@ -28,16 +24,14 @@ import fs from 'fs';
 import readline from 'readline';
 
 const CONFIG_FILE = './config/trade-config.json';
+const ALGOTEST_FILE = './config/algotest-config.json';
 const POLL_MS = 60_000;
 const MARKET_OPEN_MIN = 9 * 60 + 15;
 const MARKET_CLOSE_MIN = 15 * 60 + 30;
 
-// Day → instrument
 const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
-const INSTRUMENTS = {
-  NIFTY: 'NSE:NIFTY',
-  SENSEX: 'BSE:SENSEX',
-};
+const INSTRUMENTS = { NIFTY: 'NSE:NIFTY', SENSEX: 'BSE:SENSEX' };
+const TOLERANCE = { NIFTY: 50, SENSEX: 100 };
 
 // ---------------------------------------------------------------------------
 // IST helpers
@@ -79,6 +73,14 @@ function saveConfig(cfg) {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
   } catch (_e) {
     /* ignore */
+  }
+}
+
+function loadAlgotest() {
+  try {
+    return JSON.parse(fs.readFileSync(ALGOTEST_FILE, 'utf8'));
+  } catch (_e) {
+    return {};
   }
 }
 
@@ -143,19 +145,29 @@ function detectBearishPattern(curr, prev) {
 }
 
 function isInZone(candle, zone) {
-  // Candle touches or overlaps the zone
   return candle.low <= zone.top && candle.high >= zone.bottom;
 }
 
-function isLiquidityGrab(curr, prev, bias) {
+// ---------------------------------------------------------------------------
+// Key levels: last 3 days H/L + user importantLevels
+// ---------------------------------------------------------------------------
+function nearestLevel(price, levels, tolerance) {
+  return levels.find((l) => Math.abs(price - l) <= tolerance) ?? null;
+}
+
+function isLiquidityGrab(curr, prev, bias, levels, tolerance) {
   if (bias === 'up') {
-    // Shooting star or doji that wicks above prev high but closes below it
-    return (
-      curr.high > prev.high && curr.close < prev.high && (isShootingStar(curr) || isDoji(curr))
-    );
+    // Shooting star or doji wicks above prev high but closes below it — near a resistance level
+    const wickedAbove = curr.high > prev.high && curr.close < prev.high;
+    const pattern = isShootingStar(curr) || isDoji(curr);
+    const level = nearestLevel(curr.high, levels, tolerance);
+    return wickedAbove && pattern && level !== null ? level : null;
   } else {
-    // Hammer or doji that wicks below prev low but closes above it
-    return curr.low < prev.low && curr.close > prev.low && (isHammer(curr) || isDoji(curr));
+    // Hammer or doji wicks below prev low but closes above it — near a support level
+    const wickedBelow = curr.low < prev.low && curr.close > prev.low;
+    const pattern = isHammer(curr) || isDoji(curr);
+    const level = nearestLevel(curr.low, levels, tolerance);
+    return wickedBelow && pattern && level !== null ? level : null;
   }
 }
 
@@ -187,7 +199,6 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
           await new Promise(r => setTimeout(r, 1800));
         }
 
-        // Read bars from model
         let bars = [];
         const model = widget?._chartWidget?._modelWV?._value;
         const store = model?.mainSeries?.()?.bars?.();
@@ -204,7 +215,6 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
           }
         }
 
-        // Restore
         if (needTf) {
           for (const m of ['setResolution','setInterval','changeResolution']) {
             if (typeof widget[m] === 'function') { widget[m](prevTf); break; }
@@ -233,62 +243,110 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
 
-async function createTradeAlerts(cdpAlerts, bias, candle, target, symbol) {
+async function createTradeAlerts(cdpAlerts, bias, candle, target, sl, symbol, algotest) {
   if (lastAlertCandleTime === candle.time) {
     log('  Alerts already created for this candle — skipping duplicate');
     return;
   }
 
   const isLong = bias === 'up';
+  const tradeType = isLong ? 'LONG' : 'SHORT';
   const entryLevel = isLong ? candle.high : candle.low;
-  const slLevel = isLong ? candle.low : candle.high;
+  const slLevel = sl || (isLong ? candle.low : candle.high);
 
-  log(`  [${isLong ? 'LONG' : 'SHORT'}] Entry:${entryLevel}  SL:${slLevel}  Target:${target}`);
+  log(`  [${tradeType}] Entry:${entryLevel}  SL:${slLevel}  Target:${target}`);
 
-  // Delete any existing trade alerts
+  const webhook = algotest?.webhookUrl || '';
+  const token = algotest?.accessToken || '';
+  const entryMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Entry' }) : '';
+  const exitMsg = token ? JSON.stringify({ access_token: token, alert_name: 'square_off' }) : '';
+
   for (const name of ['TradeEntry', 'TradeSL', 'TradeTarget']) {
     try {
       await cdpAlerts.handle('alert_delete', { alertId: name });
       await new Promise((r) => setTimeout(r, 500));
     } catch (_e) {
-      /* ignore — alert may not exist */
+      /* ignore */
     }
   }
 
-  // Create Entry
   await cdpAlerts.handle('alert_create', {
     symbol,
-    condition: isLong ? 'above' : 'below',
+    condition: 'crosses_up',
     level: entryLevel,
     name: 'TradeEntry',
+    message: entryMsg,
+    webhook,
+    once: true,
   });
   await new Promise((r) => setTimeout(r, 1000));
 
-  // Create SL
   await cdpAlerts.handle('alert_create', {
     symbol,
-    condition: isLong ? 'below' : 'above',
+    condition: 'crosses_down',
     level: slLevel,
     name: 'TradeSL',
+    message: exitMsg,
+    webhook,
   });
   await new Promise((r) => setTimeout(r, 1000));
 
-  // Create Target
   await cdpAlerts.handle('alert_create', {
     symbol,
-    condition: isLong ? 'above' : 'below',
+    condition: 'crosses_down',
     level: target,
     name: 'TradeTarget',
+    message: exitMsg,
+    webhook,
   });
 
   lastAlertCandleTime = candle.time;
-  log('  [OK] TradeEntry + TradeSL + TradeTarget created');
+  log(
+    `  [OK] TradeEntry + TradeSL + TradeTarget created${webhook ? ' (Algotest webhook set)' : ''}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup: delete remaining trade alerts once an exit alert fires
+// ---------------------------------------------------------------------------
+const TRADE_ALERT_NAMES = ['TradeEntry', 'TradeSL', 'TradeTarget'];
+
+async function cleanupFiredAlerts(cdpAlerts) {
+  try {
+    const result = await cdpAlerts.handle('alert_list', {});
+    const data = JSON.parse(result.content[0].text);
+    const alerts = data.alerts || [];
+
+    const tradeAlerts = alerts.filter((a) => TRADE_ALERT_NAMES.includes(a.name));
+    if (tradeAlerts.length === 0) return;
+
+    // If SL or Target fired (inactive/stopped) → delete all remaining trade alerts
+    const exitFired = tradeAlerts.some(
+      (a) => (a.name === 'TradeSL' || a.name === 'TradeTarget') && !a.active
+    );
+    if (!exitFired) return;
+
+    log('[CLEANUP] Exit alert fired — deleting all trade alerts');
+    for (const name of TRADE_ALERT_NAMES) {
+      try {
+        await cdpAlerts.handle('alert_delete', { alertId: name });
+        await new Promise((r) => setTimeout(r, 300));
+      } catch (_e) {
+        /* ignore */
+      }
+    }
+    lastAlertCandleTime = null;
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
 let last15mCheckAt = 0;
+let cachedDayLevels = []; // refreshed once per day
+let lastDayLevelDate = '';
 
 async function tick(cdp, cdpAlerts) {
   try {
@@ -303,22 +361,46 @@ async function tick(cdp, cdpAlerts) {
       return;
     }
     if (!cfg.active) {
-      log('Paused (active: false) — edit trade-config.json to resume');
+      log('Paused (active: false) — configure zones then set active: true');
       return;
     }
+
+    // Clean up any remaining alerts if an exit alert already fired
+    if (lastAlertCandleTime) await cleanupFiredAlerts(cdpAlerts);
 
     const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
     const symbol = INSTRUMENTS[instrName];
+    const tolerance = TOLERANCE[instrName];
     const zone = cfg.bias === 'up' ? cfg.buyZone : cfg.sellZone;
+    const target = cfg.bias === 'up' ? cfg.buyTarget : cfg.sellTarget;
+    const sl = cfg.bias === 'up' ? cfg.buySL || 0 : cfg.sellSL || 0;
+    const algotest = loadAlgotest();
 
-    if (!zone) {
-      log(`No ${cfg.bias === 'up' ? 'buyZone' : 'sellZone'} in config — skipping`);
+    if (!zone || !zone.top || !zone.bottom) {
+      log(`Zone not configured — edit trade-config.json`);
+      return;
+    }
+    if (!target) {
+      log(`Target not configured — edit trade-config.json`);
       return;
     }
 
+    const slDesc = sl ? String(sl) : 'auto (candle extreme)';
     log(
-      `${instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${cfg.target}`
+      `${instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${target} | SL:${slDesc}`
     );
+
+    // ── Refresh last 3 days H/L once per day ──────────────────────────────
+    const todayStr = nowIST().toISOString().slice(0, 10);
+    if (todayStr !== lastDayLevelDate) {
+      const dailyBars = await fetchBars(cdp, symbol, 'D', 5);
+      const completed = dailyBars.slice(0, -1).slice(-3); // exclude today's forming bar
+      cachedDayLevels = completed.flatMap((b) => [b.high, b.low]);
+      lastDayLevelDate = todayStr;
+      log(`Day levels (last 3 days): ${cachedDayLevels.map((l) => l.toFixed(0)).join(', ')}`);
+    }
+
+    const allLevels = [...cachedDayLevels, ...(cfg.importantLevels || [])];
 
     // ── 1-min pattern check ────────────────────────────────────────────────
     const bars1m = await fetchBars(cdp, symbol, '1', 5);
@@ -339,10 +421,10 @@ async function tick(cdp, cdpAlerts) {
           log(
             `[SIGNAL] ${pattern} in zone! O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`
           );
-          await createTradeAlerts(cdpAlerts, cfg.bias, curr, cfg.target, symbol);
+          await createTradeAlerts(cdpAlerts, cfg.bias, curr, target, sl, symbol, algotest);
         } else {
           log(
-            `Candle in zone — no pattern yet (O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`
+            `Candle in zone — no pattern (O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`
           );
         }
       }
@@ -354,19 +436,23 @@ async function tick(cdp, cdpAlerts) {
 
       const bars15m = await fetchBars(cdp, symbol, '15', 4);
 
-      if (bars15m.length >= 2) {
+      if (bars15m.length >= 3) {
         const curr15 = bars15m[bars15m.length - 2];
         const prev15 = bars15m[bars15m.length - 3];
 
-        if (prev15 && isLiquidityGrab(curr15, prev15, cfg.bias)) {
+        const grabbedLevel = isLiquidityGrab(curr15, prev15, cfg.bias, allLevels, tolerance);
+
+        if (grabbedLevel !== null) {
           const newBias = cfg.bias === 'up' ? 'down' : 'up';
           log(
-            `[FLIP] Liquidity grab on 15-min → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
+            `[FLIP] Liquidity grab near level ${grabbedLevel} → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
           );
+          log(`[FLIP] Monitor PAUSED — update zones + target then set active: true`);
           cfg.bias = newBias;
+          cfg.active = false;
           saveConfig(cfg);
         } else {
-          log(`15-min check: no liquidity grab (curr H:${curr15?.high} L:${curr15?.low})`);
+          log(`15-min check: no liquidity grab (H:${curr15?.high} L:${curr15?.low})`);
         }
       }
     }
@@ -382,18 +468,24 @@ async function main() {
   const cfg = loadConfig();
   if (!cfg) {
     console.error(`\nERROR: ${CONFIG_FILE} not found.`);
-    console.error('Copy trade-config.example.json → trade-config.json and configure it.\n');
     process.exit(1);
   }
 
   console.log('\n=== Trade Setup Monitor ===');
-  console.log(`Bias      : ${cfg.bias?.toUpperCase()}`);
-  console.log(`Buy Zone  : ${cfg.buyZone?.bottom} – ${cfg.buyZone?.top}`);
-  console.log(`Sell Zone : ${cfg.sellZone?.bottom} – ${cfg.sellZone?.top}`);
-  console.log(`Target    : ${cfg.target}`);
-  console.log(`Active    : ${cfg.active}`);
-  if (!cfg.active)
-    console.log('  ⚠  Monitor is PAUSED — set "active": true in trade-config.json when ready');
+  console.log(`Bias       : ${cfg.bias?.toUpperCase()}`);
+  console.log(`Buy Zone   : ${cfg.buyZone?.bottom} – ${cfg.buyZone?.top}`);
+  console.log(`Sell Zone  : ${cfg.sellZone?.bottom} – ${cfg.sellZone?.top}`);
+  console.log(`Buy Target : ${cfg.buyTarget}`);
+  console.log(`Sell Target: ${cfg.sellTarget}`);
+  console.log(`Buy SL     : ${cfg.buySL || 'auto (candle low)'}`);
+  console.log(`Sell SL    : ${cfg.sellSL || 'auto (candle high)'}`);
+  console.log(`Levels     : ${(cfg.importantLevels || []).join(', ') || 'none'}`);
+  const at = loadAlgotest();
+  console.log(
+    `Algotest   : ${at.webhookUrl ? 'configured' : 'not configured (edit config/algotest-config.json)'}`
+  );
+  console.log(`Active     : ${cfg.active}`);
+  if (!cfg.active) console.log('  ⚠  Monitor is PAUSED — configure zones then set active: true');
   console.log('\nKeys: [a] toggle active  [f] manual flip bias  [q] quit\n');
 
   const cdp = new CDPManager();
@@ -429,8 +521,9 @@ async function main() {
         const c = loadConfig();
         if (c) {
           c.bias = c.bias === 'up' ? 'down' : 'up';
+          c.active = false;
           saveConfig(c);
-          log(`[MANUAL FLIP] Bias → ${c.bias.toUpperCase()}`);
+          log(`[MANUAL FLIP] Bias → ${c.bias.toUpperCase()} | PAUSED — update zones + target`);
         }
       }
     });

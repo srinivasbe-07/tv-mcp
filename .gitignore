@@ -11,3 +11,4 @@ run-screenshot.js
 run-sensex-update.js
 config/monitor-config.json
 config/trade-config.json
+config/algotest-config.json
