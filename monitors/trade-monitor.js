@@ -505,19 +505,36 @@ async function tick(cdp, cdpAlerts) {
         const curr15 = bars15m[bars15m.length - 2];
         const prev15 = bars15m[bars15m.length - 3];
 
-        const grabbedLevel = isLiquidityGrab(curr15, prev15, cfg.bias, allLevels, tolerance);
+        // ── Zone break: 15-min close beyond zone → zone invalidated ──────────
+        const zoneBroken = cfg.bias === 'up' ? curr15.close < zone.bottom : curr15.close > zone.top;
 
-        if (grabbedLevel !== null) {
-          const newBias = cfg.bias === 'up' ? 'down' : 'up';
+        if (zoneBroken) {
+          const side = cfg.bias === 'up' ? 'buy' : 'sell';
+          const boundary = cfg.bias === 'up' ? zone.bottom : zone.top;
           log(
-            `[FLIP] Liquidity grab near level ${grabbedLevel} → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
+            `[ZONE BREAK] 15-min closed ${curr15.close} ${cfg.bias === 'up' ? 'below' : 'above'} ${side} zone ${boundary} — zone invalidated`
           );
-          log(`[FLIP] Monitor PAUSED — update zones + target then set active: true`);
-          cfg.bias = newBias;
+          log(`[ZONE BREAK] Monitor PAUSED — reconfigure zones then set active: true`);
           cfg.active = false;
           saveConfig(cfg);
         } else {
-          log(`15-min check: no liquidity grab (H:${curr15?.high} L:${curr15?.low})`);
+          // ── Liquidity grab check ────────────────────────────────────────────
+          const grabbedLevel = isLiquidityGrab(curr15, prev15, cfg.bias, allLevels, tolerance);
+
+          if (grabbedLevel !== null) {
+            const newBias = cfg.bias === 'up' ? 'down' : 'up';
+            log(
+              `[FLIP] Liquidity grab near level ${grabbedLevel} → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
+            );
+            log(`[FLIP] Monitor PAUSED — update zones + target then set active: true`);
+            cfg.bias = newBias;
+            cfg.active = false;
+            saveConfig(cfg);
+          } else {
+            log(
+              `15-min check: no zone break, no liquidity grab (H:${curr15?.high} L:${curr15?.low})`
+            );
+          }
         }
       }
     }
