@@ -374,6 +374,7 @@ async function main() {
   console.log(`Sell Zone : ${cfg.sellZone?.bottom} – ${cfg.sellZone?.top}`);
   console.log(`Target    : ${cfg.target}`);
   console.log(`Active    : ${cfg.active}`);
+  if (!cfg.active) console.log('  ⚠  Monitor is PAUSED — set "active": true in trade-config.json when ready');
   console.log('\nKeys: [a] toggle active  [f] manual flip bias  [q] quit\n');
 
   const cdp = new CDPManager();
