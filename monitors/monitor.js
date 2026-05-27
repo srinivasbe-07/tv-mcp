@@ -514,9 +514,32 @@ async function main() {
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
+
+    let ctrlCPending = false;
+    let ctrlCTimer = null;
+
     process.stdin.on('keypress', async (ch, key) => {
       if (!key) return;
-      if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+      if (key.ctrl && key.name === 'c') {
+        if (ctrlCPending) {
+          clearTimeout(ctrlCTimer);
+          log('Exiting...');
+          saveState();
+          if (bgCDP) bgCDP.close();
+          await cdp.disconnect();
+          process.exit(0);
+        } else {
+          ctrlCPending = true;
+          log('Press Ctrl+C again within 3s to exit, or [q] to quit');
+          ctrlCTimer = setTimeout(() => {
+            ctrlCPending = false;
+            log('Exit cancelled — still running');
+          }, 3000);
+        }
+        return;
+      }
+      if (key.name === 'q') {
+        if (ctrlCTimer) clearTimeout(ctrlCTimer);
         log('Exiting...');
         saveState();
         if (bgCDP) bgCDP.close();
