@@ -25,7 +25,11 @@ import readline from 'readline';
 
 const CONFIG_FILE = './config/trade-config.json';
 const ALGOTEST_FILE = './config/algotest-config.json';
+const LOG_FILE = './logs/trade-monitor.log';
 const POLL_MS = 60_000;
+
+fs.mkdirSync('./logs', { recursive: true });
+const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
 const MARKET_OPEN_MIN = 9 * 60 + 15;
 const MARKET_CLOSE_MIN = 15 * 60 + 30;
 
@@ -54,7 +58,9 @@ function timeStr() {
 }
 
 function log(msg) {
-  console.log(`[${timeStr()}] ${msg}`);
+  const line = `[${timeStr()}] ${msg}`;
+  console.log(line);
+  logStream.write(line + '\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -350,16 +356,19 @@ let lastDayLevelDate = '';
 
 async function tick(cdp, cdpAlerts) {
   try {
-    if (!isMarketHours()) {
-      log('Outside market hours — waiting');
-      return;
-    }
+    if (!cdp.isConnected()) throw new Error('CDP not connected');
 
     const cfg = loadConfig();
     if (!cfg) {
       log(`${CONFIG_FILE} missing — skipping`);
       return;
     }
+
+    if (!cfg.ignoreMarketHours && !isMarketHours()) {
+      log('Outside market hours — waiting');
+      return;
+    }
+
     if (!cfg.active) {
       log('Paused (active: false) — configure zones then set active: true');
       return;
@@ -369,8 +378,8 @@ async function tick(cdp, cdpAlerts) {
     if (lastAlertCandleTime) await cleanupFiredAlerts(cdpAlerts);
 
     const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
-    const symbol = INSTRUMENTS[instrName];
-    const tolerance = TOLERANCE[instrName];
+    const symbol = cfg.symbol || INSTRUMENTS[instrName];
+    const tolerance = cfg.tolerance || TOLERANCE[instrName];
     const zone = cfg.bias === 'up' ? cfg.buyZone : cfg.sellZone;
     const target = cfg.bias === 'up' ? cfg.buyTarget : cfg.sellTarget;
     const sl = cfg.bias === 'up' ? cfg.buySL || 0 : cfg.sellSL || 0;
@@ -458,6 +467,16 @@ async function tick(cdp, cdpAlerts) {
     }
   } catch (e) {
     log(`[ERROR] ${e.message}`);
+    if (!cdp.isConnected()) {
+      log('CDP disconnected — reconnecting in 5s...');
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        await cdp.connect();
+        log('CDP reconnected');
+      } catch (re) {
+        log(`Reconnect failed: ${re.message} — will retry next tick`);
+      }
+    }
   }
 }
 
@@ -471,7 +490,14 @@ async function main() {
     process.exit(1);
   }
 
+  const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
+  const effectiveSymbol = cfg.symbol || INSTRUMENTS[instrName];
+  const effectiveTolerance = cfg.tolerance || TOLERANCE[instrName];
+
   console.log('\n=== Trade Setup Monitor ===');
+  console.log(`Symbol     : ${effectiveSymbol}${cfg.symbol ? ' (override)' : ' (day-based)'}`);
+  console.log(`Tolerance  : ${effectiveTolerance}${cfg.tolerance ? ' (override)' : ' (default)'}`);
+  console.log(`Market Hrs : ${cfg.ignoreMarketHours ? 'ignored (24x7 mode)' : 'IST 09:15–15:30'}`);
   console.log(`Bias       : ${cfg.bias?.toUpperCase()}`);
   console.log(`Buy Zone   : ${cfg.buyZone?.bottom} – ${cfg.buyZone?.top}`);
   console.log(`Sell Zone  : ${cfg.sellZone?.bottom} – ${cfg.sellZone?.top}`);
@@ -488,6 +514,9 @@ async function main() {
   if (!cfg.active) console.log('  ⚠  Monitor is PAUSED — configure zones then set active: true');
   console.log('\nKeys: [a] toggle active  [f] manual flip bias  [q] quit\n');
 
+  process.on('uncaughtException', (e) => log(`[CRASH] ${e.message}`));
+  process.on('unhandledRejection', (e) => log(`[CRASH] ${e?.message || e}`));
+
   const cdp = new CDPManager();
   try {
     await cdp.connect();
@@ -502,9 +531,30 @@ async function main() {
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
+
+    let ctrlCPending = false;
+    let ctrlCTimer = null;
+
     process.stdin.on('keypress', async (_ch, key) => {
       if (!key) return;
-      if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+      if (key.ctrl && key.name === 'c') {
+        if (ctrlCPending) {
+          clearTimeout(ctrlCTimer);
+          log('Exiting...');
+          await cdp.disconnect();
+          process.exit(0);
+        } else {
+          ctrlCPending = true;
+          log('Press Ctrl+C again within 3s to exit, or [q] to quit');
+          ctrlCTimer = setTimeout(() => {
+            ctrlCPending = false;
+            log('Exit cancelled — still running');
+          }, 3000);
+        }
+        return;
+      }
+      if (key.name === 'q') {
+        if (ctrlCTimer) clearTimeout(ctrlCTimer);
         log('Exiting...');
         await cdp.disconnect();
         process.exit(0);
@@ -530,7 +580,20 @@ async function main() {
   }
 
   await tick(cdp, cdpAlerts);
-  setInterval(() => tick(cdp, cdpAlerts), POLL_MS);
+
+  let tickRunning = false;
+  setInterval(async () => {
+    if (tickRunning) {
+      log('Tick skipped — previous still running');
+      return;
+    }
+    tickRunning = true;
+    try {
+      await tick(cdp, cdpAlerts);
+    } finally {
+      tickRunning = false;
+    }
+  }, POLL_MS);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
