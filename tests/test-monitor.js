@@ -235,10 +235,10 @@ function makeState(overrides = {}) {
   return { CE: 'closed', PE: 'closed', seenHistoryKeys: [], ...overrides };
 }
 
-const CE_ENTRY  = 'supertrendLongEntry';
-const CE_EXIT   = 'supertrendLongExit';
-const PE_ENTRY  = 'supertrendshortEntry';
-const PE_EXIT   = 'supertrendShortExit';
+const CE_ENTRY = 'supertrendLongEntry';
+const CE_EXIT = 'supertrendLongExit';
+const PE_ENTRY = 'supertrendshortEntry';
+const PE_EXIT = 'supertrendShortExit';
 
 section('processHistoryForPositionChanges — basic transitions');
 test('CE entry → CE becomes open', () => {
@@ -302,10 +302,13 @@ test('same name, different time → treated as new alert', () => {
 });
 test('seenHistoryKeys grows with new items', () => {
   const s = makeState();
-  processHistoryForPositionChanges([
-    { name: CE_ENTRY, time: '09:15' },
-    { name: PE_ENTRY, time: '09:16' },
-  ], s);
+  processHistoryForPositionChanges(
+    [
+      { name: CE_ENTRY, time: '09:15' },
+      { name: PE_ENTRY, time: '09:16' },
+    ],
+    s
+  );
   return s.seenHistoryKeys.length === 2;
 });
 test('seenHistoryKeys trimmed to 200', () => {
@@ -335,18 +338,24 @@ test('PE change does not affect CE', () => {
 });
 test('batch: CE entry + PE entry in one call', () => {
   const s = makeState();
-  processHistoryForPositionChanges([
-    { name: CE_ENTRY, time: '09:15' },
-    { name: PE_ENTRY, time: '09:15' },
-  ], s);
+  processHistoryForPositionChanges(
+    [
+      { name: CE_ENTRY, time: '09:15' },
+      { name: PE_ENTRY, time: '09:15' },
+    ],
+    s
+  );
   return s.CE === 'open' && s.PE === 'open';
 });
 test('batch: full cycle CE open → close in one call', () => {
   const s = makeState();
-  processHistoryForPositionChanges([
-    { name: CE_ENTRY, time: '09:15' },
-    { name: CE_EXIT,  time: '10:00' },
-  ], s);
+  processHistoryForPositionChanges(
+    [
+      { name: CE_ENTRY, time: '09:15' },
+      { name: CE_EXIT, time: '10:00' },
+    ],
+    s
+  );
   return s.CE === 'closed';
 });
 

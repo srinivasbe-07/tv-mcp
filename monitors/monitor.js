@@ -177,8 +177,8 @@ let state = {
   lastITMDepth: null,
   seenHistoryKeys: [],
 };
-let itmOverride = null;  // set by --itm CLI flag (highest priority)
-let pendingATM = null;   // ATM seen last tick — confirmed only if seen twice in a row
+let itmOverride = null; // set by --itm CLI flag (highest priority)
+let pendingATM = null; // ATM seen last tick — confirmed only if seen twice in a row
 
 // Minimum valid spot price per instrument (rejects background tab garbage reads)
 const MIN_SPOT = { NIFTY: 15000, SENSEX: 50000 };
@@ -374,7 +374,12 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
       try {
         const r = await cdpAlerts.handle('alert_update_symbol', { alertName: name, symbol });
         if (r?.isError) {
-          lastResult = { name, symbol, success: false, error: r?.content?.[0]?.text || 'unknown error' };
+          lastResult = {
+            name,
+            symbol,
+            success: false,
+            error: r?.content?.[0]?.text || 'unknown error',
+          };
         } else {
           const data = JSON.parse(r?.content?.[0]?.text || '{}');
           lastResult = { name, symbol, success: data.success, message: data.message };
@@ -593,7 +598,9 @@ async function main() {
           log(`ATM confirmed: ${state.lastATM} → ${atm}`);
           pendingATM = null;
         } else {
-          log(`ATM pending confirmation: ${state.lastATM} → ${atm} (will update next tick if it holds)`);
+          log(
+            `ATM pending confirmation: ${state.lastATM} → ${atm} (will update next tick if it holds)`
+          );
           pendingATM = atm;
           saveState();
           return;
@@ -639,7 +646,10 @@ async function main() {
         await new Promise((r) => setTimeout(r, 5000));
         try {
           await cdp.connect();
-          if (bgCDP) { bgCDP.close(); bgCDP = null; }
+          if (bgCDP) {
+            bgCDP.close();
+            bgCDP = null;
+          }
           bgCDP = await openBackgroundTab(9222, 15_000);
           log('CDP reconnected');
         } catch (re) {
@@ -656,7 +666,10 @@ async function main() {
   // Poll loop — skip tick if previous one is still running
   let tickRunning = false;
   setInterval(async () => {
-    if (tickRunning) { log('Tick skipped — previous still running'); return; }
+    if (tickRunning) {
+      log('Tick skipped — previous still running');
+      return;
+    }
     tickRunning = true;
     try {
       await tick(cdp, cdpChart, cdpAlerts, false);
