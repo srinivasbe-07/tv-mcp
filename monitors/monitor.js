@@ -32,7 +32,7 @@ import readline from 'readline';
 // Config
 // ---------------------------------------------------------------------------
 const POLL_MS = 60_000;
-const STATE_FILE = './position.json';
+const STATE_FILE = './config/position.json';
 
 const CE_ALERTS = { entry: 'supertrendLongEntry', exit: 'supertrendLongExit' };
 const PE_ALERTS = { entry: 'supertrendshortEntry', exit: 'supertrendShortExit' };
