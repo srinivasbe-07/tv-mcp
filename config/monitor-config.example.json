@@ -1,3 +1,6 @@
 {
+  "_help": {
+    "itmOverride": "null = day-based rule (Mon/Tue=ITM-1, Fri=ITM-2, SENSEX always ITM-2) | 0 = ATM | 1 = ITM-1 | 2 = ITM-2"
+  },
   "itmOverride": null
 }
