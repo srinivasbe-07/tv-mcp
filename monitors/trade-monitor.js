@@ -517,18 +517,7 @@ async function tick(cdp, cdpAlerts) {
       const curr = bars[bars.length - 2]; // last completed candle
       const prev = bars[bars.length - 3];
 
-      // ── Zone break: candle close below/above zone → pause, user must re-enable
-      const zoneBroken = cfg.bias === 'up' ? curr.close < zone.bottom : curr.close > zone.top;
-
-      if (zoneBroken) {
-        const boundary = cfg.bias === 'up' ? zone.bottom : zone.top;
-        log(
-          `[ZONE BREAK] ${tf}-min closed ${curr.close} ${cfg.bias === 'up' ? 'below' : 'above'} zone ${boundary} — pausing`
-        );
-        log(`[ZONE BREAK] Monitor PAUSED — reconfigure zones then set active: true`);
-        cfg.active = false;
-        saveConfig(cfg);
-      } else if (!isInZone(curr, zone)) {
+      if (!isInZone(curr, zone)) {
         log(`${tf}-min candle H:${curr.high} L:${curr.low} — outside zone`);
       } else {
         const pattern =
@@ -582,20 +571,35 @@ async function tick(cdp, cdpAlerts) {
         const curr15 = bars15m[bars15m.length - 2];
         const prev15 = bars15m[bars15m.length - 3];
 
-        // ── Liquidity grab check ────────────────────────────────────────────
-        const grabbedLevel = isLiquidityGrab(curr15, prev15, cfg.bias, allLevels, tolerance);
+        // ── Zone break: 15-min close outside zone → zone not respected → pause
+        const zoneBroken = cfg.bias === 'up' ? curr15.close < zone.bottom : curr15.close > zone.top;
 
-        if (grabbedLevel !== null) {
-          const newBias = cfg.bias === 'up' ? 'down' : 'up';
+        if (zoneBroken) {
+          const boundary = cfg.bias === 'up' ? zone.bottom : zone.top;
           log(
-            `[FLIP] Liquidity grab near level ${grabbedLevel} → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
+            `[ZONE BREAK] 15-min closed ${curr15.close} ${cfg.bias === 'up' ? 'below' : 'above'} zone ${boundary} — zone not respected`
           );
-          log(`[FLIP] Monitor PAUSED — update zones + target then set active: true`);
-          cfg.bias = newBias;
+          log(`[ZONE BREAK] Monitor PAUSED — reconfigure zones then set active: true`);
           cfg.active = false;
           saveConfig(cfg);
         } else {
-          log(`15-min check: no liquidity grab (H:${curr15?.high} L:${curr15?.low})`);
+          // ── Liquidity grab check ──────────────────────────────────────────
+          const grabbedLevel = isLiquidityGrab(curr15, prev15, cfg.bias, allLevels, tolerance);
+
+          if (grabbedLevel !== null) {
+            const newBias = cfg.bias === 'up' ? 'down' : 'up';
+            log(
+              `[FLIP] Liquidity grab near level ${grabbedLevel} → bias ${cfg.bias.toUpperCase()} → ${newBias.toUpperCase()}`
+            );
+            log(`[FLIP] Monitor PAUSED — update zones + target then set active: true`);
+            cfg.bias = newBias;
+            cfg.active = false;
+            saveConfig(cfg);
+          } else {
+            log(
+              `15-min check: no zone break, no liquidity grab (H:${curr15?.high} L:${curr15?.low})`
+            );
+          }
         }
       }
     }
