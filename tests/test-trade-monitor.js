@@ -109,13 +109,36 @@ await test('LONG (bias=up) → TradeEntry uses candle.high with crosses_up', asy
   return entry?.args?.level === 110 && entry?.args?.condition === 'crosses_up';
 });
 
-await test('SHORT (bias=down) → TradeEntry uses candle.low with crosses_down for entry', async () => {
+await test('SHORT (bias=down) → TradeEntry uses candle.low', async () => {
   _resetLastAlertCandleTime();
   const mock = makeMock();
   const candle = makeCandle({ high: 110, low: 95 });
   await createTradeAlerts(mock, 'down', candle, 80, 0, 'BTCUSD', null, 0);
   const entry = mock.calls.find((c) => c.args?.name === 'TradeEntry');
   return entry?.args?.level === 95;
+});
+
+await test('LONG → Entry crosses_up, SL crosses_down, Target crosses_down (pullback to target)', async () => {
+  _resetLastAlertCandleTime();
+  const mock = makeMock();
+  await createTradeAlerts(
+    mock,
+    'up',
+    makeCandle({ high: 110, low: 95 }),
+    120,
+    0,
+    'BTCUSD',
+    null,
+    0
+  );
+  const entry = mock.calls.find((c) => c.args?.name === 'TradeEntry');
+  const sl = mock.calls.find((c) => c.args?.name === 'TradeSL');
+  const tgt = mock.calls.find((c) => c.args?.name === 'TradeTarget');
+  return (
+    entry?.args?.condition === 'crosses_up' &&
+    sl?.args?.condition === 'crosses_down' &&
+    tgt?.args?.condition === 'crosses_down'
+  );
 });
 
 await test('explicit sl used over auto', async () => {
