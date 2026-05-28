@@ -249,7 +249,16 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
 
-async function createTradeAlerts(cdpAlerts, bias, candle, target, sl, symbol, algotest) {
+async function createTradeAlerts(
+  cdpAlerts,
+  bias,
+  candle,
+  target,
+  sl,
+  symbol,
+  algotest,
+  _delayMs = 1000
+) {
   if (lastAlertCandleTime === candle.time) {
     log('  Alerts already created for this candle — skipping duplicate');
     return;
@@ -276,7 +285,15 @@ async function createTradeAlerts(cdpAlerts, bias, candle, target, sl, symbol, al
     }
   }
 
-  await cdpAlerts.handle('alert_create', {
+  const parseAlertResult = (r) => {
+    try {
+      return JSON.parse(r?.content?.[0]?.text || '{}');
+    } catch (_) {
+      return {};
+    }
+  };
+
+  const r1 = await cdpAlerts.handle('alert_create', {
     symbol,
     condition: 'crosses_up',
     level: entryLevel,
@@ -285,9 +302,16 @@ async function createTradeAlerts(cdpAlerts, bias, candle, target, sl, symbol, al
     webhook,
     once: true,
   });
-  await new Promise((r) => setTimeout(r, 1000));
+  const d1 = parseAlertResult(r1);
+  if (!d1.success) {
+    log(`  [FAIL] TradeEntry: ${d1.message || 'unknown error'}`);
+    return;
+  }
+  log(`  [OK] TradeEntry at ${entryLevel}`);
 
-  await cdpAlerts.handle('alert_create', {
+  await new Promise((r) => setTimeout(r, _delayMs));
+
+  const r2 = await cdpAlerts.handle('alert_create', {
     symbol,
     condition: 'crosses_down',
     level: slLevel,
@@ -295,9 +319,16 @@ async function createTradeAlerts(cdpAlerts, bias, candle, target, sl, symbol, al
     message: exitMsg,
     webhook,
   });
-  await new Promise((r) => setTimeout(r, 1000));
+  const d2 = parseAlertResult(r2);
+  if (!d2.success) {
+    log(`  [FAIL] TradeSL: ${d2.message || 'unknown error'}`);
+    return;
+  }
+  log(`  [OK] TradeSL at ${slLevel}`);
 
-  await cdpAlerts.handle('alert_create', {
+  await new Promise((r) => setTimeout(r, _delayMs));
+
+  const r3 = await cdpAlerts.handle('alert_create', {
     symbol,
     condition: 'crosses_down',
     level: target,
@@ -305,11 +336,15 @@ async function createTradeAlerts(cdpAlerts, bias, candle, target, sl, symbol, al
     message: exitMsg,
     webhook,
   });
+  const d3 = parseAlertResult(r3);
+  if (!d3.success) {
+    log(`  [FAIL] TradeTarget: ${d3.message || 'unknown error'}`);
+    return;
+  }
+  log(`  [OK] TradeTarget at ${target}`);
 
   lastAlertCandleTime = candle.time;
-  log(
-    `  [OK] TradeEntry + TradeSL + TradeTarget created${webhook ? ' (Algotest webhook set)' : ''}`
-  );
+  log(`  All 3 alerts created${webhook ? ' (Algotest webhook set)' : ''}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -669,4 +704,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error(e);
     process.exit(1);
   });
+}
+
+export { createTradeAlerts };
+export function _resetLastAlertCandleTime() {
+  lastAlertCandleTime = null;
 }
