@@ -26,7 +26,11 @@ import readline from 'readline';
 const CONFIG_FILE = './config/trade-config.json';
 const ALGOTEST_FILE = './config/algotest-config.json';
 const LOG_FILE = './logs/trade-monitor.log';
-const POLL_MS = 60_000;
+// ms until the next candle boundary (e.g. 09:03:00, 09:06:00 for 3-min)
+function msUntilNextCandleClose(tfMinutes) {
+  const msPerCandle = tfMinutes * 60 * 1000;
+  return msPerCandle - (Date.now() % msPerCandle);
+}
 
 fs.mkdirSync('./logs', { recursive: true });
 const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
@@ -687,18 +691,31 @@ async function main() {
   await tick(cdp, cdpAlerts);
 
   let tickRunning = false;
-  setInterval(async () => {
+  async function runTick() {
     if (tickRunning) {
       log('Tick skipped — previous still running');
-      return;
+    } else {
+      tickRunning = true;
+      try {
+        await tick(cdp, cdpAlerts);
+      } finally {
+        tickRunning = false;
+      }
     }
-    tickRunning = true;
-    try {
-      await tick(cdp, cdpAlerts);
-    } finally {
-      tickRunning = false;
-    }
-  }, POLL_MS);
+    // Re-read timeframe from config so changes take effect without restart
+    const nextCfg = loadConfig();
+    const nextTf = parseInt(nextCfg?.candleTimeframe || 3, 10);
+    const delay = msUntilNextCandleClose(nextTf);
+    log(`Next tick in ${Math.round(delay / 1000)}s (at next ${nextTf}-min candle close)`);
+    setTimeout(runTick, delay);
+  }
+
+  const initTf = parseInt(loadConfig()?.candleTimeframe || 3, 10);
+  const firstDelay = msUntilNextCandleClose(initTf);
+  log(
+    `Aligned — first tick in ${Math.round(firstDelay / 1000)}s (at next ${initTf}-min candle close)`
+  );
+  setTimeout(runTick, firstDelay);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
