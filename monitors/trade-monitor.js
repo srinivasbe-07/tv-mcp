@@ -463,8 +463,14 @@ async function tick(cdp, cdpAlerts) {
       return;
     }
 
-    // Clean up any remaining alerts if an exit alert already fired
+    // Clean up if SL/Target fired — resets lastAlertCandleTime to null on exit
     if (lastAlertCandleTime) await cleanupFiredAlerts(cdpAlerts);
+
+    // Trade still active — skip pattern detection until SL or Target hits
+    if (lastAlertCandleTime) {
+      log('Trade active — waiting for SL or Target to hit, no new setups');
+      return;
+    }
 
     const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
     const symbol = cfg.symbol || INSTRUMENTS[instrName];
