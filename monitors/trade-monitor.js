@@ -371,7 +371,11 @@ async function cleanupFiredAlerts(cdpAlerts) {
     if (!targetFired && !slFired) return;
 
     if (targetFired) {
-      log('[TARGET HIT] Target achieved — set new levels then enable active: true to resume');
+      log('[TARGET HIT] Price pulled back through target (crosses_down) — trade closed');
+      log(
+        '[TARGET HIT] Tip: if price had overshot, you could have raised target before this pullback'
+      );
+      log('[TARGET HIT] Set new levels then set active: true to resume');
       const cfg = loadConfig();
       if (cfg) {
         cfg.active = false;
