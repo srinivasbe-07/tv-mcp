@@ -349,6 +349,7 @@ async function createTradeAlerts(
 
   lastAlertCandleTime = candle.time;
   log(`  All 3 alerts created${webhook ? ' (Algotest webhook set)' : ''}`);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -537,7 +538,32 @@ async function tick(cdp, cdpAlerts) {
           log(
             `[SIGNAL] ${pattern} in zone! O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`
           );
-          await createTradeAlerts(cdpAlerts, cfg.bias, curr, target, sl, symbol, algotest);
+          const created = await createTradeAlerts(
+            cdpAlerts,
+            cfg.bias,
+            curr,
+            target,
+            sl,
+            symbol,
+            algotest
+          );
+          if (created) {
+            const entryLevel = cfg.bias === 'up' ? curr.high : curr.low;
+            const checkBars = await fetchBars(cdp, symbol, tf, 3);
+            const live = checkBars[checkBars.length - 1]; // current forming candle
+            if (live) {
+              const missed = cfg.bias === 'up' ? live.close > entryLevel : live.close < entryLevel;
+              if (missed) {
+                log(
+                  `[MISSED?] Price ${live.close} already ${cfg.bias === 'up' ? 'above' : 'below'} entry ${entryLevel} — entry may have been missed`
+                );
+              } else {
+                log(
+                  `[WATCHING] Price ${live.close} — entry ${entryLevel} not yet crossed, alert is live`
+                );
+              }
+            }
+          }
         } else {
           log(
             `Candle in zone — no pattern (O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`
