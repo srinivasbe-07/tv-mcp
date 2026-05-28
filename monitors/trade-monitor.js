@@ -502,28 +502,29 @@ async function tick(cdp, cdpAlerts) {
 
     const allLevels = [...cachedDayLevels, ...(cfg.importantLevels || [])];
 
-    // ── 1-min pattern check ────────────────────────────────────────────────
-    const bars1m = await fetchBars(cdp, symbol, '1', 5);
+    // ── Pattern check (configurable timeframe, default 3-min) ────────────────
+    const tf = String(cfg.candleTimeframe || '3');
+    const bars = await fetchBars(cdp, symbol, tf, 5);
 
-    if (bars1m.length < 3) {
-      log('Not enough 1-min bars');
+    if (bars.length < 3) {
+      log(`Not enough ${tf}-min bars`);
     } else {
-      const curr = bars1m[bars1m.length - 2]; // last completed candle
-      const prev = bars1m[bars1m.length - 3];
+      const curr = bars[bars.length - 2]; // last completed candle
+      const prev = bars[bars.length - 3];
 
-      // ── Zone break: 1-min close below/above zone → pause, user must re-enable
+      // ── Zone break: candle close below/above zone → pause, user must re-enable
       const zoneBroken = cfg.bias === 'up' ? curr.close < zone.bottom : curr.close > zone.top;
 
       if (zoneBroken) {
         const boundary = cfg.bias === 'up' ? zone.bottom : zone.top;
         log(
-          `[ZONE BREAK] 1-min closed ${curr.close} ${cfg.bias === 'up' ? 'below' : 'above'} zone ${boundary} — pausing`
+          `[ZONE BREAK] ${tf}-min closed ${curr.close} ${cfg.bias === 'up' ? 'below' : 'above'} zone ${boundary} — pausing`
         );
         log(`[ZONE BREAK] Monitor PAUSED — reconfigure zones then set active: true`);
         cfg.active = false;
         saveConfig(cfg);
       } else if (!isInZone(curr, zone)) {
-        log(`1-min candle H:${curr.high} L:${curr.low} — outside zone`);
+        log(`${tf}-min candle H:${curr.high} L:${curr.low} — outside zone`);
       } else {
         const pattern =
           cfg.bias === 'up' ? detectBullishPattern(curr, prev) : detectBearishPattern(curr, prev);
@@ -599,6 +600,7 @@ async function main() {
 
   console.log('\n=== Trade Setup Monitor ===');
   console.log(`Symbol     : ${effectiveSymbol}${cfg.symbol ? ' (override)' : ' (day-based)'}`);
+  console.log(`Candle TF  : ${cfg.candleTimeframe || 3}-min`);
   console.log(`Tolerance  : ${effectiveTolerance}${cfg.tolerance ? ' (override)' : ' (default)'}`);
   console.log(`Market Hrs : ${cfg.ignoreMarketHours ? 'ignored (24x7 mode)' : 'IST 09:15–15:30'}`);
   console.log(`Bias       : ${cfg.bias?.toUpperCase()}`);
