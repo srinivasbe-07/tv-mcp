@@ -366,13 +366,21 @@ async function cleanupFiredAlerts(cdpAlerts) {
     const tradeAlerts = alerts.filter((a) => TRADE_ALERT_NAMES.includes(a.name));
     if (tradeAlerts.length === 0) return;
 
-    // If SL or Target fired (inactive/stopped) → delete all remaining trade alerts
-    const exitFired = tradeAlerts.some(
-      (a) => (a.name === 'TradeSL' || a.name === 'TradeTarget') && !a.active
-    );
-    if (!exitFired) return;
+    const targetFired = tradeAlerts.some((a) => a.name === 'TradeTarget' && !a.active);
+    const slFired = tradeAlerts.some((a) => a.name === 'TradeSL' && !a.active);
+    if (!targetFired && !slFired) return;
 
-    log('[CLEANUP] Exit alert fired — deleting all trade alerts');
+    if (targetFired) {
+      log('[TARGET HIT] Target achieved — set new levels then enable active: true to resume');
+      const cfg = loadConfig();
+      if (cfg) {
+        cfg.active = false;
+        saveConfig(cfg);
+      }
+    } else {
+      log('[SL HIT] Stop loss triggered — cleaning up trade alerts');
+    }
+
     for (const name of TRADE_ALERT_NAMES) {
       try {
         await cdpAlerts.handle('alert_delete', { alertId: name });
