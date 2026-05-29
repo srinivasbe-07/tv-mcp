@@ -5,7 +5,7 @@
 
 param(
     [int]$Port = 9222,
-    [int]$TimeoutSec = 120
+    [int]$TimeoutSec = 300
 )
 
 # If CDP is already responding, nothing to do

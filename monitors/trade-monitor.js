@@ -26,20 +26,27 @@ import readline from 'readline';
 const CONFIG_FILE = './config/trade-config.json';
 const ALGOTEST_FILE = './config/algotest-config.json';
 const LOG_FILE = './logs/trade-monitor.log';
+const DRAWN_IDS_FILE = './logs/drawn-ids.json';
 // ms until the next candle boundary (e.g. 09:03:00, 09:06:00 for 3-min)
 function msUntilNextCandleClose(tfMinutes) {
   const msPerCandle = tfMinutes * 60 * 1000;
   return msPerCandle - (Date.now() % msPerCandle);
 }
 
-fs.mkdirSync('./logs', { recursive: true });
-const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
+import path from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const isMain = path.resolve(process.argv[1] || '') === path.resolve(__filename);
+
+if (isMain) fs.mkdirSync('./logs', { recursive: true });
+const logStream = isMain ? fs.createWriteStream(LOG_FILE, { flags: 'a' }) : null;
 const MARKET_OPEN_MIN = 9 * 60 + 15;
 const MARKET_CLOSE_MIN = 15 * 60 + 30;
 
 const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
 const INSTRUMENTS = { NIFTY: 'NSE:NIFTY', SENSEX: 'BSE:SENSEX' };
 const TOLERANCE = { NIFTY: 50, SENSEX: 100 };
+// Points above entry at which SL is trailed to breakeven (cost)
+const TRAIL_POINTS = { NIFTY: 15, SENSEX: 35 };
 
 // ---------------------------------------------------------------------------
 // IST helpers
@@ -64,7 +71,7 @@ function timeStr() {
 function log(msg) {
   const line = `[${timeStr()}] ${msg}`;
   console.log(line);
-  logStream.write(line + '\n');
+  if (logStream) logStream.write(line + '\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +259,8 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
 // Create trade alerts (Entry + SL + Target)
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
+let tradeEntryLevel = null; // saved on alert creation — used for trail SL to breakeven
+let slTrailedToBreakeven = false;
 
 async function createTradeAlerts(
   cdpAlerts,
@@ -348,6 +357,8 @@ async function createTradeAlerts(
   log(`  [OK] TradeTarget at ${target}`);
 
   lastAlertCandleTime = candle.time;
+  tradeEntryLevel = entryLevel;
+  slTrailedToBreakeven = false;
   log(`  All 3 alerts created${webhook ? ' (Algotest webhook set)' : ''}`);
   return true;
 }
@@ -364,7 +375,14 @@ async function cleanupFiredAlerts(cdpAlerts) {
     const alerts = data.alerts || [];
 
     const tradeAlerts = alerts.filter((a) => TRADE_ALERT_NAMES.includes(a.name));
-    if (tradeAlerts.length === 0) return;
+    if (tradeAlerts.length === 0) {
+      // No trade alerts on TV — reset (manually deleted or never created cleanly)
+      log('[RESET] No trade alerts found on TradingView — clearing trade state');
+      lastAlertCandleTime = null;
+      tradeEntryLevel = null;
+      slTrailedToBreakeven = false;
+      return;
+    }
 
     const targetFired = tradeAlerts.some((a) => a.name === 'TradeTarget' && !a.active);
     const slFired = tradeAlerts.some((a) => a.name === 'TradeSL' && !a.active);
@@ -394,15 +412,122 @@ async function cleanupFiredAlerts(cdpAlerts) {
       }
     }
     lastAlertCandleTime = null;
+    tradeEntryLevel = null;
+    slTrailedToBreakeven = false;
   } catch (_e) {
     /* ignore */
   }
 }
 
 // ---------------------------------------------------------------------------
+// Trail SL to breakeven once price reaches trailToCostAt
+// ---------------------------------------------------------------------------
+async function trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints) {
+  if (!trailPoints || !tradeEntryLevel || cfg.bias !== 'up' || slTrailedToBreakeven) return;
+
+  const trailTrigger = tradeEntryLevel + trailPoints;
+  const tf = String(cfg.candleTimeframe || '3');
+  const liveBars = await fetchBars(cdp, symbol, tf, 3);
+  const live = liveBars[liveBars.length - 1];
+  if (!live || live.close < trailTrigger) return;
+
+  log(`[TRAIL SL] Price ${live.close} reached ${trailTrigger} (entry ${tradeEntryLevel} + ${trailPoints}pts) — moving TradeSL to breakeven`);
+  try {
+    await cdpAlerts.handle('alert_delete', { alertId: 'TradeSL' });
+    await new Promise((r) => setTimeout(r, 500));
+
+    const algotest = loadAlgotest();
+    const token = algotest?.accessToken || '';
+    const exitMsg = token ? JSON.stringify({ access_token: token, alert_name: 'square_off' }) : '';
+    const webhook = algotest?.webhookUrl || '';
+
+    const r = await cdpAlerts.handle('alert_create', {
+      symbol,
+      condition: 'crosses_down',
+      level: tradeEntryLevel,
+      name: 'TradeSL',
+      message: exitMsg,
+      webhook,
+    });
+    const d = JSON.parse(r?.content?.[0]?.text || '{}');
+    if (d.success) {
+      log(`[TRAIL SL] TradeSL moved to ${tradeEntryLevel} (breakeven) — trade now risk-free`);
+      slTrailedToBreakeven = true;
+    } else {
+      log(`[TRAIL SL] Failed to move SL: ${d.message || 'unknown error'}`);
+    }
+  } catch (e) {
+    log(`[TRAIL SL] Error: ${e.message}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Persist drawn entity IDs across restarts so old lines can be removed
+// ---------------------------------------------------------------------------
+function loadDrawnIds() {
+  try {
+    return JSON.parse(fs.readFileSync(DRAWN_IDS_FILE, 'utf8'));
+  } catch (_e) {
+    return { levelIds: [], zoneIds: [], importantIds: [] };
+  }
+}
+
+function saveDrawnIds() {
+  try {
+    fs.writeFileSync(DRAWN_IDS_FILE, JSON.stringify({ levelIds: drawnLevelIds, zoneIds: drawnZoneIds, importantIds: drawnImportantIds }));
+  } catch (_e) { /* ignore */ }
+}
+
+// ---------------------------------------------------------------------------
+// Clear all drawings from the chart on startup
+// ---------------------------------------------------------------------------
+async function clearAllDrawings(cdp) {
+  const script = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart) return { error: 'No chart' };
+
+        // Method 1: removeAllShapes (newer TV versions)
+        if (typeof chart.removeAllShapes === 'function') {
+          chart.removeAllShapes();
+          return { ok: true, removed: 'all', method: 'removeAllShapes' };
+        }
+
+        // Method 2: getAllShapes + removeEntity (widely supported)
+        if (typeof chart.getAllShapes === 'function') {
+          const shapes = chart.getAllShapes() || [];
+          let count = 0;
+          shapes.forEach(s => {
+            try { chart.removeEntity(s.id); count++; } catch(_) {}
+          });
+          return { ok: true, removed: count, method: 'getAllShapes' };
+        }
+
+        return { ok: false, error: 'No clear API available' };
+      } catch(e) { return { error: e.message }; }
+    })()
+  `;
+  const result = await cdp.executeScript(script).catch(() => null);
+  if (result?.ok) {
+    log(`Chart cleared: ${result.removed} shapes removed (${result.method})`);
+  } else {
+    log(`Chart clear failed: ${result?.error || 'unknown'}`);
+  }
+  drawnLevelIds = [];
+  drawnZoneIds = [];
+  drawnImportantIds = [];
+  lastDrawnZoneKey = '';
+  lastDrawnImportantKey = '';
+  saveDrawnIds();
+}
+
+// ---------------------------------------------------------------------------
 // Draw horizontal lines on the chart for key levels
 // ---------------------------------------------------------------------------
-let drawnLevelIds = [];
+const _persistedIds = loadDrawnIds();
+let drawnLevelIds = _persistedIds.levelIds;
+let drawnImportantIds = _persistedIds.importantIds || [];
 
 async function drawDayLevels(cdp, levelObjects) {
   const removeScript = `
@@ -442,10 +567,123 @@ async function drawDayLevels(cdp, levelObjects) {
   const result = await cdp.executeScript(drawScript).catch(() => null);
   if (result?.ids?.length) {
     drawnLevelIds = result.ids;
+    saveDrawnIds();
     log(`Drew ${result.ids.length} level lines on chart`);
   } else {
     log(`Level lines: ${result?.error || 'drawing API not available'}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Draw zone lines (top + bottom) — redrawn only when zone changes
+// ---------------------------------------------------------------------------
+let drawnZoneIds = _persistedIds.zoneIds;
+let lastDrawnZoneKey = '';
+
+async function drawZone(cdp, zone, bias) {
+  const removeScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart) return;
+        ${JSON.stringify(drawnZoneIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+      } catch(_e) {}
+    })()
+  `;
+  await cdp.executeScript(removeScript).catch(() => {});
+  drawnZoneIds = [];
+
+  const color = bias === 'up' ? '#FFD700' : '#FF6B6B';
+  const top = zone.top;
+  const bottom = zone.bottom;
+
+  const drawScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart || typeof chart.createShape !== 'function') return { error: 'No drawing API' };
+        const ids = [];
+        const t = Math.floor(Date.now() / 1000);
+        for (const price of [${top}, ${bottom}]) {
+          try {
+            const id = chart.createShape(
+              { time: t, price },
+              { shape: 'horizontal_line', lock: false,
+                overrides: { linecolor: '${color}', linewidth: 3, linestyle: 0,
+                             showLabel: false } }
+            );
+            if (id) ids.push(id);
+          } catch(_e) {}
+        }
+        return { ids };
+      } catch(e) { return { error: e.message }; }
+    })()
+  `;
+  const result = await cdp.executeScript(drawScript).catch(() => null);
+  if (result?.ids?.length) {
+    drawnZoneIds = result.ids;
+    saveDrawnIds();
+    log(`Zone drawn: ${zone.bottom} - ${zone.top}`);
+    return true;
+  }
+  log(`Zone draw failed: ${result?.error || 'unknown error'}`);
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Draw important levels (user-configured S/R) — purple lines
+// ---------------------------------------------------------------------------
+let lastDrawnImportantKey = '';
+
+async function drawImportantLevels(cdp, levels) {
+  const removeScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart) return;
+        ${JSON.stringify(drawnImportantIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+      } catch(_e) {}
+    })()
+  `;
+  await cdp.executeScript(removeScript).catch(() => {});
+  drawnImportantIds = [];
+  saveDrawnIds();
+
+  if (!levels.length) return true;
+
+  const levelObjects = levels.map((price) => ({ price, label: `L ${price}`, color: '#AA44FF' }));
+  const drawScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart || typeof chart.createShape !== 'function') return { error: 'No drawing API' };
+        const levels = ${JSON.stringify(levelObjects)};
+        const ids = [];
+        const t = Math.floor(Date.now() / 1000);
+        for (const { price, label, color } of levels) {
+          try {
+            const id = chart.createShape(
+              { time: t, price },
+              { shape: 'horizontal_line', lock: false,
+                overrides: { linecolor: color, linewidth: 1, linestyle: 1,
+                             showLabel: true, text: label } }
+            );
+            if (id) ids.push(id);
+          } catch(_e) {}
+        }
+        return { ids };
+      } catch(e) { return { error: e.message }; }
+    })()
+  `;
+  const result = await cdp.executeScript(drawScript).catch(() => null);
+  if (result?.ids?.length) {
+    drawnImportantIds = result.ids;
+    saveDrawnIds();
+    log(`Important levels drawn: ${levels.join(', ')}`);
+    return true;
+  }
+  log(`Important levels: ${result?.error || 'drawing API not available'}`);
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -475,24 +713,36 @@ async function tick(cdp, cdpAlerts) {
       return;
     }
 
+    const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
+    const symbol = cfg.symbol || INSTRUMENTS[instrName];
+
     // Clean up if SL/Target fired — resets lastAlertCandleTime to null on exit
     if (lastAlertCandleTime) await cleanupFiredAlerts(cdpAlerts);
 
-    // Trade still active — skip pattern detection until SL or Target hits
+    // Trade still active — check trail SL, then skip pattern detection
     if (lastAlertCandleTime) {
+      // trailToCostPoints: user override; absent = use instrument default; 0 = disabled
+      const trailPoints =
+        cfg.trailToCostPoints != null
+          ? cfg.trailToCostPoints
+          : cfg.symbol
+            ? 0
+            : TRAIL_POINTS[instrName] || 0;
+      await trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints);
       log('Trade active — waiting for SL or Target to hit, no new setups');
       return;
     }
 
-    const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
-    const symbol = cfg.symbol || INSTRUMENTS[instrName];
     const tolerance = cfg.tolerance || TOLERANCE[instrName];
-    const zone = cfg.bias === 'up' ? cfg.buyZone : cfg.sellZone;
-    const target = cfg.bias === 'up' ? cfg.buyTarget : cfg.sellTarget;
-    const sl = cfg.bias === 'up' ? cfg.buySL || 0 : cfg.sellSL || 0;
+    const zoneArr = cfg.zone || [];
+    const zone = zoneArr.length >= 2
+      ? { top: Math.max(zoneArr[0], zoneArr[1]), bottom: Math.min(zoneArr[0], zoneArr[1]) }
+      : null;
+    const target = cfg.target;
+    const sl = cfg.sl || 0;
     const algotest = loadAlgotest();
 
-    if (!zone || !zone.top || !zone.bottom) {
+    if (!zone) {
       log(`Zone not configured — edit trade-config.json`);
       return;
     }
@@ -503,7 +753,7 @@ async function tick(cdp, cdpAlerts) {
 
     const slDesc = sl ? String(sl) : 'auto (candle extreme)';
     log(
-      `${instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${target} | SL:${slDesc}`
+      `${cfg.symbol || instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${target} | SL:${slDesc}`
     );
 
     // ── Refresh last 3 days H/L once per day ──────────────────────────────
@@ -513,7 +763,10 @@ async function tick(cdp, cdpAlerts) {
       const completed = dailyBars.slice(0, -1).slice(-3); // exclude today's forming bar
       cachedDayLevels = completed.flatMap((b) => [b.high, b.low]);
       lastDayLevelDate = todayStr;
-      log(`Day levels (last 3 days): ${cachedDayLevels.map((l) => l.toFixed(0)).join(', ')}`);
+      completed.forEach((b, i) => {
+        const date = new Date(b.time * 1000).toISOString().slice(0, 10);
+        log(`D-${3 - i} (${date}): H=${b.high.toFixed(0)}  L=${b.low.toFixed(0)}`);
+      });
 
       // Draw horizontal lines on chart — D-1 is yesterday, D-2 two days ago, D-3 three days ago
       const levelObjects = completed.flatMap((b, i) => [
@@ -524,6 +777,20 @@ async function tick(cdp, cdpAlerts) {
     }
 
     const allLevels = [...cachedDayLevels, ...(cfg.importantLevels || [])];
+
+    // ── Draw zone lines when zone changes ─────────────────────────────────────
+    const zoneKey = `${zone.bottom}-${zone.top}-${cfg.bias}`;
+    if (zoneKey !== lastDrawnZoneKey) {
+      const ok = await drawZone(cdp, zone, cfg.bias);
+      if (ok) lastDrawnZoneKey = zoneKey;
+    }
+
+    // ── Draw important levels when they change ────────────────────────────────
+    const importantKey = (cfg.importantLevels || []).join(',');
+    if (importantKey !== lastDrawnImportantKey) {
+      const ok = await drawImportantLevels(cdp, cfg.importantLevels || []);
+      if (ok) lastDrawnImportantKey = importantKey;
+    }
 
     // ── Pattern check (configurable timeframe, default 3-min) ────────────────
     const tf = String(cfg.candleTimeframe || '3');
@@ -573,7 +840,7 @@ async function tick(cdp, cdpAlerts) {
           }
         } else {
           log(
-            `Candle in zone — no pattern (O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`
+            `Candle in zone — no pattern | curr O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close} | prev O:${prev.open} H:${prev.high} L:${prev.low} C:${prev.close}`
           );
         }
       }
@@ -656,34 +923,99 @@ async function main() {
   console.log(`Tolerance  : ${effectiveTolerance}${cfg.tolerance ? ' (override)' : ' (default)'}`);
   console.log(`Market Hrs : ${cfg.ignoreMarketHours ? 'ignored (24x7 mode)' : 'IST 09:15–15:30'}`);
   console.log(`Bias       : ${cfg.bias?.toUpperCase()}`);
-  console.log(`Buy Zone   : ${cfg.buyZone?.bottom} – ${cfg.buyZone?.top}`);
-  console.log(`Sell Zone  : ${cfg.sellZone?.bottom} – ${cfg.sellZone?.top}`);
-  console.log(`Buy Target : ${cfg.buyTarget}`);
-  console.log(`Sell Target: ${cfg.sellTarget}`);
-  console.log(`Buy SL     : ${cfg.buySL || 'auto (candle low)'}`);
-  console.log(`Sell SL    : ${cfg.sellSL || 'auto (candle high)'}`);
+  const _za = cfg.zone || [];
+  console.log(`Zone       : ${_za.length >= 2 ? `${Math.min(_za[0], _za[1])} – ${Math.max(_za[0], _za[1])}` : 'not set'}`);
+  console.log(`Target     : ${cfg.target || 'not set'}`);
+  console.log(`SL         : ${cfg.sl || 'auto (candle extreme)'}`);
   console.log(`Levels     : ${(cfg.importantLevels || []).join(', ') || 'none'}`);
+  const effectiveTrailPts =
+    cfg.trailToCostPoints != null
+      ? cfg.trailToCostPoints
+      : cfg.symbol
+        ? 0
+        : TRAIL_POINTS[DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY'] || 0;
+  console.log(
+    `Trail SL   : ${effectiveTrailPts ? `move to breakeven after +${effectiveTrailPts}pts from entry${cfg.trailToCostPoints != null ? ' (config)' : ' (default)'}` : 'disabled'}`
+  );
   const at = loadAlgotest();
   console.log(
     `Algotest   : ${at.webhookUrl ? 'configured' : 'not configured (edit config/algotest-config.json)'}`
   );
   console.log(`Active     : ${cfg.active}`);
   if (!cfg.active) console.log('  ⚠  Monitor is PAUSED — configure zones then set active: true');
-  console.log('\nKeys: [a] toggle active  [f] manual flip bias  [q] quit\n');
+  console.log('\nKeys: [a] toggle active  [f] flip bias  [r] apply config now  [q] quit\n');
 
   process.on('uncaughtException', (e) => log(`[CRASH] ${e.message}`));
   process.on('unhandledRejection', (e) => log(`[CRASH] ${e?.message || e}`));
+
+  log(`${'='.repeat(50)}`);
+  log(`=== Monitor started ===`);
+  const _startZa = cfg.zone || [];
+  log(`Symbol: ${effectiveSymbol} | Bias: ${cfg.bias?.toUpperCase()} | Zone: ${_startZa.join('-')} | Active: ${cfg.active}`);
 
   const cdp = new CDPManager();
   try {
     await cdp.connect();
     log('CDP connected');
   } catch (e) {
-    console.error('CDP connect failed:', e.message);
+    log(`CDP connect failed: ${e.message}`);
     process.exit(1);
   }
 
   const cdpAlerts = new AlertTools(cdp);
+
+  await clearAllDrawings(cdp);
+  await new Promise((r) => setTimeout(r, 2000)); // wait for chart to settle after clearing
+
+  // Draw zone + important levels on startup (even if active: false)
+  const startCfg = loadConfig();
+  if (startCfg) {
+    const _sza = startCfg.zone || [];
+    const startZone = _sza.length >= 2
+      ? { top: Math.max(_sza[0], _sza[1]), bottom: Math.min(_sza[0], _sza[1]) }
+      : null;
+    if (startZone) {
+      const ok = await drawZone(cdp, startZone, startCfg.bias);
+      if (ok) lastDrawnZoneKey = `${startZone.bottom}-${startZone.top}-${startCfg.bias}`;
+    }
+    if ((startCfg.importantLevels || []).length) {
+      const ok = await drawImportantLevels(cdp, startCfg.importantLevels);
+      if (ok) lastDrawnImportantKey = startCfg.importantLevels.join(',');
+    }
+  }
+
+  // Auto-redraw zone + important levels when config file is saved
+  let configWatchDebounce = null;
+  fs.watch(CONFIG_FILE, () => {
+    clearTimeout(configWatchDebounce);
+    configWatchDebounce = setTimeout(async () => {
+      const c = loadConfig();
+      if (!c) return;
+      const _cza = c.zone || [];
+      const z = _cza.length >= 2
+        ? { top: Math.max(_cza[0], _cza[1]), bottom: Math.min(_cza[0], _cza[1]) }
+        : null;
+      const newZoneKey = z ? `${z.bottom}-${z.top}-${c.bias}` : '';
+      const newImportantKey = (c.importantLevels || []).join(',');
+      if (newZoneKey !== lastDrawnZoneKey || newImportantKey !== lastDrawnImportantKey) {
+        log('[CONFIG] Change detected — redrawing levels...');
+        if (newZoneKey !== lastDrawnZoneKey) {
+          if (z?.top && z?.bottom) {
+            const ok = await drawZone(cdp, z, c.bias);
+            if (ok) lastDrawnZoneKey = newZoneKey;
+          } else {
+            lastDrawnZoneKey = newZoneKey;
+          }
+        }
+        if (newImportantKey !== lastDrawnImportantKey) {
+          const ok = await drawImportantLevels(cdp, c.importantLevels || []);
+          if (ok) lastDrawnImportantKey = newImportantKey;
+        }
+      }
+      // Apply monitoring changes (active, zones, bias) immediately
+      executeTick().catch(() => {});
+    }, 300); // 300ms debounce — handles editors that write multiple times on save
+  });
 
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
@@ -733,23 +1065,42 @@ async function main() {
           log(`[MANUAL FLIP] Bias → ${c.bias.toUpperCase()} | PAUSED — update zones + target`);
         }
       }
+      if (key.name === 'r') {
+        const c = loadConfig();
+        if (c) {
+          const _rza = c.zone || [];
+          const _rz = _rza.length >= 2
+            ? { top: Math.max(_rza[0], _rza[1]), bottom: Math.min(_rza[0], _rza[1]) }
+            : null;
+          log(`[REFRESH] Applying config changes immediately...`);
+          lastDrawnZoneKey = '';
+          lastDrawnImportantKey = '';
+          if (_rz) await drawZone(cdp, _rz, c.bias);
+          await drawImportantLevels(cdp, c.importantLevels || []);
+        }
+      }
     });
   }
 
   await tick(cdp, cdpAlerts);
 
   let tickRunning = false;
-  async function runTick() {
+
+  async function executeTick() {
     if (tickRunning) {
       log('Tick skipped — previous still running');
-    } else {
-      tickRunning = true;
-      try {
-        await tick(cdp, cdpAlerts);
-      } finally {
-        tickRunning = false;
-      }
+      return;
     }
+    tickRunning = true;
+    try {
+      await tick(cdp, cdpAlerts);
+    } finally {
+      tickRunning = false;
+    }
+  }
+
+  async function runTick() {
+    await executeTick();
     // Re-read timeframe from config so changes take effect without restart
     const nextCfg = loadConfig();
     const nextTf = parseInt(nextCfg?.candleTimeframe || 3, 10);
@@ -776,4 +1127,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 export { createTradeAlerts };
 export function _resetLastAlertCandleTime() {
   lastAlertCandleTime = null;
+  tradeEntryLevel = null;
+  slTrailedToBreakeven = false;
 }

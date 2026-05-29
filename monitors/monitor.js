@@ -48,8 +48,8 @@ const PE_ALERTS = { entry: 'supertrendshortEntry', exit: 'supertrendShortExit' }
 // Day-of-week instrument routing (IST weekday: 1=Mon … 5=Fri)
 export const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
 
-// NIFTY ITM depth by day: Mon/Tue closer to expiry → ITM-1; Fri further → ITM-2
-export const NIFTY_ITM_BY_DAY = { 1: 1, 2: 1, 5: 2 };
+// NIFTY ITM depth by day: Mon/Tue/Fri → ITM-1
+export const NIFTY_ITM_BY_DAY = { 1: 1, 2: 1, 5: 1 };
 
 // Returns ITM depth for given day + instrument (override via CLI --itm flag)
 export function calcITMDepth(dayOfWeek, instrument, cliOverride = null) {
