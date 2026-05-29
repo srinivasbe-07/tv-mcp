@@ -182,7 +182,7 @@ test('SENSEX 75450 → PE strike 75700', () => {
 section('calcITMDepth — day-based (no override)');
 test('Mon (1) NIFTY → ITM-1', () => calcITMDepth(1, 'NIFTY') === 1);
 test('Tue (2) NIFTY → ITM-1', () => calcITMDepth(2, 'NIFTY') === 1);
-test('Fri (5) NIFTY → ITM-2', () => calcITMDepth(5, 'NIFTY') === 2);
+test('Fri (5) NIFTY → ITM-1', () => calcITMDepth(5, 'NIFTY') === 1);
 test('Wed (3) SENSEX → ITM-2', () => calcITMDepth(3, 'SENSEX') === 2);
 test('Thu (4) SENSEX → ITM-2', () => calcITMDepth(4, 'SENSEX') === 2);
 test('SENSEX ignores day rule', () => calcITMDepth(1, 'SENSEX') === 2); // Mon SENSEX still 2
@@ -197,7 +197,7 @@ test('override null = use day rule', () => calcITMDepth(1, 'NIFTY', null) === 1)
 section('NIFTY_ITM_BY_DAY mapping');
 test('Mon (1) = 1', () => NIFTY_ITM_BY_DAY[1] === 1);
 test('Tue (2) = 1', () => NIFTY_ITM_BY_DAY[2] === 1);
-test('Fri (5) = 2', () => NIFTY_ITM_BY_DAY[5] === 2);
+test('Fri (5) = 1', () => NIFTY_ITM_BY_DAY[5] === 1);
 
 // ---------------------------------------------------------------------------
 // monitor-config.json override priority
