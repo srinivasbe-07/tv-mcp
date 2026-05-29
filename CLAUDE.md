@@ -9,13 +9,13 @@ This MCP server lets you control TradingView Desktop via Chrome DevTools Protoco
 
 ### Every day (fresh start)
 ```
-.\start-trade-monitor.ps1
+.\start-pattern-monitor.ps1
 ```
 Closes any existing TradingView, launches it with CDP, then starts the trade monitor.
 
 ### TradingView already open
 ```
-.\start-trade-monitor.ps1 -SkipTV
+.\start-pattern-monitor.ps1 -SkipTV
 ```
 
 ### Keys while monitor is running

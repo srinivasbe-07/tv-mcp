@@ -1,6 +1,6 @@
-# start-trade-monitor.ps1 -- Launch TradingView + Trade Setup Monitor
-# Usage:  .\start-trade-monitor.ps1
-#         .\start-trade-monitor.ps1 -SkipTV    (TradingView already running)
+# start-pattern-monitor.ps1 -- Launch TradingView + Trade Setup Monitor
+# Usage:  .\start-pattern-monitor.ps1
+#         .\start-pattern-monitor.ps1 -SkipTV    (TradingView already running)
 
 param(
     [switch]$SkipTV,
@@ -34,12 +34,12 @@ if (-not $SkipTV) {
 # ── Step 2: Start trade monitor (auto-restarts on crash) ────────────────────
 Write-Host "=== Step 2: Starting Trade Monitor ===" -ForegroundColor Cyan
 Write-Host "Config : config/trade-config.json  (edit live - reloaded every tick)" -ForegroundColor DarkGray
-Write-Host "Log    : logs/trade-monitor.log" -ForegroundColor DarkGray
+Write-Host "Log    : logs/pattern-monitor.log" -ForegroundColor DarkGray
 Write-Host "Keys   : [a] toggle active  [f] flip bias  [q] quit" -ForegroundColor DarkGray
 Write-Host ""
 
 while ($true) {
-    node monitors/trade-monitor.js
+    node monitors/pattern-monitor.js
     $code = $LASTEXITCODE
     if ($code -eq 0) { break }
     Write-Host ""

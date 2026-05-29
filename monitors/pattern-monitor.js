@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Trade Setup Monitor
+ * Pattern Monitor
  *
  * Watches 1-min candles in a configured zone.
  * When Hammer / Engulfing / Doji forms in the zone:
@@ -13,7 +13,7 @@
  * Config: config/trade-config.json (re-read every tick)
  *         config/algotest-config.json (loaded once at startup)
  *
- * Usage:  node monitors/trade-monitor.js
+ * Usage:  node monitors/pattern-monitor.js
  * Keys:   [a] toggle active  [f] manual flip bias  [q] quit
  */
 
@@ -25,7 +25,7 @@ import readline from 'readline';
 
 const CONFIG_FILE = './config/trade-config.json';
 const ALGOTEST_FILE = './config/algotest-config.json';
-const LOG_FILE = './logs/trade-monitor.log';
+const LOG_FILE = './logs/pattern-monitor.log';
 const DRAWN_IDS_FILE = './logs/drawn-ids.json';
 // ms until the next candle boundary (e.g. 09:03:00, 09:06:00 for 3-min)
 function msUntilNextCandleClose(tfMinutes) {

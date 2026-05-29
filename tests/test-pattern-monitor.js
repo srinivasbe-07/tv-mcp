@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Unit tests for trade-monitor.js — createTradeAlerts.
+ * Unit tests for pattern-monitor.js — createTradeAlerts.
  * No CDP / TradingView required — runs standalone.
  *
- * Usage:  node tests/test-trade-monitor.js
+ * Usage:  node tests/test-pattern-monitor.js
  */
 
-import { createTradeAlerts, _resetLastAlertCandleTime } from '../monitors/trade-monitor.js';
+import { createTradeAlerts, _resetLastAlertCandleTime } from '../monitors/pattern-monitor.js';
 
 // ---------------------------------------------------------------------------
 // Minimal async test runner
@@ -66,7 +66,7 @@ const BASE_ARGS = { target: 120, sl: 0, symbol: 'BTCUSD', algotest: null, _delay
 // Tests
 // ---------------------------------------------------------------------------
 
-console.log('\n=== trade-monitor.js unit tests ===');
+console.log('\n=== pattern-monitor.js unit tests ===');
 
 section('createTradeAlerts — happy path');
 
