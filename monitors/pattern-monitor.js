@@ -48,6 +48,14 @@ const TOLERANCE = { NIFTY: 50, SENSEX: 100 };
 // Points above entry at which SL is trailed to breakeven (cost)
 const TRAIL_POINTS = { NIFTY: 15, SENSEX: 35 };
 
+// Options mode: ITM CE option config per instrument
+const OPTION_INSTR = {
+  NIFTY:  { strikeInterval: 50,  expiryDay: 2, symbolPrefix: 'NIFTY' }, // expiry Tuesday
+  SENSEX: { strikeInterval: 100, expiryDay: 4, symbolPrefix: 'BSX'   }, // expiry Thursday
+};
+// ITM depth for pattern monitor: Fri=ITM-1, Mon/Tue=ITM-2, SENSEX=ITM-2
+const PATTERN_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
+
 // ---------------------------------------------------------------------------
 // IST helpers
 // ---------------------------------------------------------------------------
@@ -256,11 +264,44 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
 }
 
 // ---------------------------------------------------------------------------
+// Options mode helpers
+// ---------------------------------------------------------------------------
+function calcATM(spot, strikeInterval) {
+  return Math.round(spot / strikeInterval) * strikeInterval;
+}
+
+function getExpiryDate(expiryDay) {
+  const t = nowIST();
+  const day = t.getUTCDay();
+  const daysUntil = (expiryDay - day + 7) % 7;
+  const d = new Date(t);
+  d.setUTCDate(t.getUTCDate() + daysUntil);
+  return d;
+}
+
+function buildOptionSymbol(instrName, spot, itmDepth) {
+  const instr = OPTION_INSTR[instrName];
+  if (!instr) return null;
+  const atm = calcATM(spot, instr.strikeInterval);
+  const strike = atm - itmDepth * instr.strikeInterval; // ITM call: strike below spot
+  const d = getExpiryDate(instr.expiryDay);
+  const yy = String(d.getUTCFullYear()).slice(2);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${instr.symbolPrefix}${yy}${mm}${dd}C${strike}`;
+}
+
+function calcSwingHigh(bars) {
+  return Math.max(...bars.map((b) => b.high));
+}
+
+// ---------------------------------------------------------------------------
 // Create trade alerts (Entry + SL + Target)
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
 let tradeEntryLevel = null; // saved on alert creation — used for trail SL to breakeven
 let slTrailedToBreakeven = false;
+let activeTradeSymbol = null; // option symbol when in options mode
 
 async function createTradeAlerts(
   cdpAlerts,
@@ -381,6 +422,7 @@ async function cleanupFiredAlerts(cdpAlerts) {
       lastAlertCandleTime = null;
       tradeEntryLevel = null;
       slTrailedToBreakeven = false;
+      activeTradeSymbol = null;
       return;
     }
 
@@ -414,6 +456,7 @@ async function cleanupFiredAlerts(cdpAlerts) {
     lastAlertCandleTime = null;
     tradeEntryLevel = null;
     slTrailedToBreakeven = false;
+    activeTradeSymbol = null;
   } catch (_e) {
     /* ignore */
   }
@@ -427,7 +470,7 @@ async function trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints) {
 
   const trailTrigger = tradeEntryLevel + trailPoints;
   const tf = String(cfg.candleTimeframe || '3');
-  const liveBars = await fetchBars(cdp, symbol, tf, 3);
+  const liveBars = await fetchBars(cdp, activeTradeSymbol || symbol, tf, 3);
   const live = liveBars[liveBars.length - 1];
   if (!live || live.close < trailTrigger) return;
 
@@ -746,14 +789,16 @@ async function tick(cdp, cdpAlerts) {
       log(`Zone not configured — edit trade-config.json`);
       return;
     }
-    if (!target) {
+    const isOptionsMode = cfg.optionsMode && !cfg.symbol;
+    if (!target && !isOptionsMode) {
       log(`Target not configured — edit trade-config.json`);
       return;
     }
 
     const slDesc = sl ? String(sl) : 'auto (candle extreme)';
+    const tgtDesc = target ? String(target) : (isOptionsMode ? 'auto (swing high)' : '?');
     log(
-      `${cfg.symbol || instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${target} | SL:${slDesc}`
+      `${cfg.symbol || instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${tgtDesc} | SL:${slDesc}${isOptionsMode ? ' | OPTIONS MODE' : ''}`
     );
 
     // ── Refresh last 3 days H/L once per day ──────────────────────────────
@@ -805,26 +850,64 @@ async function tick(cdp, cdpAlerts) {
       if (!isInZone(curr, zone)) {
         log(`${tf}-min candle H:${curr.high} L:${curr.low} — outside zone`);
       } else {
-        const pattern =
-          cfg.bias === 'up' ? detectBullishPattern(curr, prev) : detectBearishPattern(curr, prev);
+        // In options mode: fetch ITM CE option candles for pattern detection
+        let patternCandle = curr;
+        let patternPrev = prev;
+        let tradeSymbol = symbol;
+        let optBars = null;
+
+        if (isOptionsMode) {
+          const itmDepth = PATTERN_ITM_BY_DAY[nowIST().getUTCDay()] ?? 2;
+          const spotPrice = bars[bars.length - 1]?.close || curr.close;
+          const optSym = buildOptionSymbol(instrName, spotPrice, itmDepth);
+          if (optSym) {
+            optBars = await fetchBars(cdp, optSym, tf, 10);
+            if (optBars.length >= 3) {
+              patternCandle = optBars[optBars.length - 2];
+              patternPrev = optBars[optBars.length - 3];
+              tradeSymbol = optSym;
+              log(`Options mode: ${optSym} (ITM-${itmDepth}) O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close}`);
+            } else {
+              log(`Options mode: waiting for option bars (${optSym})`);
+              return;
+            }
+          }
+        }
+
+        const pattern = cfg.bias === 'up'
+          ? detectBullishPattern(patternCandle, patternPrev)
+          : detectBearishPattern(patternCandle, patternPrev);
 
         if (pattern) {
+          // Auto target: swing high from recent option (or spot) bars
+          let effectiveTarget = target;
+          if (!effectiveTarget && isOptionsMode) {
+            const swingBars = (optBars || bars).slice(0, -1); // exclude forming candle
+            effectiveTarget = calcSwingHigh(swingBars);
+            log(`Auto target (swing high): ${effectiveTarget}`);
+          }
+          if (!effectiveTarget) {
+            log(`[SIGNAL] ${pattern} in zone but no target — set target in config`);
+            return;
+          }
+
           log(
-            `[SIGNAL] ${pattern} in zone! O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`
+            `[SIGNAL] ${pattern} in zone! O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close}`
           );
           const created = await createTradeAlerts(
             cdpAlerts,
             cfg.bias,
-            curr,
-            target,
+            patternCandle,
+            effectiveTarget,
             sl,
-            symbol,
+            tradeSymbol,
             algotest
           );
           if (created) {
-            const entryLevel = cfg.bias === 'up' ? curr.high : curr.low;
-            const checkBars = await fetchBars(cdp, symbol, tf, 3);
-            const live = checkBars[checkBars.length - 1]; // current forming candle
+            activeTradeSymbol = tradeSymbol;
+            const entryLevel = cfg.bias === 'up' ? patternCandle.high : patternCandle.low;
+            const checkBars = await fetchBars(cdp, tradeSymbol, tf, 3);
+            const live = checkBars[checkBars.length - 1];
             if (live) {
               const missed = cfg.bias === 'up' ? live.close > entryLevel : live.close < entryLevel;
               if (missed) {
@@ -840,7 +923,7 @@ async function tick(cdp, cdpAlerts) {
           }
         } else {
           log(
-            `Candle in zone — no pattern | curr O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close} | prev O:${prev.open} H:${prev.high} L:${prev.low} C:${prev.close}`
+            `Candle in zone — no pattern | curr O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close} | prev O:${patternPrev.open} H:${patternPrev.high} L:${patternPrev.low} C:${patternPrev.close}`
           );
         }
       }
@@ -1129,4 +1212,5 @@ export function _resetLastAlertCandleTime() {
   lastAlertCandleTime = null;
   tradeEntryLevel = null;
   slTrailedToBreakeven = false;
+  activeTradeSymbol = null;
 }
