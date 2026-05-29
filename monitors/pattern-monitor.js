@@ -50,8 +50,8 @@ const TRAIL_POINTS = { NIFTY: 15, SENSEX: 35 };
 
 // Options mode: ITM CE option config per instrument
 const OPTION_INSTR = {
-  NIFTY:  { strikeInterval: 50,  expiryDay: 2, symbolPrefix: 'NIFTY' }, // expiry Tuesday
-  SENSEX: { strikeInterval: 100, expiryDay: 4, symbolPrefix: 'BSX'   }, // expiry Thursday
+  NIFTY: { strikeInterval: 50, expiryDay: 2, symbolPrefix: 'NIFTY' }, // expiry Tuesday
+  SENSEX: { strikeInterval: 100, expiryDay: 4, symbolPrefix: 'BSX' }, // expiry Thursday
 };
 // ITM depth for pattern monitor: Fri=ITM-1, Mon/Tue=ITM-2, SENSEX=ITM-2
 const PATTERN_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
@@ -284,9 +284,8 @@ function buildOptionSymbol(instrName, spot, itmDepth, bias = 'up') {
   if (!instr) return null;
   const atm = calcATM(spot, instr.strikeInterval);
   // ITM call: strike below spot; ITM put: strike above spot
-  const strike = bias === 'up'
-    ? atm - itmDepth * instr.strikeInterval
-    : atm + itmDepth * instr.strikeInterval;
+  const strike =
+    bias === 'up' ? atm - itmDepth * instr.strikeInterval : atm + itmDepth * instr.strikeInterval;
   const optionType = bias === 'up' ? 'C' : 'P';
   const d = getExpiryDate(instr.expiryDay);
   const yy = String(d.getUTCFullYear()).slice(2);
@@ -444,7 +443,9 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
       try {
         await cdpAlerts.handle('alert_delete', { alertId: name });
         await new Promise((r) => setTimeout(r, 300));
-      } catch (_e) { /* ignore */ }
+      } catch (_e) {
+        /* ignore */
+      }
     }
     lastAlertCandleTime = null;
     tradeEntryLevel = null;
@@ -463,9 +464,10 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
       await refreshDayLevels(cdp, sym);
       if (c.active) {
         const _za = c.zone || [];
-        const z = _za.length >= 2
-          ? { top: Math.max(_za[0], _za[1]), bottom: Math.min(_za[0], _za[1]) }
-          : null;
+        const z =
+          _za.length >= 2
+            ? { top: Math.max(_za[0], _za[1]), bottom: Math.min(_za[0], _za[1]) }
+            : null;
         if (z) {
           const ok = await drawZone(cdp, z, c.bias);
           if (ok) lastDrawnZoneKey = `${z.bottom}-${z.top}-${c.bias}`;
@@ -476,7 +478,9 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
         }
       }
     }
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -491,7 +495,9 @@ async function trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints) {
   const live = liveBars[liveBars.length - 1];
   if (!live || live.close < trailTrigger) return;
 
-  log(`[TRAIL SL] Price ${live.close} reached ${trailTrigger} (entry ${tradeEntryLevel} + ${trailPoints}pts) — moving TradeSL to breakeven`);
+  log(
+    `[TRAIL SL] Price ${live.close} reached ${trailTrigger} (entry ${tradeEntryLevel} + ${trailPoints}pts) — moving TradeSL to breakeven`
+  );
   try {
     await cdpAlerts.handle('alert_delete', { alertId: 'TradeSL' });
     await new Promise((r) => setTimeout(r, 500));
@@ -534,8 +540,17 @@ function loadDrawnIds() {
 
 function saveDrawnIds() {
   try {
-    fs.writeFileSync(DRAWN_IDS_FILE, JSON.stringify({ levelIds: drawnLevelIds, zoneIds: drawnZoneIds, importantIds: drawnImportantIds }));
-  } catch (_e) { /* ignore */ }
+    fs.writeFileSync(
+      DRAWN_IDS_FILE,
+      JSON.stringify({
+        levelIds: drawnLevelIds,
+        zoneIds: drawnZoneIds,
+        importantIds: drawnImportantIds,
+      })
+    );
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -780,7 +795,10 @@ async function refreshDayLevels(cdp, symbol) {
   if (todayStr === lastDayLevelDate) return;
   const dailyBars = await fetchBars(cdp, symbol, 'D', 5);
   const completed = dailyBars.slice(0, -1).slice(-3);
-  if (!completed.length) { log('Day levels: no completed bars yet'); return; }
+  if (!completed.length) {
+    log('Day levels: no completed bars yet');
+    return;
+  }
   cachedDayLevels = completed.flatMap((b) => [b.high, b.low]);
   lastDayLevelDate = todayStr;
   completed.forEach((b, i) => {
@@ -789,7 +807,7 @@ async function refreshDayLevels(cdp, symbol) {
   });
   const levelObjects = completed.flatMap((b, i) => [
     { price: b.high, label: `D-${3 - i} H`, color: '#FF4444' },
-    { price: b.low,  label: `D-${3 - i} L`, color: '#22BB44' },
+    { price: b.low, label: `D-${3 - i} L`, color: '#22BB44' },
   ]);
   await drawDayLevels(cdp, levelObjects);
 }
@@ -841,9 +859,10 @@ async function tick(cdp, cdpAlerts) {
 
     const tolerance = cfg.tolerance || TOLERANCE[instrName];
     const zoneArr = cfg.zone || [];
-    const zone = zoneArr.length >= 2
-      ? { top: Math.max(zoneArr[0], zoneArr[1]), bottom: Math.min(zoneArr[0], zoneArr[1]) }
-      : null;
+    const zone =
+      zoneArr.length >= 2
+        ? { top: Math.max(zoneArr[0], zoneArr[1]), bottom: Math.min(zoneArr[0], zoneArr[1]) }
+        : null;
     const target = cfg.target;
     const sl = cfg.sl || 0;
     const algotest = loadAlgotest();
@@ -859,7 +878,7 @@ async function tick(cdp, cdpAlerts) {
     }
 
     const slDesc = sl ? String(sl) : 'auto (candle extreme)';
-    const tgtDesc = target ? String(target) : (isOptionsMode ? 'auto (swing high)' : '?');
+    const tgtDesc = target ? String(target) : isOptionsMode ? 'auto (swing high)' : '?';
     log(
       `${cfg.symbol || instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${tgtDesc} | SL:${slDesc}${isOptionsMode ? ' | OPTIONS MODE' : ''}`
     );
@@ -918,7 +937,9 @@ async function tick(cdp, cdpAlerts) {
               patternCandle = optBars[optBars.length - 2];
               patternPrev = optBars[optBars.length - 3];
               tradeSymbol = optSym;
-              log(`Options mode: ${optSym} (ITM-${itmDepth}) O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close}`);
+              log(
+                `Options mode: ${optSym} (ITM-${itmDepth}) O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close}`
+              );
             } else {
               log(`Options mode: waiting for option bars (${optSym})`);
               return;
@@ -926,9 +947,10 @@ async function tick(cdp, cdpAlerts) {
           }
         }
 
-        const pattern = cfg.bias === 'up'
-          ? detectBullishPattern(patternCandle, patternPrev)
-          : detectBearishPattern(patternCandle, patternPrev);
+        const pattern =
+          cfg.bias === 'up'
+            ? detectBullishPattern(patternCandle, patternPrev)
+            : detectBearishPattern(patternCandle, patternPrev);
 
         if (pattern) {
           // Auto target: swing high from recent option (or spot) bars
@@ -1059,7 +1081,9 @@ async function main() {
   console.log(`Market Hrs : ${cfg.ignoreMarketHours ? 'ignored (24x7 mode)' : 'IST 09:15–15:30'}`);
   console.log(`Bias       : ${cfg.bias?.toUpperCase()}`);
   const _za = cfg.zone || [];
-  console.log(`Zone       : ${_za.length >= 2 ? `${Math.min(_za[0], _za[1])} – ${Math.max(_za[0], _za[1])}` : 'not set'}`);
+  console.log(
+    `Zone       : ${_za.length >= 2 ? `${Math.min(_za[0], _za[1])} – ${Math.max(_za[0], _za[1])}` : 'not set'}`
+  );
   console.log(`Target     : ${cfg.target || 'not set'}`);
   console.log(`SL         : ${cfg.sl || 'auto (candle extreme)'}`);
   console.log(`Levels     : ${(cfg.importantLevels || []).join(', ') || 'none'}`);
@@ -1086,7 +1110,9 @@ async function main() {
   log(`${'='.repeat(50)}`);
   log(`=== Monitor started ===`);
   const _startZa = cfg.zone || [];
-  log(`Symbol: ${effectiveSymbol} | Bias: ${cfg.bias?.toUpperCase()} | Zone: ${_startZa.join('-')} | Active: ${cfg.active}`);
+  log(
+    `Symbol: ${effectiveSymbol} | Bias: ${cfg.bias?.toUpperCase()} | Zone: ${_startZa.join('-')} | Active: ${cfg.active}`
+  );
 
   const cdp = new CDPManager();
   try {
@@ -1133,9 +1159,10 @@ async function main() {
     // Zone + important levels only when active
     if (startCfg.active) {
       const _sza = startCfg.zone || [];
-      const startZone = _sza.length >= 2
-        ? { top: Math.max(_sza[0], _sza[1]), bottom: Math.min(_sza[0], _sza[1]) }
-        : null;
+      const startZone =
+        _sza.length >= 2
+          ? { top: Math.max(_sza[0], _sza[1]), bottom: Math.min(_sza[0], _sza[1]) }
+          : null;
       if (startZone) {
         const ok = await drawZone(cdp, startZone, startCfg.bias);
         if (ok) lastDrawnZoneKey = `${startZone.bottom}-${startZone.top}-${startCfg.bias}`;
@@ -1170,9 +1197,10 @@ async function main() {
 
       // active=true → redraw zone + important levels if changed
       const _cza = c.zone || [];
-      const z = _cza.length >= 2
-        ? { top: Math.max(_cza[0], _cza[1]), bottom: Math.min(_cza[0], _cza[1]) }
-        : null;
+      const z =
+        _cza.length >= 2
+          ? { top: Math.max(_cza[0], _cza[1]), bottom: Math.min(_cza[0], _cza[1]) }
+          : null;
       const newZoneKey = z ? `${z.bottom}-${z.top}-${c.bias}` : '';
       const newImportantKey = (c.importantLevels || []).join(',');
       if (newZoneKey !== lastDrawnZoneKey || newImportantKey !== lastDrawnImportantKey) {
@@ -1248,9 +1276,10 @@ async function main() {
         const c = loadConfig();
         if (c) {
           const _rza = c.zone || [];
-          const _rz = _rza.length >= 2
-            ? { top: Math.max(_rza[0], _rza[1]), bottom: Math.min(_rza[0], _rza[1]) }
-            : null;
+          const _rz =
+            _rza.length >= 2
+              ? { top: Math.max(_rza[0], _rza[1]), bottom: Math.min(_rza[0], _rza[1]) }
+              : null;
           log(`[REFRESH] Applying config changes immediately...`);
           lastDrawnZoneKey = '';
           lastDrawnImportantKey = '';

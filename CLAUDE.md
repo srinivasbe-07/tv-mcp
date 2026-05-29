@@ -8,35 +8,40 @@ This MCP server lets you control TradingView Desktop via Chrome DevTools Protoco
 ## Daily Workflow — Trade Monitor
 
 ### Every day (fresh start)
+
 ```
 .\start-pattern-monitor.ps1
 ```
+
 Closes any existing TradingView, launches it with CDP, then starts the trade monitor.
 
 ### TradingView already open
+
 ```
 .\start-pattern-monitor.ps1 -SkipTV
 ```
 
 ### Keys while monitor is running
-| Key | Action |
-|-----|--------|
-| `a` | Toggle active (pause/resume) |
-| `f` | Flip bias (up ↔ down) |
+
+| Key | Action                           |
+| --- | -------------------------------- |
+| `a` | Toggle active (pause/resume)     |
+| `f` | Flip bias (up ↔ down)            |
 | `r` | Apply config changes immediately |
-| `q` | Quit |
+| `q` | Quit                             |
 
 ### Config file: `config/pattern-monitor-config.json`
+
 Edit and save — changes apply instantly (no restart needed).
 
-| Field | Example | Notes |
-|-------|---------|-------|
-| `bias` | `"up"` | `up` = buy/call, `down` = sell/put |
-| `zone` | `[73356, 73293]` | Order doesn't matter |
-| `target` | `73500` | Profit target price |
-| `sl` | `0` | 0 = auto (candle extreme) |
-| `importantLevels` | `[73600]` | Key S/R levels |
-| `active` | `true` | false = paused |
+| Field             | Example          | Notes                              |
+| ----------------- | ---------------- | ---------------------------------- |
+| `bias`            | `"up"`           | `up` = buy/call, `down` = sell/put |
+| `zone`            | `[73356, 73293]` | Order doesn't matter               |
+| `target`          | `73500`          | Profit target price                |
+| `sl`              | `0`              | 0 = auto (candle extreme)          |
+| `importantLevels` | `[73600]`        | Key S/R levels                     |
+| `active`          | `true`           | false = paused                     |
 
 ---
 
