@@ -23,7 +23,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import readline from 'readline';
 
-const CONFIG_FILE = './config/trade-config.json';
+const CONFIG_FILE = './config/pattern-monitor-config.json';
 const ALGOTEST_FILE = './config/algotest-config.json';
 const LOG_FILE = './logs/pattern-monitor.log';
 const DRAWN_IDS_FILE = './logs/drawn-ids.json';
@@ -279,16 +279,20 @@ function getExpiryDate(expiryDay) {
   return d;
 }
 
-function buildOptionSymbol(instrName, spot, itmDepth) {
+function buildOptionSymbol(instrName, spot, itmDepth, bias = 'up') {
   const instr = OPTION_INSTR[instrName];
   if (!instr) return null;
   const atm = calcATM(spot, instr.strikeInterval);
-  const strike = atm - itmDepth * instr.strikeInterval; // ITM call: strike below spot
+  // ITM call: strike below spot; ITM put: strike above spot
+  const strike = bias === 'up'
+    ? atm - itmDepth * instr.strikeInterval
+    : atm + itmDepth * instr.strikeInterval;
+  const optionType = bias === 'up' ? 'C' : 'P';
   const d = getExpiryDate(instr.expiryDay);
   const yy = String(d.getUTCFullYear()).slice(2);
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(d.getUTCDate()).padStart(2, '0');
-  return `${instr.symbolPrefix}${yy}${mm}${dd}C${strike}`;
+  return `${instr.symbolPrefix}${yy}${mm}${dd}${optionType}${strike}`;
 }
 
 function calcSwingHigh(bars) {
@@ -409,7 +413,7 @@ async function createTradeAlerts(
 // ---------------------------------------------------------------------------
 const TRADE_ALERT_NAMES = ['TradeEntry', 'TradeSL', 'TradeTarget'];
 
-async function cleanupFiredAlerts(cdpAlerts) {
+async function cleanupFiredAlerts(cdp, cdpAlerts) {
   try {
     const result = await cdpAlerts.handle('alert_list', {});
     const data = JSON.parse(result.content[0].text);
@@ -417,7 +421,6 @@ async function cleanupFiredAlerts(cdpAlerts) {
 
     const tradeAlerts = alerts.filter((a) => TRADE_ALERT_NAMES.includes(a.name));
     if (tradeAlerts.length === 0) {
-      // No trade alerts on TV — reset (manually deleted or never created cleanly)
       log('[RESET] No trade alerts found on TradingView — clearing trade state');
       lastAlertCandleTime = null;
       tradeEntryLevel = null;
@@ -431,16 +434,8 @@ async function cleanupFiredAlerts(cdpAlerts) {
     if (!targetFired && !slFired) return;
 
     if (targetFired) {
-      log('[TARGET HIT] Price pulled back through target (crosses_down) — trade closed');
-      log(
-        '[TARGET HIT] Tip: if price had overshot, you could have raised target before this pullback'
-      );
+      log('[TARGET HIT] Trade closed at target');
       log('[TARGET HIT] Set new levels then set active: true to resume');
-      const cfg = loadConfig();
-      if (cfg) {
-        cfg.active = false;
-        saveConfig(cfg);
-      }
     } else {
       log('[SL HIT] Stop loss triggered — cleaning up trade alerts');
     }
@@ -449,17 +444,39 @@ async function cleanupFiredAlerts(cdpAlerts) {
       try {
         await cdpAlerts.handle('alert_delete', { alertId: name });
         await new Promise((r) => setTimeout(r, 300));
-      } catch (_e) {
-        /* ignore */
-      }
+      } catch (_e) { /* ignore */ }
     }
     lastAlertCandleTime = null;
     tradeEntryLevel = null;
     slTrailedToBreakeven = false;
     activeTradeSymbol = null;
-  } catch (_e) {
-    /* ignore */
-  }
+
+    // Clear chart then re-apply current config
+    log('[CLEANUP] Clearing chart and re-applying config...');
+    await clearAllDrawings(cdp);
+    await new Promise((r) => setTimeout(r, 1000));
+    const c = loadConfig();
+    if (c) {
+      const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
+      const sym = c.symbol || INSTRUMENTS[instrName];
+      lastDayLevelDate = ''; // force redraw
+      await refreshDayLevels(cdp, sym);
+      if (c.active) {
+        const _za = c.zone || [];
+        const z = _za.length >= 2
+          ? { top: Math.max(_za[0], _za[1]), bottom: Math.min(_za[0], _za[1]) }
+          : null;
+        if (z) {
+          const ok = await drawZone(cdp, z, c.bias);
+          if (ok) lastDrawnZoneKey = `${z.bottom}-${z.top}-${c.bias}`;
+        }
+        if ((c.importantLevels || []).length) {
+          const ok = await drawImportantLevels(cdp, c.importantLevels);
+          if (ok) lastDrawnImportantKey = c.importantLevels.join(',');
+        }
+      }
+    }
+  } catch (_e) { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -730,11 +747,57 @@ async function drawImportantLevels(cdp, levels) {
 }
 
 // ---------------------------------------------------------------------------
+// Clear only zone + important level lines (keep day H/L)
+// ---------------------------------------------------------------------------
+async function clearZoneAndLevels(cdp) {
+  const removeScript = `
+    (function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart) return;
+        ${JSON.stringify(drawnZoneIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+        ${JSON.stringify(drawnImportantIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+      } catch(_e) {}
+    })()
+  `;
+  await cdp.executeScript(removeScript).catch(() => {});
+  drawnZoneIds = [];
+  drawnImportantIds = [];
+  lastDrawnZoneKey = '';
+  lastDrawnImportantKey = '';
+  saveDrawnIds();
+  log('Zone and important levels cleared');
+}
+
+// ---------------------------------------------------------------------------
+// Fetch + draw last 3 days H/L — called once at startup and once per day
+// ---------------------------------------------------------------------------
+let cachedDayLevels = [];
+let lastDayLevelDate = '';
+
+async function refreshDayLevels(cdp, symbol) {
+  const todayStr = nowIST().toISOString().slice(0, 10);
+  if (todayStr === lastDayLevelDate) return;
+  const dailyBars = await fetchBars(cdp, symbol, 'D', 5);
+  const completed = dailyBars.slice(0, -1).slice(-3);
+  if (!completed.length) { log('Day levels: no completed bars yet'); return; }
+  cachedDayLevels = completed.flatMap((b) => [b.high, b.low]);
+  lastDayLevelDate = todayStr;
+  completed.forEach((b, i) => {
+    const date = new Date(b.time * 1000).toISOString().slice(0, 10);
+    log(`D-${3 - i} (${date}): H=${b.high.toFixed(0)}  L=${b.low.toFixed(0)}`);
+  });
+  const levelObjects = completed.flatMap((b, i) => [
+    { price: b.high, label: `D-${3 - i} H`, color: '#FF4444' },
+    { price: b.low,  label: `D-${3 - i} L`, color: '#22BB44' },
+  ]);
+  await drawDayLevels(cdp, levelObjects);
+}
+
+// ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
 let last15mCheckAt = 0;
-let cachedDayLevels = []; // refreshed once per day
-let lastDayLevelDate = '';
 
 async function tick(cdp, cdpAlerts) {
   try {
@@ -760,7 +823,7 @@ async function tick(cdp, cdpAlerts) {
     const symbol = cfg.symbol || INSTRUMENTS[instrName];
 
     // Clean up if SL/Target fired — resets lastAlertCandleTime to null on exit
-    if (lastAlertCandleTime) await cleanupFiredAlerts(cdpAlerts);
+    if (lastAlertCandleTime) await cleanupFiredAlerts(cdp, cdpAlerts);
 
     // Trade still active — check trail SL, then skip pattern detection
     if (lastAlertCandleTime) {
@@ -800,26 +863,15 @@ async function tick(cdp, cdpAlerts) {
     log(
       `${cfg.symbol || instrName} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | target:${tgtDesc} | SL:${slDesc}${isOptionsMode ? ' | OPTIONS MODE' : ''}`
     );
+    if (isOptionsMode) {
+      const itmDepth = PATTERN_ITM_BY_DAY[nowIST().getUTCDay()] ?? 2;
+      const zoneSpot = (zone.top + zone.bottom) / 2;
+      const previewSym = buildOptionSymbol(instrName, zoneSpot, itmDepth, cfg.bias);
+      log(`Options: will watch ${previewSym} (ITM-${itmDepth}) when spot enters zone`);
+    }
 
     // ── Refresh last 3 days H/L once per day ──────────────────────────────
-    const todayStr = nowIST().toISOString().slice(0, 10);
-    if (todayStr !== lastDayLevelDate) {
-      const dailyBars = await fetchBars(cdp, symbol, 'D', 5);
-      const completed = dailyBars.slice(0, -1).slice(-3); // exclude today's forming bar
-      cachedDayLevels = completed.flatMap((b) => [b.high, b.low]);
-      lastDayLevelDate = todayStr;
-      completed.forEach((b, i) => {
-        const date = new Date(b.time * 1000).toISOString().slice(0, 10);
-        log(`D-${3 - i} (${date}): H=${b.high.toFixed(0)}  L=${b.low.toFixed(0)}`);
-      });
-
-      // Draw horizontal lines on chart — D-1 is yesterday, D-2 two days ago, D-3 three days ago
-      const levelObjects = completed.flatMap((b, i) => [
-        { price: b.high, label: `D-${3 - i} H`, color: '#FF4444' },
-        { price: b.low, label: `D-${3 - i} L`, color: '#22BB44' },
-      ]);
-      await drawDayLevels(cdp, levelObjects);
-    }
+    await refreshDayLevels(cdp, symbol);
 
     const allLevels = [...cachedDayLevels, ...(cfg.importantLevels || [])];
 
@@ -859,7 +911,7 @@ async function tick(cdp, cdpAlerts) {
         if (isOptionsMode) {
           const itmDepth = PATTERN_ITM_BY_DAY[nowIST().getUTCDay()] ?? 2;
           const spotPrice = bars[bars.length - 1]?.close || curr.close;
-          const optSym = buildOptionSymbol(instrName, spotPrice, itmDepth);
+          const optSym = buildOptionSymbol(instrName, spotPrice, itmDepth, cfg.bias);
           if (optSym) {
             optBars = await fetchBars(cdp, optSym, tf, 10);
             if (optBars.length >= 3) {
@@ -1047,23 +1099,51 @@ async function main() {
 
   const cdpAlerts = new AlertTools(cdp);
 
+  let sigintPending = false;
+  let sigintTimer = null;
+  process.on('SIGINT', async () => {
+    if (sigintPending) {
+      clearTimeout(sigintTimer);
+      log('Exiting...');
+      await clearAllDrawings(cdp);
+      await cdp.disconnect();
+      process.exit(0);
+    } else {
+      sigintPending = true;
+      log('Press Ctrl+C again within 3s to exit, or [q] to quit');
+      sigintTimer = setTimeout(() => {
+        sigintPending = false;
+        log('Exit cancelled — still running');
+      }, 3000);
+    }
+  });
+
   await clearAllDrawings(cdp);
   await new Promise((r) => setTimeout(r, 2000)); // wait for chart to settle after clearing
 
-  // Draw zone + important levels on startup (even if active: false)
+  // Draw levels on startup
   const startCfg = loadConfig();
   if (startCfg) {
-    const _sza = startCfg.zone || [];
-    const startZone = _sza.length >= 2
-      ? { top: Math.max(_sza[0], _sza[1]), bottom: Math.min(_sza[0], _sza[1]) }
-      : null;
-    if (startZone) {
-      const ok = await drawZone(cdp, startZone, startCfg.bias);
-      if (ok) lastDrawnZoneKey = `${startZone.bottom}-${startZone.top}-${startCfg.bias}`;
-    }
-    if ((startCfg.importantLevels || []).length) {
-      const ok = await drawImportantLevels(cdp, startCfg.importantLevels);
-      if (ok) lastDrawnImportantKey = startCfg.importantLevels.join(',');
+    const startInstr = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
+    const startSym = startCfg.symbol || INSTRUMENTS[startInstr];
+
+    // Day H/L always drawn regardless of active state
+    await refreshDayLevels(cdp, startSym);
+
+    // Zone + important levels only when active
+    if (startCfg.active) {
+      const _sza = startCfg.zone || [];
+      const startZone = _sza.length >= 2
+        ? { top: Math.max(_sza[0], _sza[1]), bottom: Math.min(_sza[0], _sza[1]) }
+        : null;
+      if (startZone) {
+        const ok = await drawZone(cdp, startZone, startCfg.bias);
+        if (ok) lastDrawnZoneKey = `${startZone.bottom}-${startZone.top}-${startCfg.bias}`;
+      }
+      if ((startCfg.importantLevels || []).length) {
+        const ok = await drawImportantLevels(cdp, startCfg.importantLevels);
+        if (ok) lastDrawnImportantKey = startCfg.importantLevels.join(',');
+      }
     }
   }
 
@@ -1074,6 +1154,21 @@ async function main() {
     configWatchDebounce = setTimeout(async () => {
       const c = loadConfig();
       if (!c) return;
+
+      // Ignore config changes while a trade is active
+      if (lastAlertCandleTime) {
+        log('[CONFIG] Trade active — config change ignored until trade ends');
+        return;
+      }
+
+      if (!c.active) {
+        // active=false → clear zone and important levels, keep day H/L
+        log('[CONFIG] active: false — clearing zone and important levels');
+        await clearZoneAndLevels(cdp);
+        return;
+      }
+
+      // active=true → redraw zone + important levels if changed
       const _cza = c.zone || [];
       const z = _cza.length >= 2
         ? { top: Math.max(_cza[0], _cza[1]), bottom: Math.min(_cza[0], _cza[1]) }
@@ -1095,9 +1190,8 @@ async function main() {
           if (ok) lastDrawnImportantKey = newImportantKey;
         }
       }
-      // Apply monitoring changes (active, zones, bias) immediately
       executeTick().catch(() => {});
-    }, 300); // 300ms debounce — handles editors that write multiple times on save
+    }, 300);
   });
 
   if (process.stdin.isTTY) {
@@ -1113,6 +1207,7 @@ async function main() {
         if (ctrlCPending) {
           clearTimeout(ctrlCTimer);
           log('Exiting...');
+          await clearAllDrawings(cdp);
           await cdp.disconnect();
           process.exit(0);
         } else {
@@ -1128,6 +1223,7 @@ async function main() {
       if (key.name === 'q') {
         if (ctrlCTimer) clearTimeout(ctrlCTimer);
         log('Exiting...');
+        await clearAllDrawings(cdp);
         await cdp.disconnect();
         process.exit(0);
       }

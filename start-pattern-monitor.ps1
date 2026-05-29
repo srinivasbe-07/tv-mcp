@@ -25,15 +25,14 @@ if (-not $SkipTV) {
             -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
         Write-Host "CDP confirmed on port $Port." -ForegroundColor Green
     } catch {
-        Write-Host "ERROR: CDP not responding on port $Port. Start TradingView first." -ForegroundColor Red
-        exit 1
+        Write-Host "WARNING: CDP not responding on port $Port - monitor will retry automatically." -ForegroundColor Yellow
     }
     Write-Host ""
 }
 
 # ── Step 2: Start trade monitor (auto-restarts on crash) ────────────────────
 Write-Host "=== Step 2: Starting Trade Monitor ===" -ForegroundColor Cyan
-Write-Host "Config : config/trade-config.json  (edit live - reloaded every tick)" -ForegroundColor DarkGray
+Write-Host "Config : config/pattern-monitor-config.json  (edit live - reloaded every tick)" -ForegroundColor DarkGray
 Write-Host "Log    : logs/pattern-monitor.log" -ForegroundColor DarkGray
 Write-Host "Keys   : [a] toggle active  [f] flip bias  [q] quit" -ForegroundColor DarkGray
 Write-Host ""

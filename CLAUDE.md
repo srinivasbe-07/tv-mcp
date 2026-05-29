@@ -26,7 +26,7 @@ Closes any existing TradingView, launches it with CDP, then starts the trade mon
 | `r` | Apply config changes immediately |
 | `q` | Quit |
 
-### Config file: `config/trade-config.json`
+### Config file: `config/pattern-monitor-config.json`
 Edit and save — changes apply instantly (no restart needed).
 
 | Field | Example | Notes |

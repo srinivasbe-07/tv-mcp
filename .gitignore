@@ -10,5 +10,5 @@ config/position.json
 run-screenshot.js
 run-sensex-update.js
 config/monitor-config.json
-config/trade-config.json
+config/pattern-monitor-config.json
 config/algotest-config.json

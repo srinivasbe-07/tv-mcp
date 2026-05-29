@@ -63,7 +63,7 @@ while ($elapsed -lt $TimeoutSec) {
     $elapsed++
     try {
         $null = Invoke-WebRequest -Uri "http://localhost:$Port/json/version" `
-            -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop
+            -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
         $ready = $true
         break
     } catch {}
