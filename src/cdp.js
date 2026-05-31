@@ -20,8 +20,26 @@ export class CDPManager {
     }
 
     try {
+      // Find the chart target specifically — TradingView Desktop has multiple targets
+      // (background pages, service workers, etc.) and the default first target may not
+      // be the chart page where window.TradingViewApi exists.
+      let target;
+      try {
+        const targets = await CDP.List({ port: this.port });
+        const chartTarget = targets.find(
+          (t) => t.type === 'page' && t.url?.includes('tradingview.com/chart')
+        );
+        if (chartTarget) {
+          target = chartTarget.id;
+          console.error(`[CDP] Found chart target: ${chartTarget.url}`);
+        } else {
+          console.error(`[CDP] No chart target found — available: ${targets.map(t => t.url).join(', ')}`);
+        }
+      } catch (_) {}
+
       this.client = await CDP({
         port: this.port,
+        target,
       });
 
       // Enable necessary CDP domains

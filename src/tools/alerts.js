@@ -138,9 +138,20 @@ export class AlertTools {
               await new Promise(r => setTimeout(r, 900));
             }
 
-            // Step 2: Open Create Alert dialog
-            const createBtn = document.querySelector('[data-name="set-alert-button"]');
-            if (!createBtn) return { success: false, message: 'Create Alert button not found' };
+            // Step 2: Ensure Alerts panel is open, then open Create Alert dialog
+            let createBtn = document.querySelector('[data-name="set-alert-button"]');
+            if (!createBtn) {
+              // Try to open the Alerts panel via sidebar button
+              const alertsTab = document.querySelector(
+                '[data-name="alerts"], [data-id="alerts"], [aria-label="Alerts"], button[id*="alert"]'
+              );
+              if (alertsTab) {
+                alertsTab.click();
+                await new Promise(r => setTimeout(r, 800));
+              }
+              createBtn = document.querySelector('[data-name="set-alert-button"]');
+            }
+            if (!createBtn) return { success: false, message: 'Create Alert button not found — open the Alerts panel in TradingView' };
 
             createBtn.click();
             await new Promise(r => setTimeout(r, 1000));
@@ -200,18 +211,27 @@ export class AlertTools {
             priceInput.dispatchEvent(new Event('blur', { bubbles: true }));
             await new Promise(r => setTimeout(r, 400));
 
-            // Step 6: Set alert name
-            const nameInput = Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).find(i =>
-              i !== priceInput && (
-                i.placeholder?.toLowerCase().includes('name') ||
-                i.closest('[class*="nameInput"]') ||
-                i.closest('[class*="alertName"]')
-              )
-            );
+            // Step 6: Set alert name — try multiple strategies
+            const allTextInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])'));
+            const nameInput =
+              // Strategy 1: placeholder mentions "name"
+              allTextInputs.find(i => i !== priceInput && i.placeholder?.toLowerCase().includes('name')) ||
+              // Strategy 2: inside a container with "name" label
+              allTextInputs.find(i => {
+                if (i === priceInput) return false;
+                const wrap = i.closest('[class*="field"], [class*="row"], [class*="input"], [class*="wrap"]');
+                return wrap?.textContent?.toLowerCase().includes('name');
+              }) ||
+              // Strategy 3: first text input that is NOT the price input (fallback)
+              allTextInputs.find(i => i !== priceInput && i.value !== String(${level}));
+
             if (nameInput && '${alertName}') {
+              nameInput.focus();
+              await new Promise(r => setTimeout(r, 100));
               nativeSetter.call(nameInput, '${alertName}');
-              nameInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
-              await new Promise(r => setTimeout(r, 200));
+              nameInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+              nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+              await new Promise(r => setTimeout(r, 300));
             }
 
             // Step 7: Set message (textarea on Conditions tab)
@@ -270,12 +290,21 @@ export class AlertTools {
             submitBtn.click();
             await new Promise(r => setTimeout(r, 2000));
 
-            // Step 10: Success = dialog closed
-            const dialogStillOpen = !!document.querySelector('input.input-gr1VjUfr');
-            const success = !dialogStillOpen;
+            // Step 10: Success = dialog closed (check multiple indicators)
+            const priceInputGone   = !document.querySelector('input.input-gr1VjUfr');
+            const submitBtnGone    = !document.querySelector('[class*="submitBtn-"]');
+            const formGone         = !document.querySelector('.form-h6NNXQD2');
+            // Dialog is closed if at least 2 of the 3 indicators say it's gone
+            const closedCount = [priceInputGone, submitBtnGone, formGone].filter(Boolean).length;
+            const success = closedCount >= 2;
+
+            // Verify name was actually set by checking alert list
+            const alertItems = document.querySelectorAll('[data-name="alert-item-name"]');
+            const nameFound = Array.from(alertItems).some(el => el.textContent?.trim() === '${alertName}');
 
             return {
               success,
+              nameSet: nameFound,
               alertId: '${alertId}',
               symbol: '${symbol}',
               condition: '${condition}',
@@ -284,7 +313,7 @@ export class AlertTools {
               webhookSet: !!'${webhookUrl}',
               created: new Date().toISOString(),
               message: success
-                ? 'Alert created — dialog closed successfully'
+                ? (nameFound ? 'Alert created successfully' : 'Alert created but name may not have been set — check TradingView')
                 : 'Dialog still open — check plan limits or try again',
             };
           } catch (e) {
