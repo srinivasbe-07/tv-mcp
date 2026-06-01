@@ -854,7 +854,7 @@ async function clearZoneAndLevels(cdp) {
 // Draw only nearest resistance (lowest high above price) + nearest support (highest low below price).
 // ---------------------------------------------------------------------------
 let cachedDayBars = [];   // [{high, low, date, label}, ...] D-1 first (newest)
-let cachedDayLevels = []; // flat prices used for liquidity grab detection
+let _cachedDayLevels = []; // flat prices used for liquidity grab detection
 let lastDayLevelDate = '';
 let lastDrawnNearestKey = ''; // "resistance:support" — skip redraw if unchanged
 let brokenHighs = new Set(); // day highs confirmed broken by 15-min close — never return
@@ -874,7 +874,7 @@ async function refreshDayBars(cdp, symbol) {
     date: new Date(b.time * 1000).toISOString().slice(0, 10),
     label: `D-${i + 1}`,
   }));
-  cachedDayLevels = cachedDayBars.flatMap((d) => [d.high, d.low]);
+  _cachedDayLevels = cachedDayBars.flatMap((d) => [d.high, d.low]);
   lastDayLevelDate = todayStr;
   lastDrawnNearestKey = ''; // force redraw on next updateNearestDayLevel
   brokenHighs = new Set(); // fresh day — reset broken level memory
@@ -1056,7 +1056,7 @@ async function tick(cdp, cdpAlerts) {
           log(`[RESUME] Found ${existing.length} active trade alert(s) — skipping new creation`);
           lastAlertCandleTime = -1; // sentinel: trade in progress, candle time unknown
         }
-      } catch (_) {}
+      } catch (_) { /* ignore */ }
     }
 
     // Clean up if SL/Target fired — resets lastAlertCandleTime to null on exit
@@ -1207,9 +1207,7 @@ async function tick(cdp, cdpAlerts) {
           );
           // Multi-tab: create alerts on the option tab (CE or PE).
           // Single-tab: falls back to cdpAlerts (same as before).
-          const cdpAlertsOpt = (_cdpCE && _cdpPE)
-            ? new AlertTools(cdp)
-            : cdpAlerts;
+          const cdpAlertsOpt = cdpAlerts;
           const created = await createTradeAlerts(
             cdpAlertsOpt,
             cfg.bias,

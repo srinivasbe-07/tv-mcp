@@ -14,7 +14,7 @@ await cdp.connect();
 let drawnIds = { levelIds: [], zoneIds: [], importantIds: [] };
 try {
   drawnIds = JSON.parse(fs.readFileSync('./logs/drawn-ids.json', 'utf8'));
-} catch (_) {}
+} catch (_) { /* ignore */ }
 
 console.log('Drawn IDs:', JSON.stringify(drawnIds, null, 2));
 

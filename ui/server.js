@@ -21,8 +21,8 @@ const ROOT = path.resolve(__dirname, '..');
 const PATTERN_CONFIG  = path.join(ROOT, 'config', 'pattern-monitor-config.json');
 const ST_CONFIG       = path.join(ROOT, 'config', 'monitor-config.json');
 const POSITION_FILE   = path.join(ROOT, 'config', 'position.json');
-const PATTERN_LOG     = path.join(ROOT, 'logs', 'pattern-monitor.log');
-const ST_LOG          = path.join(ROOT, 'logs', 'monitor.log');
+const _PATTERN_LOG    = path.join(ROOT, 'logs', 'pattern-monitor.log');
+const _ST_LOG         = path.join(ROOT, 'logs', 'monitor.log');
 const LAUNCH_TV_PS    = path.join(ROOT, 'launch-tv.ps1');
 
 const app  = express();
@@ -108,7 +108,7 @@ fs.watch(PATTERN_CONFIG, () => {
   try {
     const cfg = JSON.parse(fs.readFileSync(PATTERN_CONFIG, 'utf8'));
     broadcast(patternClients, 'config', cfg);
-  } catch (_) {}
+  } catch (_) { /* ignore */ }
 });
 
 // ── Supertrend config + state ─────────────────────────────────────

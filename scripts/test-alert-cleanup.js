@@ -25,7 +25,7 @@ let webhook = '', token = '';
 try {
   const a = JSON.parse(fs.readFileSync('./config/algotest-config.json', 'utf8'));
   webhook = a.webhookUrl || ''; token = a.accessToken || '';
-} catch (_) {}
+} catch (_) { /* ignore */ }
 
 const entryMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Entry' }) : '';
 const exitMsg  = token ? JSON.stringify({ access_token: token, alert_name: 'Exit'  }) : '';
@@ -41,7 +41,7 @@ try {
   // ── Step 1: Delete old alerts ──────────────────────────────────────
   console.log('Deleting old trade alerts...');
   for (const n of NAMES) {
-    try { await alerts.handle('alert_delete', { alertId: n }); } catch (_) {}
+    try { await alerts.handle('alert_delete', { alertId: n }); } catch (_) { /* ignore */ }
     await new Promise(r => setTimeout(r, 400));
   }
 
@@ -52,7 +52,7 @@ try {
     const hd = JSON.parse(h?.content?.[0]?.text || '{}');
     seenKeys = new Set((hd.alerts || []).map(i => `${i.name}|${i.time}`));
     console.log(`History snapshot: ${seenKeys.size} existing entries ignored\n`);
-  } catch (_) {}
+  } catch (_) { /* ignore */ }
 
   // ── Step 3: Create 3 alerts ────────────────────────────────────────
   console.log('Creating alerts...');

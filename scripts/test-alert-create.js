@@ -19,7 +19,7 @@ try {
   const a = JSON.parse(fs.readFileSync('./config/algotest-config.json', 'utf8'));
   webhook = a.webhookUrl || '';
   token   = a.accessToken || '';
-} catch (_) {}
+} catch (_) { /* ignore */ }
 
 const entryMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Entry' }) : '';
 const exitMsg  = token ? JSON.stringify({ access_token: token, alert_name: 'Exit'  }) : '';
@@ -46,7 +46,7 @@ try {
 
   // Delete existing
   for (const a of ALERTS) {
-    try { await alerts.handle('alert_delete', { alertId: a.name }); } catch (_) {}
+    try { await alerts.handle('alert_delete', { alertId: a.name }); } catch (_) { /* ignore */ }
     await new Promise(r => setTimeout(r, 400));
   }
   console.log('Old alerts deleted\n');
@@ -65,7 +65,7 @@ try {
     });
 
     let data = {};
-    try { data = JSON.parse(result?.content?.[0]?.text || '{}'); } catch (_) {}
+    try { data = JSON.parse(result?.content?.[0]?.text || '{}'); } catch (_) { /* ignore */ }
 
     if (data.success) {
       console.log(`  ✓ Created`);

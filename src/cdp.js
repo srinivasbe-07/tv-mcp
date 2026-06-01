@@ -48,7 +48,7 @@ export class CDPManager {
         });
         await probe.close();
         if (result?.value?.symbol) results.push({ id: t.id, ...result.value });
-      } catch (_) {}
+      } catch (_) { /* ignore */ }
     }
     return results;
   }
@@ -67,7 +67,7 @@ export class CDPManager {
 
     // Load saved tab ID from previous run
     let savedId = null;
-    try { savedId = JSON.parse(fs.default.readFileSync(registryFile, 'utf8')).targetId; } catch (_) {}
+    try { savedId = JSON.parse(fs.default.readFileSync(registryFile, 'utf8')).targetId; } catch (_) { /* ignore */ }
 
     // Check if the saved tab is still alive
     const allTargets = await CDP.List({ port });
@@ -99,7 +99,7 @@ export class CDPManager {
     await client.close();
 
     // Save registry
-    try { fs.default.mkdirSync('./logs', { recursive: true }); } catch (_) {}
+    try { fs.default.mkdirSync('./logs', { recursive: true }); } catch (_) { /* ignore */ }
     fs.default.writeFileSync(registryFile, JSON.stringify({ targetId: newTarget.id }, null, 2));
     console.error(`[CDP] New monitor tab ready: ${newTarget.id}`);
     return newTarget.id;
@@ -154,7 +154,7 @@ export class CDPManager {
               console.error(`[CDP] Active chart API found on target ${t.id}`);
               break;
             }
-          } catch (_) {}
+          } catch (_) { /* ignore */ }
         }
         if (!target && chartTargets.length > 0) {
           target = chartTargets[0].id;
