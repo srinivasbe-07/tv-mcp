@@ -26,7 +26,7 @@ export class CDPManager {
   static async probeChartTargets(port = 9222) {
     const targets = await CDP.List({ port });
     const chartTargets = targets.filter(
-      t => (t.type === 'page' || t.type === 'webview') && t.url?.includes('tradingview.com')
+      (t) => (t.type === 'page' || t.type === 'webview') && t.url?.includes('tradingview.com')
     );
     const results = [];
     for (const t of chartTargets) {
@@ -48,7 +48,9 @@ export class CDPManager {
         });
         await probe.close();
         if (result?.value?.symbol) results.push({ id: t.id, ...result.value });
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     }
     return results;
   }
@@ -67,18 +69,22 @@ export class CDPManager {
 
     // Load saved tab ID from previous run
     let savedId = null;
-    try { savedId = JSON.parse(fs.default.readFileSync(registryFile, 'utf8')).targetId; } catch (_) { /* ignore */ }
+    try {
+      savedId = JSON.parse(fs.default.readFileSync(registryFile, 'utf8')).targetId;
+    } catch (_) {
+      /* ignore */
+    }
 
     // Check if the saved tab is still alive
     const allTargets = await CDP.List({ port });
-    const liveIds = new Set(allTargets.map(t => t.id));
+    const liveIds = new Set(allTargets.map((t) => t.id));
     if (savedId && liveIds.has(savedId)) {
       console.error(`[CDP] Reusing existing monitor tab ${savedId}`);
       return savedId;
     }
 
     // Create a fresh tab cloned from an existing TradingView chart URL
-    const baseUrl = allTargets.find(t => t.url?.includes('tradingview.com/chart'))?.url;
+    const baseUrl = allTargets.find((t) => t.url?.includes('tradingview.com/chart'))?.url;
     if (!baseUrl) throw new Error('No TradingView chart URL found — is TradingView running?');
 
     console.error('[CDP] Opening new monitor chart tab...');
@@ -94,12 +100,16 @@ export class CDPManager {
         returnByValue: true,
       }).catch(() => ({ result: { value: false } }));
       if (r?.result?.value === true) break;
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 1500));
     }
     await client.close();
 
     // Save registry
-    try { fs.default.mkdirSync('./logs', { recursive: true }); } catch (_) { /* ignore */ }
+    try {
+      fs.default.mkdirSync('./logs', { recursive: true });
+    } catch (_) {
+      /* ignore */
+    }
     fs.default.writeFileSync(registryFile, JSON.stringify({ targetId: newTarget.id }, null, 2));
     console.error(`[CDP] New monitor tab ready: ${newTarget.id}`);
     return newTarget.id;
@@ -121,14 +131,16 @@ export class CDPManager {
       // If the tab was closed and we have a registry file, create a new tab.
       if (target) {
         const allTargets = await CDP.List({ port: this.port }).catch(() => []);
-        const alive = allTargets.some(t => t.id === target);
+        const alive = allTargets.some((t) => t.id === target);
         if (!alive) {
           if (this.registryFile) {
             console.error(`[CDP] Tab ${target.slice(0, 16)} was closed — creating new tab...`);
             target = await CDPManager.ensureMonitorTab(this.registryFile, this.port);
             this.targetId = target;
           } else {
-            console.error(`[CDP] Tab ${target.slice(0, 16)} was closed — no registry file to recover`);
+            console.error(
+              `[CDP] Tab ${target.slice(0, 16)} was closed — no registry file to recover`
+            );
           }
         }
       }
@@ -139,7 +151,9 @@ export class CDPManager {
         const chartTargets = targets.filter(
           (t) => t.type === 'page' && t.url?.includes('tradingview.com/chart')
         );
-        console.error(`[CDP] Found ${chartTargets.length} chart target(s) — probing for active API...`);
+        console.error(
+          `[CDP] Found ${chartTargets.length} chart target(s) — probing for active API...`
+        );
         for (const t of chartTargets) {
           try {
             const probe = await CDP({ port: this.port, target: t.id });
@@ -154,7 +168,9 @@ export class CDPManager {
               console.error(`[CDP] Active chart API found on target ${t.id}`);
               break;
             }
-          } catch (_) { /* ignore */ }
+          } catch (_) {
+            /* ignore */
+          }
         }
         if (!target && chartTargets.length > 0) {
           target = chartTargets[0].id;

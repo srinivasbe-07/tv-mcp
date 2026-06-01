@@ -36,7 +36,9 @@ let _currentTabSymbol = null; // tracks what symbol the tab is currently showing
  */
 async function switchTabTo(cdp, symbol) {
   if (_currentTabSymbol === symbol) return;
-  await cdp.executeScript(`
+  await cdp
+    .executeScript(
+      `
     (async function() {
       try {
         const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
@@ -47,7 +49,9 @@ async function switchTabTo(cdp, symbol) {
         await new Promise(r => setTimeout(r, 1000));
       } catch(_) {}
     })()
-  `).catch(() => {});
+  `
+    )
+    .catch(() => {});
   _currentTabSymbol = symbol;
 }
 
@@ -136,12 +140,9 @@ function validateConfig(cfg) {
     errors.push(`bias must be "up" or "down" (got: ${JSON.stringify(cfg.bias)})`);
 
   const za = cfg.zone || [];
-  if (za.length < 2)
-    errors.push('zone must have 2 price levels e.g. [73400, 73600]');
-  else if (!za[0] || !za[1])
-    errors.push('zone prices cannot be 0');
-  else if (Math.abs(za[0] - za[1]) < 1)
-    errors.push('zone top and bottom cannot be the same price');
+  if (za.length < 2) errors.push('zone must have 2 price levels e.g. [73400, 73600]');
+  else if (!za[0] || !za[1]) errors.push('zone prices cannot be 0');
+  else if (Math.abs(za[0] - za[1]) < 1) errors.push('zone top and bottom cannot be the same price');
 
   // target=0 allowed only in optionsMode (auto swing high)
   if (!cfg.optionsMode && (!cfg.target || cfg.target <= 0))
@@ -335,7 +336,7 @@ function calcSwingHigh(bars) {
 // Create trade alerts (Entry + SL + Target)
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
-let alertsCreatedAt = null;   // wall-clock ms when last set of trade alerts was created
+let alertsCreatedAt = null; // wall-clock ms when last set of trade alerts was created
 let tradeEntryLevel = null; // saved on alert creation — used for trail SL to breakeven
 let slTrailedToBreakeven = false;
 let activeTradeSymbol = null; // option symbol when in options mode
@@ -357,16 +358,16 @@ async function createTradeAlerts(
 
   // Always long on the option chart: CE for bias=up, PE for bias=down.
   // Entry above candle HIGH, SL below candle LOW, target crosses up.
-  const tradeType  = bias === 'up' ? 'CE LONG' : 'PE LONG';
+  const tradeType = bias === 'up' ? 'CE LONG' : 'PE LONG';
   const entryLevel = candle.high;
-  const slLevel    = sl || candle.low;
+  const slLevel = sl || candle.low;
 
   log(`  [${tradeType}] Entry:${entryLevel}  SL:${slLevel}  Target:${target}`);
 
   const webhook = algotest?.webhookUrl || '';
   const token = algotest?.accessToken || '';
   const entryMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Entry' }) : '';
-  const exitMsg  = token ? JSON.stringify({ access_token: token, alert_name: 'Exit' })  : '';
+  const exitMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Exit' }) : '';
 
   for (const name of ['TradeEntry', 'TradeSL', 'TradeTarget']) {
     try {
@@ -399,7 +400,9 @@ async function createTradeAlerts(
     log(`  [FAIL] TradeEntry: ${d1.message || 'unknown error'}`);
     return;
   }
-  log(`  [OK] TradeEntry at ${entryLevel}${d1.nameSet === false ? ` [WARN: name not set — method:${d1.nameSetMethod}]` : ''}`);
+  log(
+    `  [OK] TradeEntry at ${entryLevel}${d1.nameSet === false ? ` [WARN: name not set — method:${d1.nameSetMethod}]` : ''}`
+  );
 
   await new Promise((r) => setTimeout(r, _delayMs));
 
@@ -462,7 +465,9 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
       // Keep trade state alive rather than resetting — prevents re-creating alerts every tick.
       const recentMs = 45 * 60 * 1000;
       if (alertsCreatedAt && Date.now() - alertsCreatedAt < recentMs) {
-        log('[WARN] Named trade alerts not found but created recently — preserving trade state (check TV alert names)');
+        log(
+          '[WARN] Named trade alerts not found but created recently — preserving trade state (check TV alert names)'
+        );
         return;
       }
       log('[RESET] No trade alerts found on TradingView — clearing trade state');
@@ -853,12 +858,12 @@ async function clearZoneAndLevels(cdp) {
 // Cache up to D-10 — fetched once per day.
 // Draw only nearest resistance (lowest high above price) + nearest support (highest low below price).
 // ---------------------------------------------------------------------------
-let cachedDayBars = [];   // [{high, low, date, label}, ...] D-1 first (newest)
+let cachedDayBars = []; // [{high, low, date, label}, ...] D-1 first (newest)
 let _cachedDayLevels = []; // flat prices used for liquidity grab detection
 let lastDayLevelDate = '';
 let lastDrawnNearestKey = ''; // "resistance:support" — skip redraw if unchanged
 let brokenHighs = new Set(); // day highs confirmed broken by 15-min close — never return
-let brokenLows  = new Set(); // day lows confirmed broken by 15-min close — never return
+let brokenLows = new Set(); // day lows confirmed broken by 15-min close — never return
 
 async function refreshDayBars(cdp, symbol) {
   const todayStr = nowIST().toISOString().slice(0, 10);
@@ -870,7 +875,8 @@ async function refreshDayBars(cdp, symbol) {
     return;
   }
   cachedDayBars = [...completed].reverse().map((b, i) => ({
-    high: b.high, low: b.low,
+    high: b.high,
+    low: b.low,
     date: new Date(b.time * 1000).toISOString().slice(0, 10),
     label: `D-${i + 1}`,
   }));
@@ -878,7 +884,7 @@ async function refreshDayBars(cdp, symbol) {
   lastDayLevelDate = todayStr;
   lastDrawnNearestKey = ''; // force redraw on next updateNearestDayLevel
   brokenHighs = new Set(); // fresh day — reset broken level memory
-  brokenLows  = new Set();
+  brokenLows = new Set();
   cachedDayBars.forEach((d) =>
     log(`${d.label} (${d.date}): H=${d.high.toFixed(0)}  L=${d.low.toFixed(0)}`)
   );
@@ -892,15 +898,15 @@ async function updateNearestDayLevel(cdp, close) {
   // Mark any level that the 15-min close has crossed as permanently broken
   cachedDayBars.forEach((d) => {
     if (close > d.high) brokenHighs.add(d.high);
-    if (close < d.low)  brokenLows.add(d.low);
+    if (close < d.low) brokenLows.add(d.low);
   });
 
   // Only consider unbroken levels
   const activeHighs = cachedDayBars.map((d) => d.high).filter((h) => !brokenHighs.has(h));
-  const activeLows  = cachedDayBars.map((d) => d.low).filter((l) => !brokenLows.has(l));
+  const activeLows = cachedDayBars.map((d) => d.low).filter((l) => !brokenLows.has(l));
 
   const resistance = activeHighs.filter((h) => h > close).sort((a, b) => a - b)[0];
-  const support    = activeLows.filter((l) => l < close).sort((a, b) => b - a)[0];
+  const support = activeLows.filter((l) => l < close).sort((a, b) => b - a)[0];
 
   const key = `${resistance ?? ''}:${support ?? ''}`;
   if (key === lastDrawnNearestKey) return;
@@ -950,10 +956,10 @@ async function checkDraggedLevels(cdp, cfg) {
     const p0 = prices[drawnZoneIds[0]];
     const p1 = prices[drawnZoneIds[1]];
     if (p0 != null && p1 != null) {
-      const newTop    = Math.max(p0, p1);
+      const newTop = Math.max(p0, p1);
       const newBottom = Math.min(p0, p1);
-      const cfgArr    = cfg.zone || [];
-      const cfgTop    = cfgArr.length >= 2 ? Math.max(...cfgArr) : null;
+      const cfgArr = cfg.zone || [];
+      const cfgTop = cfgArr.length >= 2 ? Math.max(...cfgArr) : null;
       const cfgBottom = cfgArr.length >= 2 ? Math.min(...cfgArr) : null;
       if (cfgTop == null || Math.abs(newTop - cfgTop) > 1 || Math.abs(newBottom - cfgBottom) > 1) {
         cfg.zone = [Math.round(newTop), Math.round(newBottom)];
@@ -1056,7 +1062,9 @@ async function tick(cdp, cdpAlerts) {
           log(`[RESUME] Found ${existing.length} active trade alert(s) — skipping new creation`);
           lastAlertCandleTime = -1; // sentinel: trade in progress, candle time unknown
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     }
 
     // Clean up if SL/Target fired — resets lastAlertCandleTime to null on exit
@@ -1113,9 +1121,10 @@ async function tick(cdp, cdpAlerts) {
 
     // bias=up → only day HIGHS (resistance); bias=down → only day LOWS (support)
     // Also exclude already-grabbed levels
-    const activeDayLevels = cfg.bias === 'up'
-      ? cachedDayBars.map((d) => d.high).filter((h) => !brokenHighs.has(h))
-      : cachedDayBars.map((d) => d.low).filter((l) => !brokenLows.has(l));
+    const activeDayLevels =
+      cfg.bias === 'up'
+        ? cachedDayBars.map((d) => d.high).filter((h) => !brokenHighs.has(h))
+        : cachedDayBars.map((d) => d.low).filter((l) => !brokenLows.has(l));
     const allLevels = [...activeDayLevels, ...(cfg.importantLevels || [])];
 
     // ── Draw zone lines when zone changes ─────────────────────────────────────
@@ -1274,7 +1283,9 @@ async function tick(cdp, cdpAlerts) {
 
           if (grabbedLevel !== null) {
             const newBias = cfg.bias === 'up' ? 'down' : 'up';
-            const dayInfo = cachedDayBars.find((d) => d.high === grabbedLevel || d.low === grabbedLevel);
+            const dayInfo = cachedDayBars.find(
+              (d) => d.high === grabbedLevel || d.low === grabbedLevel
+            );
             const levelDesc = dayInfo
               ? `${dayInfo.label} ${dayInfo.high === grabbedLevel ? 'H' : 'L'} (${grabbedLevel.toFixed(0)})`
               : `important level (${grabbedLevel.toFixed(0)})`;

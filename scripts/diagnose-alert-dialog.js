@@ -24,7 +24,7 @@ try {
       if (btn) btn.click();
     })()
   `);
-  await new Promise(r => setTimeout(r, 1800));
+  await new Promise((r) => setTimeout(r, 1800));
 
   // Phase 1: Find message button
   const phase1 = await cdp.executeScript(`
@@ -51,7 +51,7 @@ try {
       else console.log('MSG BTN NOT FOUND');
     })()
   `);
-  await new Promise(r => setTimeout(r, 1200));
+  await new Promise((r) => setTimeout(r, 1200));
 
   // Phase 3: What's visible now (sub-dialog)
   const phase3 = await cdp.executeScript(`
@@ -66,7 +66,6 @@ try {
   console.log('\n=== After clicking message button ===');
   console.log('Inputs/textareas:', JSON.stringify(phase3.inputs, null, 2));
   console.log('Apply button visible:', phase3.hasApply);
-
 } catch (e) {
   console.error('Error:', e.message);
 } finally {

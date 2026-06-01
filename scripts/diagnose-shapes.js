@@ -14,24 +14,29 @@ await cdp.connect();
 let drawnIds = { levelIds: [], zoneIds: [], importantIds: [] };
 try {
   drawnIds = JSON.parse(fs.readFileSync('./logs/drawn-ids.json', 'utf8'));
-} catch (_) { /* ignore */ }
+} catch (_) {
+  /* ignore */
+}
 
 console.log('Drawn IDs:', JSON.stringify(drawnIds, null, 2));
 
 const allIds = [
-  ...drawnIds.zoneIds.map(id => ({ id, type: 'zone' })),
-  ...drawnIds.importantIds.map(id => ({ id, type: 'important' })),
-  ...drawnIds.levelIds.slice(0, 2).map(id => ({ id, type: 'level' })),
+  ...drawnIds.zoneIds.map((id) => ({ id, type: 'zone' })),
+  ...drawnIds.importantIds.map((id) => ({ id, type: 'important' })),
+  ...drawnIds.levelIds.slice(0, 2).map((id) => ({ id, type: 'level' })),
 ];
 
-console.log('\nTesting shape APIs for IDs:', allIds.map(x => x.id));
+console.log(
+  '\nTesting shape APIs for IDs:',
+  allIds.map((x) => x.id)
+);
 
 const script = `
 (async function() {
   const chart = window.TradingViewApi?.activeChart?.();
   if (!chart) return { error: 'No chart' };
 
-  const ids = ${JSON.stringify(allIds.map(x => x.id))};
+  const ids = ${JSON.stringify(allIds.map((x) => x.id))};
   const results = {};
 
   // 1. getAllShapes

@@ -1,672 +1,1303 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pattern Monitor</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #0f1117; color: #d1d5db;
-      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pattern Monitor</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #0f1117;
+        color: #d1d5db;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
 
-    /* ── Header ── */
-    header {
-      background: #1a1d27; border-bottom: 1px solid #2a2d3a;
-      padding: 0 16px; height: 52px;
-      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
-    }
-    .logo { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; }
-    .logo span { color: #3b82f6; }
-    .nav-link {
-      font-size: 11px; color: #6b7280; text-decoration: none; padding: 4px 8px;
-      border-radius: 5px; border: 1px solid #2a2d3a; white-space: nowrap;
-    }
-    .nav-link:hover { color: #d1d5db; border-color: #4b5563; }
-    .divider { width: 1px; height: 24px; background: #2a2d3a; }
+      /* ── Header ── */
+      header {
+        background: #1a1d27;
+        border-bottom: 1px solid #2a2d3a;
+        padding: 0 16px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+      .logo {
+        font-size: 14px;
+        font-weight: 700;
+        color: #fff;
+        white-space: nowrap;
+      }
+      .logo span {
+        color: #3b82f6;
+      }
+      .nav-link {
+        font-size: 11px;
+        color: #6b7280;
+        text-decoration: none;
+        padding: 4px 8px;
+        border-radius: 5px;
+        border: 1px solid #2a2d3a;
+        white-space: nowrap;
+      }
+      .nav-link:hover {
+        color: #d1d5db;
+        border-color: #4b5563;
+      }
+      .divider {
+        width: 1px;
+        height: 24px;
+        background: #2a2d3a;
+      }
 
-    .proc-group { display: flex; align-items: center; gap: 8px; }
-    .proc-label { font-size: 11px; color: #6b7280; font-weight: 600; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .dot-running { background: #4ade80; box-shadow: 0 0 5px #4ade80; }
-    .dot-starting{ background: #facc15; animation: pulse 1s infinite; }
-    .dot-stopped { background: #4b5563; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      .proc-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .proc-label {
+        font-size: 11px;
+        color: #6b7280;
+        font-weight: 600;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot-running {
+        background: #4ade80;
+        box-shadow: 0 0 5px #4ade80;
+      }
+      .dot-starting {
+        background: #facc15;
+        animation: pulse 1s infinite;
+      }
+      .dot-stopped {
+        background: #4b5563;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
 
-    .proc-status { font-size: 12px; font-weight: 600; min-width: 56px; }
-    .text-green { color: #4ade80; } .text-yellow { color: #facc15; } .text-gray { color: #6b7280; }
+      .proc-status {
+        font-size: 12px;
+        font-weight: 600;
+        min-width: 56px;
+      }
+      .text-green {
+        color: #4ade80;
+      }
+      .text-yellow {
+        color: #facc15;
+      }
+      .text-gray {
+        color: #6b7280;
+      }
 
-    .hdr-btn {
-      padding: 5px 12px; border-radius: 6px; font-size: 11px;
-      font-weight: 700; border: none; cursor: pointer;
-      transition: opacity 0.15s; letter-spacing: 0.3px;
-    }
-    .hdr-btn:hover { opacity: 0.8; }
-    .hdr-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-    .btn-green  { background: #14532d; color: #4ade80; }
-    .btn-red    { background: #7f1d1d; color: #fca5a5; }
-    .btn-gray   { background: #374151; color: #d1d5db; }
-    .btn-blue   { background: #1e3a5f; color: #93c5fd; }
-    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:999; align-items:center; justify-content:center; }
-    .confirm-overlay.open { display:flex; }
-    .confirm-box { background:#1a1d27; border:1px solid #374151; border-radius:12px; padding:24px 28px; min-width:260px; text-align:center; }
-    .confirm-box p { color:#e5e7eb; font-size:14px; margin:0 0 20px; }
-    .confirm-btns { display:flex; gap:10px; justify-content:center; }
-    .confirm-btns button { padding:7px 20px; border-radius:8px; border:none; font-size:12px; font-weight:700; cursor:pointer; }
-    .confirm-yes { background:#b91c1c; color:#fff; }
-    .confirm-no  { background:#374151; color:#d1d5db; }
+      .hdr-btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        transition: opacity 0.15s;
+        letter-spacing: 0.3px;
+      }
+      .hdr-btn:hover {
+        opacity: 0.8;
+      }
+      .hdr-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      .btn-green {
+        background: #14532d;
+        color: #4ade80;
+      }
+      .btn-red {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .btn-gray {
+        background: #374151;
+        color: #d1d5db;
+      }
+      .btn-blue {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .confirm-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      }
+      .confirm-overlay.open {
+        display: flex;
+      }
+      .confirm-box {
+        background: #1a1d27;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        padding: 24px 28px;
+        min-width: 260px;
+        text-align: center;
+      }
+      .confirm-box p {
+        color: #e5e7eb;
+        font-size: 14px;
+        margin: 0 0 20px;
+      }
+      .confirm-btns {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+      .confirm-btns button {
+        padding: 7px 20px;
+        border-radius: 8px;
+        border: none;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .confirm-yes {
+        background: #b91c1c;
+        color: #fff;
+      }
+      .confirm-no {
+        background: #374151;
+        color: #d1d5db;
+      }
 
-    .spacer { flex: 1; }
-    .monitor-chip {
-      display: flex; align-items: center; gap: 6px;
-      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
-    }
-    .chip-active  { background: #052e16; color: #4ade80; }
-    .chip-paused  { background: #1c1917; color: #f97316; }
-    .chip-trade   { background: #1e1b4b; color: #a78bfa; }
-    .chip-stopped { background: #1a1d27; color: #4b5563; border: 1px solid #2a2d3a; }
+      .spacer {
+        flex: 1;
+      }
+      .monitor-chip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .chip-active {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .chip-paused {
+        background: #1c1917;
+        color: #f97316;
+      }
+      .chip-trade {
+        background: #1e1b4b;
+        color: #a78bfa;
+      }
+      .chip-stopped {
+        background: #1a1d27;
+        color: #4b5563;
+        border: 1px solid #2a2d3a;
+      }
 
-    /* ── Main ── */
-    .main {
-      display: grid; grid-template-columns: 300px 1fr;
-      flex: 1; overflow: hidden;
-    }
+      /* ── Main ── */
+      .main {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        flex: 1;
+        overflow: hidden;
+      }
 
-    /* ── Left Panel ── */
-    .left { background: #13151f; border-right: 1px solid #2a2d3a; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+      /* ── Left Panel ── */
+      .left {
+        background: #13151f;
+        border-right: 1px solid #2a2d3a;
+        overflow-y: auto;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
 
-    .card { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 12px; }
-    .sec { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; }
+      .card {
+        background: #1a1d27;
+        border: 1px solid #2a2d3a;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .sec {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #6b7280;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
 
-    .bias-toggle { display: grid; grid-template-columns: 1fr 1fr; background: #0f1117; border-radius: 8px; padding: 3px; gap: 3px; }
-    .bias-btn { padding: 7px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 700; transition: all 0.15s; }
-    .up-active   { background: #14532d; color: #4ade80; }
-    .up-inactive { background: transparent; color: #374151; }
-    .dn-active   { background: #7f1d1d; color: #f87171; }
-    .dn-inactive { background: transparent; color: #374151; }
+      .bias-toggle {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        background: #0f1117;
+        border-radius: 8px;
+        padding: 3px;
+        gap: 3px;
+      }
+      .bias-btn {
+        padding: 7px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        transition: all 0.15s;
+      }
+      .up-active {
+        background: #14532d;
+        color: #4ade80;
+      }
+      .up-inactive {
+        background: transparent;
+        color: #374151;
+      }
+      .dn-active {
+        background: #7f1d1d;
+        color: #f87171;
+      }
+      .dn-inactive {
+        background: transparent;
+        color: #374151;
+      }
 
-    label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 3px; font-weight: 500; }
-    input[type="text"], input[type="number"], select {
-      width: 100%; background: #0f1117; border: 1px solid #2a2d3a;
-      border-radius: 6px; color: #d1d5db; font-size: 13px; padding: 6px 9px;
-      outline: none; transition: border-color 0.15s;
-    }
-    input:focus, select:focus { border-color: #3b82f6; }
-    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      label {
+        display: block;
+        font-size: 11px;
+        color: #6b7280;
+        margin-bottom: 3px;
+        font-weight: 500;
+      }
+      input[type='text'],
+      input[type='number'],
+      select {
+        width: 100%;
+        background: #0f1117;
+        border: 1px solid #2a2d3a;
+        border-radius: 6px;
+        color: #d1d5db;
+        font-size: 13px;
+        padding: 6px 9px;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      input:focus,
+      select:focus {
+        border-color: #3b82f6;
+      }
+      .row2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
 
-    .levels-wrap { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
-    .lvl-tag {
-      display: flex; align-items: center; gap: 4px;
-      background: #1e1b4b; border: 1px solid #312e81;
-      border-radius: 20px; padding: 2px 8px 2px 9px; font-size: 11px; color: #a78bfa;
-    }
-    .lvl-tag button { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 1px; }
-    .lvl-tag button:hover { color: #f87171; }
-    .add-lvl { background: none; border: 1px dashed #374151; border-radius: 20px; padding: 2px 9px; font-size: 11px; color: #6b7280; cursor: pointer; }
-    .add-lvl:hover { border-color: #3b82f6; color: #3b82f6; }
-    .add-lvl-row { display: flex; gap: 6px; margin-top: 6px; }
-    .add-lvl-row input { flex: 1; }
-    .add-lvl-row button { padding: 6px 10px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+      .levels-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 6px;
+      }
+      .lvl-tag {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: #1e1b4b;
+        border: 1px solid #312e81;
+        border-radius: 20px;
+        padding: 2px 8px 2px 9px;
+        font-size: 11px;
+        color: #a78bfa;
+      }
+      .lvl-tag button {
+        background: none;
+        border: none;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1;
+        padding: 0 1px;
+      }
+      .lvl-tag button:hover {
+        color: #f87171;
+      }
+      .add-lvl {
+        background: none;
+        border: 1px dashed #374151;
+        border-radius: 20px;
+        padding: 2px 9px;
+        font-size: 11px;
+        color: #6b7280;
+        cursor: pointer;
+      }
+      .add-lvl:hover {
+        border-color: #3b82f6;
+        color: #3b82f6;
+      }
+      .add-lvl-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .add-lvl-row input {
+        flex: 1;
+      }
+      .add-lvl-row button {
+        padding: 6px 10px;
+        background: #1d4ed8;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+      }
 
-    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
-    .toggle-label { font-size: 12px; color: #9ca3af; }
-    .sw { position: relative; width: 36px; height: 20px; }
-    .sw input { opacity: 0; width: 0; height: 0; }
-    .sw-slider { position: absolute; inset: 0; background: #374151; border-radius: 20px; cursor: pointer; transition: .2s; }
-    .sw-slider::before { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; left: 3px; top: 3px; transition: .2s; }
-    input:checked + .sw-slider { background: #1d4ed8; }
-    input:checked + .sw-slider::before { transform: translateX(16px); }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 0;
+      }
+      .toggle-label {
+        font-size: 12px;
+        color: #9ca3af;
+      }
+      .sw {
+        position: relative;
+        width: 36px;
+        height: 20px;
+      }
+      .sw input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .sw-slider {
+        position: absolute;
+        inset: 0;
+        background: #374151;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      .sw-slider::before {
+        content: '';
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+        left: 3px;
+        top: 3px;
+        transition: 0.2s;
+      }
+      input:checked + .sw-slider {
+        background: #1d4ed8;
+      }
+      input:checked + .sw-slider::before {
+        transform: translateX(16px);
+      }
 
-    .save-btn { width: 100%; padding: 9px; background: #1d4ed8; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px; }
-    .save-btn:hover { background: #2563eb; }
-    .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .saved-msg { text-align: center; font-size: 11px; color: #4ade80; margin-top: 6px; min-height: 16px; }
-    .itm-group { display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; }
-    .itm-btn { padding: 6px 4px; border-radius: 6px; border: 1px solid #2a2d3a; background: #0f1117; color: #4b5563; font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.15s; }
-    .itm-btn:hover { border-color: #4b5563; color: #9ca3af; }
-    .itm-active { background: #2e1065; border-color: #7c3aed; color: #a78bfa; }
-    .itm-hint { font-size: 10px; color: #4b5563; margin-top: 6px; line-height: 1.5; }
+      .save-btn {
+        width: 100%;
+        padding: 9px;
+        background: #1d4ed8;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: 0.5px;
+      }
+      .save-btn:hover {
+        background: #2563eb;
+      }
+      .save-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .saved-msg {
+        text-align: center;
+        font-size: 11px;
+        color: #4ade80;
+        margin-top: 6px;
+        min-height: 16px;
+      }
+      .itm-group {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+      .itm-btn {
+        padding: 6px 4px;
+        border-radius: 6px;
+        border: 1px solid #2a2d3a;
+        background: #0f1117;
+        color: #4b5563;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s;
+      }
+      .itm-btn:hover {
+        border-color: #4b5563;
+        color: #9ca3af;
+      }
+      .itm-active {
+        background: #2e1065;
+        border-color: #7c3aed;
+        color: #a78bfa;
+      }
+      .itm-hint {
+        font-size: 10px;
+        color: #4b5563;
+        margin-top: 6px;
+        line-height: 1.5;
+      }
 
-    /* ── Right Panel ── */
-    .right { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+      /* ── Right Panel ── */
+      .right {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
 
-    .stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; padding: 14px; border-bottom: 1px solid #2a2d3a; background: #13151f; }
-    .stat { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 10px 12px; }
-    .stat-lbl { font-size: 10px; color: #6b7280; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 5px; }
-    .stat-val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .stat-sub { font-size: 10px; color: #6b7280; margin-top: 2px; }
-    .c-green { color: #4ade80; } .c-red { color: #f87171; } .c-yellow { color: #facc15; } .c-white { color: #f9fafb; } .c-purple { color: #a78bfa; }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        padding: 14px;
+        border-bottom: 1px solid #2a2d3a;
+        background: #13151f;
+      }
+      .stat {
+        background: #1a1d27;
+        border: 1px solid #2a2d3a;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .stat-lbl {
+        font-size: 10px;
+        color: #6b7280;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+      }
+      .stat-val {
+        font-size: 18px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat-sub {
+        font-size: 10px;
+        color: #6b7280;
+        margin-top: 2px;
+      }
+      .c-green {
+        color: #4ade80;
+      }
+      .c-red {
+        color: #f87171;
+      }
+      .c-yellow {
+        color: #facc15;
+      }
+      .c-white {
+        color: #f9fafb;
+      }
+      .c-purple {
+        color: #a78bfa;
+      }
 
-    .panels { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+      .panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow: hidden;
+      }
 
-    /* Candle feed */
-    .feed { border-right: 1px solid #2a2d3a; overflow-y: auto; padding: 12px; }
-    .feed-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; font-size: 11px; font-variant-numeric: tabular-nums; border-bottom: 1px solid #13151f; }
-    .feed-row:hover { background: #1a1d27; }
-    .feed-time { color: #4b5563; width: 44px; flex-shrink: 0; }
-    .feed-ohlc { flex: 1; color: #9ca3af; font-size: 10px; }
-    .feed-tag { padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; white-space: nowrap; }
-    .t-zone    { background: #422006; color: #fdba74; }
-    .t-signal  { background: #052e16; color: #4ade80; }
-    .t-outside { background: #1f2937; color: #4b5563; }
-    .t-trade   { background: #1e1b4b; color: #a78bfa; }
+      /* Candle feed */
+      .feed {
+        border-right: 1px solid #2a2d3a;
+        overflow-y: auto;
+        padding: 12px;
+      }
+      .feed-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 8px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        border-bottom: 1px solid #13151f;
+      }
+      .feed-row:hover {
+        background: #1a1d27;
+      }
+      .feed-time {
+        color: #4b5563;
+        width: 44px;
+        flex-shrink: 0;
+      }
+      .feed-ohlc {
+        flex: 1;
+        color: #9ca3af;
+        font-size: 10px;
+      }
+      .feed-tag {
+        padding: 1px 7px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .t-zone {
+        background: #422006;
+        color: #fdba74;
+      }
+      .t-signal {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .t-outside {
+        background: #1f2937;
+        color: #4b5563;
+      }
+      .t-trade {
+        background: #1e1b4b;
+        color: #a78bfa;
+      }
 
-    /* Log */
-    .log { overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 1px; }
-    .log-row { display: flex; gap: 8px; font-size: 11px; padding: 3px 0; border-bottom: 1px solid #13151f; font-family: 'Consolas','Courier New',monospace; }
-    .log-t { color: #374151; flex-shrink: 0; min-width: 52px; }
-    .l-ok     { color: #4ade80; } .l-fail   { color: #f87171; } .l-signal { color: #facc15; font-weight: 700; }
-    .l-info   { color: #6b7280; } .l-flip   { color: #f97316; font-weight: 700; } .l-trade  { color: #a78bfa; }
-    .l-ui     { color: #3b82f6; } .l-err    { color: #f87171; }
+      /* Log */
+      .log {
+        overflow-y: auto;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .log-row {
+        display: flex;
+        gap: 8px;
+        font-size: 11px;
+        padding: 3px 0;
+        border-bottom: 1px solid #13151f;
+        font-family: 'Consolas', 'Courier New', monospace;
+      }
+      .log-t {
+        color: #374151;
+        flex-shrink: 0;
+        min-width: 52px;
+      }
+      .l-ok {
+        color: #4ade80;
+      }
+      .l-fail {
+        color: #f87171;
+      }
+      .l-signal {
+        color: #facc15;
+        font-weight: 700;
+      }
+      .l-info {
+        color: #6b7280;
+      }
+      .l-flip {
+        color: #f97316;
+        font-weight: 700;
+      }
+      .l-trade {
+        color: #a78bfa;
+      }
+      .l-ui {
+        color: #3b82f6;
+      }
+      .l-err {
+        color: #f87171;
+      }
 
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 2px; }
-  </style>
-</head>
-<body>
-<!-- Confirmation dialog -->
-<div class="confirm-overlay" id="confirm-overlay">
-  <div class="confirm-box">
-    <p id="confirm-msg">Are you sure?</p>
-    <div class="confirm-btns">
-      <button class="confirm-yes" id="confirm-yes">Yes</button>
-      <button class="confirm-no"  onclick="closeConfirm()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- HEADER -->
-<header>
-  <div class="logo">Pattern<span>Monitor</span></div>
-  <a class="nav-link" href="/">← Dashboard</a>
-  <a class="nav-link" href="/supertrend">Supertrend →</a>
-  <div class="divider"></div>
-
-  <!-- TradingView -->
-  <div class="proc-group">
-    <div class="proc-label">TRADINGVIEW</div>
-    <div class="status-dot dot-stopped" id="tv-dot"></div>
-    <div class="proc-status text-gray" id="tv-status">Stopped</div>
-    <button class="hdr-btn btn-green" id="btn-tv-toggle" onclick="tvStart()">▶ Start TV</button>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Pattern Monitor -->
-  <div class="proc-group">
-    <div class="proc-label">PATTERN</div>
-    <div class="status-dot dot-stopped" id="mon-dot"></div>
-    <div class="proc-status text-gray" id="mon-status">Stopped</div>
-    <button class="hdr-btn btn-green" id="btn-mon-toggle" onclick="monStart()" disabled>▶ Start</button>
-    <button class="hdr-btn btn-blue"  id="btn-mon-restart" onclick="confirm2('Restart Pattern Monitor?', monRestart)" disabled style="display:none">↺ Restart</button>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Supertrend Monitor -->
-  <div class="proc-group">
-    <div class="proc-label">SUPERTREND</div>
-    <div class="status-dot dot-stopped" id="st-dot"></div>
-    <div class="proc-status text-gray" id="st-status">Stopped</div>
-    <button class="hdr-btn btn-green" id="btn-st-toggle"  onclick="stStart()" disabled>▶ Start</button>
-    <button class="hdr-btn btn-blue"  id="btn-st-restart" onclick="confirm2('Restart Supertrend Monitor?', stRestart)" disabled style="display:none">↺ Restart</button>
-  </div>
-
-  <div class="divider"></div>
-
-  <div class="spacer"></div>
-
-  <div class="monitor-chip chip-stopped" id="active-chip">⏸ STOPPED</div>
-</header>
-
-<!-- MAIN -->
-<div class="main">
-
-  <!-- LEFT PANEL -->
-  <div class="left">
-
-    <!-- Bias -->
-    <div class="card">
-      <div class="sec">Bias</div>
-      <div class="bias-toggle">
-        <button class="bias-btn up-active"   id="bias-up"   onclick="setBias('up')">▲ BUY / CALL</button>
-        <button class="bias-btn dn-inactive" id="bias-down" onclick="setBias('down')">▼ SELL / PUT</button>
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2a2d3a;
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Confirmation dialog -->
+    <div class="confirm-overlay" id="confirm-overlay">
+      <div class="confirm-box">
+        <p id="confirm-msg">Are you sure?</p>
+        <div class="confirm-btns">
+          <button class="confirm-yes" id="confirm-yes">Yes</button>
+          <button class="confirm-no" onclick="closeConfirm()">Cancel</button>
+        </div>
       </div>
     </div>
 
-    <!-- Zone -->
-    <div class="card">
-      <div class="sec">Zone</div>
-      <div class="row2">
-        <div><label>Top</label><input type="number" id="zone-top" /></div>
-        <div><label>Bottom</label><input type="number" id="zone-bot" /></div>
-      </div>
-    </div>
+    <!-- HEADER -->
+    <header>
+      <div class="logo">Pattern<span>Monitor</span></div>
+      <a class="nav-link" href="/">← Dashboard</a>
+      <a class="nav-link" href="/supertrend">Supertrend →</a>
+      <div class="divider"></div>
 
-    <!-- Trade Levels -->
-    <div class="card">
-      <div class="sec">Trade Levels</div>
-      <div class="row2">
-        <div><label>Target</label><input type="number" id="target" /></div>
-        <div><label>Stop Loss (0=auto)</label><input type="number" id="sl" /></div>
+      <!-- TradingView -->
+      <div class="proc-group">
+        <div class="proc-label">TRADINGVIEW</div>
+        <div class="status-dot dot-stopped" id="tv-dot"></div>
+        <div class="proc-status text-gray" id="tv-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-tv-toggle" onclick="tvStart()">▶ Start TV</button>
       </div>
-    </div>
 
-    <!-- Key Levels -->
-    <div class="card">
-      <div class="sec">Important Levels</div>
-      <div class="levels-wrap" id="levels-wrap"></div>
-      <div class="add-lvl-row">
-        <input type="number" id="new-level" placeholder="e.g. 74000" />
-        <button onclick="addLevel()">+ Add</button>
+      <div class="divider"></div>
+
+      <!-- Pattern Monitor -->
+      <div class="proc-group">
+        <div class="proc-label">PATTERN</div>
+        <div class="status-dot dot-stopped" id="mon-dot"></div>
+        <div class="proc-status text-gray" id="mon-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-mon-toggle" onclick="monStart()" disabled>
+          ▶ Start
+        </button>
+        <button
+          class="hdr-btn btn-blue"
+          id="btn-mon-restart"
+          onclick="confirm2('Restart Pattern Monitor?', monRestart)"
+          disabled
+          style="display: none"
+        >
+          ↺ Restart
+        </button>
       </div>
-    </div>
 
-    <!-- Advanced -->
-    <div class="card">
-      <div class="sec">Advanced</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div><label>Symbol (blank = NIFTY/SENSEX auto)</label><input type="text" id="symbol" /></div>
-        <div class="row2">
-          <div>
-            <label>Candle Timeframe</label>
-            <select id="tf">
-              <option value="1">1 min</option>
-              <option value="3">3 min</option>
-              <option value="5">5 min</option>
-              <option value="15">15 min</option>
-            </select>
+      <div class="divider"></div>
+
+      <!-- Supertrend Monitor -->
+      <div class="proc-group">
+        <div class="proc-label">SUPERTREND</div>
+        <div class="status-dot dot-stopped" id="st-dot"></div>
+        <div class="proc-status text-gray" id="st-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-st-toggle" onclick="stStart()" disabled>
+          ▶ Start
+        </button>
+        <button
+          class="hdr-btn btn-blue"
+          id="btn-st-restart"
+          onclick="confirm2('Restart Supertrend Monitor?', stRestart)"
+          disabled
+          style="display: none"
+        >
+          ↺ Restart
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="spacer"></div>
+
+      <div class="monitor-chip chip-stopped" id="active-chip">⏸ STOPPED</div>
+    </header>
+
+    <!-- MAIN -->
+    <div class="main">
+      <!-- LEFT PANEL -->
+      <div class="left">
+        <!-- Bias -->
+        <div class="card">
+          <div class="sec">Bias</div>
+          <div class="bias-toggle">
+            <button class="bias-btn up-active" id="bias-up" onclick="setBias('up')">
+              ▲ BUY / CALL
+            </button>
+            <button class="bias-btn dn-inactive" id="bias-down" onclick="setBias('down')">
+              ▼ SELL / PUT
+            </button>
           </div>
-          <div><label>Trail SL (pts)</label><input type="number" id="trail" /></div>
         </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Ignore Market Hours</span>
-          <label class="sw"><input type="checkbox" id="ignore-hours" /><span class="sw-slider"></span></label>
+
+        <!-- Zone -->
+        <div class="card">
+          <div class="sec">Zone</div>
+          <div class="row2">
+            <div><label>Top</label><input type="number" id="zone-top" /></div>
+            <div><label>Bottom</label><input type="number" id="zone-bot" /></div>
+          </div>
         </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Options Mode (NIFTY/SENSEX)</span>
-          <label class="sw"><input type="checkbox" id="options-mode" onchange="onOptionsModeToggle()" /><span class="sw-slider"></span></label>
+
+        <!-- Trade Levels -->
+        <div class="card">
+          <div class="sec">Trade Levels</div>
+          <div class="row2">
+            <div><label>Target</label><input type="number" id="target" /></div>
+            <div><label>Stop Loss (0=auto)</label><input type="number" id="sl" /></div>
+          </div>
+        </div>
+
+        <!-- Key Levels -->
+        <div class="card">
+          <div class="sec">Important Levels</div>
+          <div class="levels-wrap" id="levels-wrap"></div>
+          <div class="add-lvl-row">
+            <input type="number" id="new-level" placeholder="e.g. 74000" />
+            <button onclick="addLevel()">+ Add</button>
+          </div>
+        </div>
+
+        <!-- Advanced -->
+        <div class="card">
+          <div class="sec">Advanced</div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <div>
+              <label>Symbol (blank = NIFTY/SENSEX auto)</label><input type="text" id="symbol" />
+            </div>
+            <div class="row2">
+              <div>
+                <label>Candle Timeframe</label>
+                <select id="tf">
+                  <option value="1">1 min</option>
+                  <option value="3">3 min</option>
+                  <option value="5">5 min</option>
+                  <option value="15">15 min</option>
+                </select>
+              </div>
+              <div><label>Trail SL (pts)</label><input type="number" id="trail" /></div>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Ignore Market Hours</span>
+              <label class="sw"
+                ><input type="checkbox" id="ignore-hours" /><span class="sw-slider"></span
+              ></label>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Options Mode (NIFTY/SENSEX)</span>
+              <label class="sw"
+                ><input type="checkbox" id="options-mode" onchange="onOptionsModeToggle()" /><span
+                  class="sw-slider"
+                ></span
+              ></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ITM Override (visible when Options Mode is on) -->
+        <div class="card" id="itm-card" style="display: none">
+          <div class="sec">ITM Override</div>
+          <div class="itm-group">
+            <button class="itm-btn itm-active" id="itm-auto" onclick="setITM(null)">
+              Auto<br /><span style="font-size: 9px; opacity: 0.7">day rule</span>
+            </button>
+            <button class="itm-btn" id="itm-0" onclick="setITM(0)">
+              ATM<br /><span style="font-size: 9px; opacity: 0.7">ITM-0</span>
+            </button>
+            <button class="itm-btn" id="itm-1" onclick="setITM(1)">
+              ITM-1<br /><span style="font-size: 9px; opacity: 0.7"> </span>
+            </button>
+            <button class="itm-btn" id="itm-2" onclick="setITM(2)">
+              ITM-2<br /><span style="font-size: 9px; opacity: 0.7"> </span>
+            </button>
+          </div>
+          <div class="itm-hint">
+            Auto: Mon/Tue = ITM-2, Fri = ITM-1 (NIFTY), SENSEX always ITM-2
+          </div>
+        </div>
+
+        <!-- Active + Save -->
+        <div class="card">
+          <div class="toggle-row" style="margin-bottom: 10px">
+            <span style="font-size: 13px; font-weight: 600; color: #d1d5db"
+              >Active (watching for patterns)</span
+            >
+            <label class="sw"
+              ><input type="checkbox" id="active-toggle" onchange="onActiveToggle()" /><span
+                class="sw-slider"
+              ></span
+            ></label>
+          </div>
+          <button class="save-btn" onclick="saveConfig()">SAVE &amp; APPLY</button>
+          <div class="saved-msg" id="saved-msg"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL -->
+      <div class="right">
+        <!-- Stats -->
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-lbl">Price</div>
+            <div class="stat-val c-white" id="s-price">—</div>
+            <div class="stat-sub" id="s-price-sub">waiting...</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">Resistance</div>
+            <div class="stat-val c-red" id="s-resist">—</div>
+            <div class="stat-sub" id="s-resist-sub">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">Support</div>
+            <div class="stat-val c-green" id="s-support">—</div>
+            <div class="stat-sub" id="s-support-sub">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">Last Tick</div>
+            <div class="stat-val c-yellow" id="s-tick">—</div>
+            <div class="stat-sub" id="s-tick-sub">—</div>
+          </div>
+        </div>
+
+        <!-- Feed + Log -->
+        <div class="panels">
+          <!-- Candle Feed -->
+          <div class="feed">
+            <div class="sec" style="margin-bottom: 8px">3-Min Candle Feed</div>
+            <div id="candle-feed"></div>
+          </div>
+
+          <!-- Log -->
+          <div class="log" id="log-panel"></div>
         </div>
       </div>
     </div>
 
-    <!-- ITM Override (visible when Options Mode is on) -->
-    <div class="card" id="itm-card" style="display:none">
-      <div class="sec">ITM Override</div>
-      <div class="itm-group">
-        <button class="itm-btn itm-active" id="itm-auto" onclick="setITM(null)">Auto<br><span style="font-size:9px;opacity:0.7">day rule</span></button>
-        <button class="itm-btn" id="itm-0"    onclick="setITM(0)">ATM<br><span style="font-size:9px;opacity:0.7">ITM-0</span></button>
-        <button class="itm-btn" id="itm-1"    onclick="setITM(1)">ITM-1<br><span style="font-size:9px;opacity:0.7"> </span></button>
-        <button class="itm-btn" id="itm-2"    onclick="setITM(2)">ITM-2<br><span style="font-size:9px;opacity:0.7"> </span></button>
-      </div>
-      <div class="itm-hint">Auto: Mon/Tue = ITM-2, Fri = ITM-1 (NIFTY), SENSEX always ITM-2</div>
-    </div>
+    <script>
+      // ── State ─────────────────────────────────────────────────────────
+      let cfg = {};
+      let importantLevels = [];
+      let bias = 'up';
+      let itmOverride = null;
 
-    <!-- Active + Save -->
-    <div class="card">
-      <div class="toggle-row" style="margin-bottom:10px">
-        <span style="font-size:13px;font-weight:600;color:#d1d5db">Active (watching for patterns)</span>
-        <label class="sw"><input type="checkbox" id="active-toggle" onchange="onActiveToggle()" /><span class="sw-slider"></span></label>
-      </div>
-      <button class="save-btn" onclick="saveConfig()">SAVE &amp; APPLY</button>
-      <div class="saved-msg" id="saved-msg"></div>
-    </div>
+      // ── Load config on startup ────────────────────────────────────────
+      async function loadConfig() {
+        const res = await fetch('/api/config');
+        cfg = await res.json();
+        applyConfigToUI(cfg);
+      }
 
-  </div>
+      function applyConfigToUI(c) {
+        bias = c.bias || 'up';
+        renderBias();
 
-  <!-- RIGHT PANEL -->
-  <div class="right">
+        const za = c.zone || [];
+        document.getElementById('zone-top').value = za.length >= 2 ? Math.max(...za) : '';
+        document.getElementById('zone-bot').value = za.length >= 2 ? Math.min(...za) : '';
+        document.getElementById('target').value = c.target || '';
+        document.getElementById('sl').value = c.sl ?? 0;
+        document.getElementById('symbol').value = c.symbol || '';
+        document.getElementById('tf').value = String(c.candleTimeframe || '3');
+        document.getElementById('trail').value = c.trailToCostPoints ?? '';
+        document.getElementById('ignore-hours').checked = !!c.ignoreMarketHours;
+        document.getElementById('options-mode').checked = !!c.optionsMode;
+        document.getElementById('active-toggle').checked = !!c.active;
+        const v = c.itmOverride;
+        itmOverride = [0, 1, 2].includes(v) ? v : null;
+        renderITM();
+        document.getElementById('itm-card').style.display = c.optionsMode ? '' : 'none';
+        importantLevels = [...(c.importantLevels || [])];
+        renderLevels();
+        renderActiveChip(c.active);
+      }
 
-    <!-- Stats -->
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-lbl">Price</div>
-        <div class="stat-val c-white" id="s-price">—</div>
-        <div class="stat-sub" id="s-price-sub">waiting...</div>
-      </div>
-      <div class="stat">
-        <div class="stat-lbl">Resistance</div>
-        <div class="stat-val c-red" id="s-resist">—</div>
-        <div class="stat-sub" id="s-resist-sub">—</div>
-      </div>
-      <div class="stat">
-        <div class="stat-lbl">Support</div>
-        <div class="stat-val c-green" id="s-support">—</div>
-        <div class="stat-sub" id="s-support-sub">—</div>
-      </div>
-      <div class="stat">
-        <div class="stat-lbl">Last Tick</div>
-        <div class="stat-val c-yellow" id="s-tick">—</div>
-        <div class="stat-sub" id="s-tick-sub">—</div>
-      </div>
-    </div>
+      function renderBias() {
+        document.getElementById('bias-up').className =
+          `bias-btn ${bias === 'up' ? 'up-active' : 'up-inactive'}`;
+        document.getElementById('bias-down').className =
+          `bias-btn ${bias === 'down' ? 'dn-active' : 'dn-inactive'}`;
+      }
 
-    <!-- Feed + Log -->
-    <div class="panels">
+      function setBias(b) {
+        bias = b;
+        renderBias();
+      }
 
-      <!-- Candle Feed -->
-      <div class="feed">
-        <div class="sec" style="margin-bottom:8px">3-Min Candle Feed</div>
-        <div id="candle-feed"></div>
-      </div>
-
-      <!-- Log -->
-      <div class="log" id="log-panel"></div>
-
-    </div>
-  </div>
-</div>
-
-<script>
-// ── State ─────────────────────────────────────────────────────────
-let cfg = {};
-let importantLevels = [];
-let bias = 'up';
-let itmOverride = null;
-
-// ── Load config on startup ────────────────────────────────────────
-async function loadConfig() {
-  const res = await fetch('/api/config');
-  cfg = await res.json();
-  applyConfigToUI(cfg);
-}
-
-function applyConfigToUI(c) {
-  bias = c.bias || 'up';
-  renderBias();
-
-  const za = c.zone || [];
-  document.getElementById('zone-top').value = za.length >= 2 ? Math.max(...za) : '';
-  document.getElementById('zone-bot').value = za.length >= 2 ? Math.min(...za) : '';
-  document.getElementById('target').value   = c.target || '';
-  document.getElementById('sl').value       = c.sl ?? 0;
-  document.getElementById('symbol').value   = c.symbol || '';
-  document.getElementById('tf').value       = String(c.candleTimeframe || '3');
-  document.getElementById('trail').value    = c.trailToCostPoints ?? '';
-  document.getElementById('ignore-hours').checked = !!c.ignoreMarketHours;
-  document.getElementById('options-mode').checked = !!c.optionsMode;
-  document.getElementById('active-toggle').checked = !!c.active;
-  const v = c.itmOverride;
-  itmOverride = [0, 1, 2].includes(v) ? v : null;
-  renderITM();
-  document.getElementById('itm-card').style.display = c.optionsMode ? '' : 'none';
-  importantLevels = [...(c.importantLevels || [])];
-  renderLevels();
-  renderActiveChip(c.active);
-}
-
-function renderBias() {
-  document.getElementById('bias-up').className   = `bias-btn ${bias==='up'  ? 'up-active'   : 'up-inactive'}`;
-  document.getElementById('bias-down').className = `bias-btn ${bias==='down'? 'dn-active'    : 'dn-inactive'}`;
-}
-
-function setBias(b) { bias = b; renderBias(); }
-
-function renderLevels() {
-  const wrap = document.getElementById('levels-wrap');
-  wrap.innerHTML = importantLevels.map((l, i) => `
+      function renderLevels() {
+        const wrap = document.getElementById('levels-wrap');
+        wrap.innerHTML = importantLevels
+          .map(
+            (l, i) => `
     <div class="lvl-tag">${l} <button onclick="removeLevel(${i})">×</button></div>
-  `).join('');
-}
+  `
+          )
+          .join('');
+      }
 
-function addLevel() {
-  const inp = document.getElementById('new-level');
-  const v = parseFloat(inp.value);
-  if (!v) return;
-  if (!importantLevels.includes(v)) importantLevels.push(v);
-  inp.value = '';
-  renderLevels();
-}
+      function addLevel() {
+        const inp = document.getElementById('new-level');
+        const v = parseFloat(inp.value);
+        if (!v) return;
+        if (!importantLevels.includes(v)) importantLevels.push(v);
+        inp.value = '';
+        renderLevels();
+      }
 
-function removeLevel(i) {
-  importantLevels.splice(i, 1);
-  renderLevels();
-}
+      function removeLevel(i) {
+        importantLevels.splice(i, 1);
+        renderLevels();
+      }
 
-function onActiveToggle() {
-  renderActiveChip(document.getElementById('active-toggle').checked);
-}
+      function onActiveToggle() {
+        renderActiveChip(document.getElementById('active-toggle').checked);
+      }
 
-function onOptionsModeToggle() {
-  document.getElementById('itm-card').style.display = document.getElementById('options-mode').checked ? '' : 'none';
-}
+      function onOptionsModeToggle() {
+        document.getElementById('itm-card').style.display = document.getElementById('options-mode')
+          .checked
+          ? ''
+          : 'none';
+      }
 
-function renderITM() {
-  const vals = [null, 0, 1, 2];
-  ['itm-auto','itm-0','itm-1','itm-2'].forEach((id, i) => {
-    document.getElementById(id).className = 'itm-btn' + (itmOverride === vals[i] ? ' itm-active' : '');
-  });
-}
+      function renderITM() {
+        const vals = [null, 0, 1, 2];
+        ['itm-auto', 'itm-0', 'itm-1', 'itm-2'].forEach((id, i) => {
+          document.getElementById(id).className =
+            'itm-btn' + (itmOverride === vals[i] ? ' itm-active' : '');
+        });
+      }
 
-function setITM(v) { itmOverride = v; renderITM(); }
+      function setITM(v) {
+        itmOverride = v;
+        renderITM();
+      }
 
-function renderActiveChip(active) {
-  const chip = document.getElementById('active-chip');
-  if (!document.getElementById('mon-dot').classList.contains('dot-running')) {
-    chip.className = 'monitor-chip chip-stopped'; chip.textContent = '⏸ STOPPED'; return;
-  }
-  if (active) {
-    chip.className = 'monitor-chip chip-active'; chip.textContent = '● ACTIVE';
-  } else {
-    chip.className = 'monitor-chip chip-paused'; chip.textContent = '⏸ PAUSED';
-  }
-}
+      function renderActiveChip(active) {
+        const chip = document.getElementById('active-chip');
+        if (!document.getElementById('mon-dot').classList.contains('dot-running')) {
+          chip.className = 'monitor-chip chip-stopped';
+          chip.textContent = '⏸ STOPPED';
+          return;
+        }
+        if (active) {
+          chip.className = 'monitor-chip chip-active';
+          chip.textContent = '● ACTIVE';
+        } else {
+          chip.className = 'monitor-chip chip-paused';
+          chip.textContent = '⏸ PAUSED';
+        }
+      }
 
-async function saveConfig() {
-  const top = parseFloat(document.getElementById('zone-top').value);
-  const bot = parseFloat(document.getElementById('zone-bot').value);
-  const payload = {
-    bias,
-    zone: [top, bot].filter(Boolean),
-    target: parseFloat(document.getElementById('target').value) || 0,
-    sl:     parseFloat(document.getElementById('sl').value) || 0,
-    importantLevels,
-    active: document.getElementById('active-toggle').checked,
-    symbol: document.getElementById('symbol').value || undefined,
-    candleTimeframe: parseInt(document.getElementById('tf').value),
-    trailToCostPoints: parseFloat(document.getElementById('trail').value) || undefined,
-    ignoreMarketHours: document.getElementById('ignore-hours').checked || undefined,
-    optionsMode:       document.getElementById('options-mode').checked || undefined,
-    itmOverride:       itmOverride !== null ? itmOverride : undefined,
-  };
-  // Clean undefined
-  Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+      async function saveConfig() {
+        const top = parseFloat(document.getElementById('zone-top').value);
+        const bot = parseFloat(document.getElementById('zone-bot').value);
+        const payload = {
+          bias,
+          zone: [top, bot].filter(Boolean),
+          target: parseFloat(document.getElementById('target').value) || 0,
+          sl: parseFloat(document.getElementById('sl').value) || 0,
+          importantLevels,
+          active: document.getElementById('active-toggle').checked,
+          symbol: document.getElementById('symbol').value || undefined,
+          candleTimeframe: parseInt(document.getElementById('tf').value),
+          trailToCostPoints: parseFloat(document.getElementById('trail').value) || undefined,
+          ignoreMarketHours: document.getElementById('ignore-hours').checked || undefined,
+          optionsMode: document.getElementById('options-mode').checked || undefined,
+          itmOverride: itmOverride !== null ? itmOverride : undefined,
+        };
+        // Clean undefined
+        Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
-  const res = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  const data = await res.json();
-  const msg = document.getElementById('saved-msg');
-  if (data.ok) {
-    msg.textContent = '✓ Saved & applied';
-    setTimeout(() => msg.textContent = '', 3000);
-  } else {
-    msg.textContent = '✗ Error: ' + data.error;
-  }
-}
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        const msg = document.getElementById('saved-msg');
+        if (data.ok) {
+          msg.textContent = '✓ Saved & applied';
+          setTimeout(() => (msg.textContent = ''), 3000);
+        } else {
+          msg.textContent = '✗ Error: ' + data.error;
+        }
+      }
 
-// ── Confirmation dialog ───────────────────────────────────────────
-function confirm2(msg, action) {
-  document.getElementById('confirm-msg').textContent = msg;
-  document.getElementById('confirm-yes').onclick = () => { closeConfirm(); action(); };
-  document.getElementById('confirm-overlay').classList.add('open');
-}
-function closeConfirm() { document.getElementById('confirm-overlay').classList.remove('open'); }
-document.getElementById('confirm-overlay').addEventListener('click', e => { if (e.target.id === 'confirm-overlay') closeConfirm(); });
+      // ── Confirmation dialog ───────────────────────────────────────────
+      function confirm2(msg, action) {
+        document.getElementById('confirm-msg').textContent = msg;
+        document.getElementById('confirm-yes').onclick = () => {
+          closeConfirm();
+          action();
+        };
+        document.getElementById('confirm-overlay').classList.add('open');
+      }
+      function closeConfirm() {
+        document.getElementById('confirm-overlay').classList.remove('open');
+      }
+      document.getElementById('confirm-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'confirm-overlay') closeConfirm();
+      });
 
-// ── Process control ───────────────────────────────────────────────
-async function tvStart()    { document.getElementById('btn-tv-toggle').disabled = true; await fetch('/api/tv/start', { method: 'POST' }); }
-async function tvStop()     { await fetch('/api/tv/stop',     { method: 'POST' }); }
-async function monStart()   { document.getElementById('btn-mon-toggle').disabled = true; await fetch('/api/monitor/start',   { method: 'POST' }); }
-async function monStop()    { await fetch('/api/monitor/stop',    { method: 'POST' }); }
-async function monRestart() { await fetch('/api/monitor/restart', { method: 'POST' }); }
-async function stStart()    { document.getElementById('btn-st-toggle').disabled = true;  await fetch('/api/st/start',   { method: 'POST' }); }
-async function stStop()     { await fetch('/api/st/stop',    { method: 'POST' }); }
-async function stRestart()  { await fetch('/api/st/restart', { method: 'POST' }); }
+      // ── Process control ───────────────────────────────────────────────
+      async function tvStart() {
+        document.getElementById('btn-tv-toggle').disabled = true;
+        await fetch('/api/tv/start', { method: 'POST' });
+      }
+      async function tvStop() {
+        await fetch('/api/tv/stop', { method: 'POST' });
+      }
+      async function monStart() {
+        document.getElementById('btn-mon-toggle').disabled = true;
+        await fetch('/api/monitor/start', { method: 'POST' });
+      }
+      async function monStop() {
+        await fetch('/api/monitor/stop', { method: 'POST' });
+      }
+      async function monRestart() {
+        await fetch('/api/monitor/restart', { method: 'POST' });
+      }
+      async function stStart() {
+        document.getElementById('btn-st-toggle').disabled = true;
+        await fetch('/api/st/start', { method: 'POST' });
+      }
+      async function stStop() {
+        await fetch('/api/st/stop', { method: 'POST' });
+      }
+      async function stRestart() {
+        await fetch('/api/st/restart', { method: 'POST' });
+      }
 
-function applyStatus(s) {
-  const tvRunning = s.tv === 'running';
+      function applyStatus(s) {
+        const tvRunning = s.tv === 'running';
 
-  // TradingView
-  const tvDot  = document.getElementById('tv-dot');
-  const tvStat = document.getElementById('tv-status');
-  const btnTvT = document.getElementById('btn-tv-toggle');
-  if (s.tv === 'running') {
-    tvDot.className = 'status-dot dot-running';
-    tvStat.className = 'proc-status text-green'; tvStat.textContent = 'Running';
-    btnTvT.textContent = '■ Stop TV'; btnTvT.className = 'hdr-btn btn-red';
-    btnTvT.onclick = () => confirm2('Stop TradingView?', tvStop); btnTvT.disabled = false;
-  } else if (s.tv === 'starting') {
-    tvDot.className = 'status-dot dot-starting';
-    tvStat.className = 'proc-status text-yellow'; tvStat.textContent = 'Starting';
-    btnTvT.disabled = true;
-  } else {
-    tvDot.className = 'status-dot dot-stopped';
-    tvStat.className = 'proc-status text-gray'; tvStat.textContent = 'Stopped';
-    btnTvT.textContent = '▶ Start TV'; btnTvT.className = 'hdr-btn btn-green';
-    btnTvT.onclick = tvStart; btnTvT.disabled = false;
-  }
+        // TradingView
+        const tvDot = document.getElementById('tv-dot');
+        const tvStat = document.getElementById('tv-status');
+        const btnTvT = document.getElementById('btn-tv-toggle');
+        if (s.tv === 'running') {
+          tvDot.className = 'status-dot dot-running';
+          tvStat.className = 'proc-status text-green';
+          tvStat.textContent = 'Running';
+          btnTvT.textContent = '■ Stop TV';
+          btnTvT.className = 'hdr-btn btn-red';
+          btnTvT.onclick = () => confirm2('Stop TradingView?', tvStop);
+          btnTvT.disabled = false;
+        } else if (s.tv === 'starting') {
+          tvDot.className = 'status-dot dot-starting';
+          tvStat.className = 'proc-status text-yellow';
+          tvStat.textContent = 'Starting';
+          btnTvT.disabled = true;
+        } else {
+          tvDot.className = 'status-dot dot-stopped';
+          tvStat.className = 'proc-status text-gray';
+          tvStat.textContent = 'Stopped';
+          btnTvT.textContent = '▶ Start TV';
+          btnTvT.className = 'hdr-btn btn-green';
+          btnTvT.onclick = tvStart;
+          btnTvT.disabled = false;
+        }
 
-  // Pattern Monitor
-  const monDot  = document.getElementById('mon-dot');
-  const monStat = document.getElementById('mon-status');
-  const btnMonT = document.getElementById('btn-mon-toggle');
-  const btnMonR = document.getElementById('btn-mon-restart');
-  if (s.monitor === 'running') {
-    monDot.className = 'status-dot dot-running';
-    monStat.className = 'proc-status text-green'; monStat.textContent = 'Running';
-    btnMonT.textContent = '■ Stop'; btnMonT.className = 'hdr-btn btn-red';
-    btnMonT.onclick = () => confirm2('Stop Pattern Monitor?', monStop); btnMonT.disabled = false;
-    btnMonR.style.display = ''; btnMonR.disabled = false;
-    renderActiveChip(document.getElementById('active-toggle').checked);
-  } else {
-    monDot.className = 'status-dot dot-stopped';
-    monStat.className = 'proc-status text-gray'; monStat.textContent = 'Stopped';
-    btnMonT.textContent = '▶ Start'; btnMonT.className = 'hdr-btn btn-green';
-    btnMonT.onclick = monStart; btnMonT.disabled = !tvRunning;
-    btnMonR.style.display = 'none';
-    renderActiveChip(false);
-  }
+        // Pattern Monitor
+        const monDot = document.getElementById('mon-dot');
+        const monStat = document.getElementById('mon-status');
+        const btnMonT = document.getElementById('btn-mon-toggle');
+        const btnMonR = document.getElementById('btn-mon-restart');
+        if (s.monitor === 'running') {
+          monDot.className = 'status-dot dot-running';
+          monStat.className = 'proc-status text-green';
+          monStat.textContent = 'Running';
+          btnMonT.textContent = '■ Stop';
+          btnMonT.className = 'hdr-btn btn-red';
+          btnMonT.onclick = () => confirm2('Stop Pattern Monitor?', monStop);
+          btnMonT.disabled = false;
+          btnMonR.style.display = '';
+          btnMonR.disabled = false;
+          renderActiveChip(document.getElementById('active-toggle').checked);
+        } else {
+          monDot.className = 'status-dot dot-stopped';
+          monStat.className = 'proc-status text-gray';
+          monStat.textContent = 'Stopped';
+          btnMonT.textContent = '▶ Start';
+          btnMonT.className = 'hdr-btn btn-green';
+          btnMonT.onclick = monStart;
+          btnMonT.disabled = !tvRunning;
+          btnMonR.style.display = 'none';
+          renderActiveChip(false);
+        }
 
-  // Supertrend Monitor
-  const stDot  = document.getElementById('st-dot');
-  const stStat = document.getElementById('st-status');
-  const btnStT = document.getElementById('btn-st-toggle');
-  const btnStR = document.getElementById('btn-st-restart');
-  if (s.st === 'running') {
-    stDot.className = 'status-dot dot-running';
-    stStat.className = 'proc-status text-green'; stStat.textContent = 'Running';
-    btnStT.textContent = '■ Stop'; btnStT.className = 'hdr-btn btn-red';
-    btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop); btnStT.disabled = false;
-    btnStR.style.display = ''; btnStR.disabled = false;
-  } else {
-    stDot.className = 'status-dot dot-stopped';
-    stStat.className = 'proc-status text-gray'; stStat.textContent = 'Stopped';
-    btnStT.textContent = '▶ Start'; btnStT.className = 'hdr-btn btn-green';
-    btnStT.onclick = stStart; btnStT.disabled = !tvRunning;
-    btnStR.style.display = 'none';
-  }
-}
+        // Supertrend Monitor
+        const stDot = document.getElementById('st-dot');
+        const stStat = document.getElementById('st-status');
+        const btnStT = document.getElementById('btn-st-toggle');
+        const btnStR = document.getElementById('btn-st-restart');
+        if (s.st === 'running') {
+          stDot.className = 'status-dot dot-running';
+          stStat.className = 'proc-status text-green';
+          stStat.textContent = 'Running';
+          btnStT.textContent = '■ Stop';
+          btnStT.className = 'hdr-btn btn-red';
+          btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop);
+          btnStT.disabled = false;
+          btnStR.style.display = '';
+          btnStR.disabled = false;
+        } else {
+          stDot.className = 'status-dot dot-stopped';
+          stStat.className = 'proc-status text-gray';
+          stStat.textContent = 'Stopped';
+          btnStT.textContent = '▶ Start';
+          btnStT.className = 'hdr-btn btn-green';
+          btnStT.onclick = stStart;
+          btnStT.disabled = !tvRunning;
+          btnStR.style.display = 'none';
+        }
+      }
 
-// ── SSE ───────────────────────────────────────────────────────────
-const logPanel   = document.getElementById('log-panel');
-const candleFeed = document.getElementById('candle-feed');
-let candleRows   = [];
+      // ── SSE ───────────────────────────────────────────────────────────
+      const logPanel = document.getElementById('log-panel');
+      const candleFeed = document.getElementById('candle-feed');
+      let candleRows = [];
 
-function logClass(line) {
-  if (line.includes('[OK]'))     return 'l-ok';
-  if (line.includes('[FAIL]'))   return 'l-fail';
-  if (line.includes('[SIGNAL]')) return 'l-signal';
-  if (line.includes('[FLIP]'))   return 'l-flip';
-  if (line.includes('[LONG]') || line.includes('[SHORT]') || line.includes('[TARGET]') || line.includes('[SL HIT]') || line.includes('[TRAIL]')) return 'l-trade';
-  if (line.includes('[UI]') || line.includes('[TV]')) return 'l-ui';
-  if (line.includes('[ERR]') || line.includes('ERROR')) return 'l-err';
-  return 'l-info';
-}
+      function logClass(line) {
+        if (line.includes('[OK]')) return 'l-ok';
+        if (line.includes('[FAIL]')) return 'l-fail';
+        if (line.includes('[SIGNAL]')) return 'l-signal';
+        if (line.includes('[FLIP]')) return 'l-flip';
+        if (
+          line.includes('[LONG]') ||
+          line.includes('[SHORT]') ||
+          line.includes('[TARGET]') ||
+          line.includes('[SL HIT]') ||
+          line.includes('[TRAIL]')
+        )
+          return 'l-trade';
+        if (line.includes('[UI]') || line.includes('[TV]')) return 'l-ui';
+        if (line.includes('[ERR]') || line.includes('ERROR')) return 'l-err';
+        return 'l-info';
+      }
 
-function extractTime(line) {
-  const m = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-  return m ? m[1] : '';
-}
+      function extractTime(line) {
+        const m = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+        return m ? m[1] : '';
+      }
 
-function appendLog(line) {
-  const t = extractTime(line);
-  const text = t ? line.replace(`[${t}]`, '').trim() : line;
-  const cls = logClass(line);
-  const row = document.createElement('div');
-  row.className = 'log-row';
-  row.innerHTML = `<span class="log-t">${t}</span><span class="${cls}">${escHtml(text)}</span>`;
-  logPanel.appendChild(row);
-  while (logPanel.children.length > 150) logPanel.removeChild(logPanel.firstChild);
-  logPanel.scrollTop = logPanel.scrollHeight;
+      function appendLog(line) {
+        const t = extractTime(line);
+        const text = t ? line.replace(`[${t}]`, '').trim() : line;
+        const cls = logClass(line);
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        row.innerHTML = `<span class="log-t">${t}</span><span class="${cls}">${escHtml(text)}</span>`;
+        logPanel.appendChild(row);
+        while (logPanel.children.length > 150) logPanel.removeChild(logPanel.firstChild);
+        logPanel.scrollTop = logPanel.scrollHeight;
 
-  // Parse candle info for feed
-  parseCandleFromLog(t, line);
+        // Parse candle info for feed
+        parseCandleFromLog(t, line);
 
-  // Parse stats
-  parseStatsFromLog(line);
-}
+        // Parse stats
+        parseStatsFromLog(line);
+      }
 
-function parseCandleFromLog(t, line) {
-  // Pattern: "Candle in zone" or "3-min candle" or "[SIGNAL]"
-  let tag = '', ohlc = '';
-  const m = line.match(/O:([\d.]+)\s+H:([\d.]+)\s+L:([\d.]+)\s+C:([\d.]+)/);
-  if (!m) return;
-  ohlc = `O:${m[1]} H:${m[2]} L:${m[3]} C:${m[4]}`;
-  if (line.includes('[SIGNAL]'))        tag = `<span class="feed-tag t-signal">SIGNAL</span>`;
-  else if (line.includes('in zone'))    tag = `<span class="feed-tag t-zone">IN ZONE</span>`;
-  else if (line.includes('outside'))    tag = `<span class="feed-tag t-outside">OUTSIDE</span>`;
-  else if (line.includes('Trade active')) tag = `<span class="feed-tag t-trade">TRADE</span>`;
-  else return;
+      function parseCandleFromLog(t, line) {
+        // Pattern: "Candle in zone" or "3-min candle" or "[SIGNAL]"
+        let tag = '',
+          ohlc = '';
+        const m = line.match(/O:([\d.]+)\s+H:([\d.]+)\s+L:([\d.]+)\s+C:([\d.]+)/);
+        if (!m) return;
+        ohlc = `O:${m[1]} H:${m[2]} L:${m[3]} C:${m[4]}`;
+        if (line.includes('[SIGNAL]')) tag = `<span class="feed-tag t-signal">SIGNAL</span>`;
+        else if (line.includes('in zone')) tag = `<span class="feed-tag t-zone">IN ZONE</span>`;
+        else if (line.includes('outside')) tag = `<span class="feed-tag t-outside">OUTSIDE</span>`;
+        else if (line.includes('Trade active')) tag = `<span class="feed-tag t-trade">TRADE</span>`;
+        else return;
 
-  const row = document.createElement('div');
-  row.className = 'feed-row';
-  row.innerHTML = `<span class="feed-time">${t.slice(0,5)}</span><span class="feed-ohlc">${ohlc}</span>${tag}`;
-  candleFeed.insertBefore(row, candleFeed.firstChild);
-  while (candleFeed.children.length > 30) candleFeed.removeChild(candleFeed.lastChild);
-}
+        const row = document.createElement('div');
+        row.className = 'feed-row';
+        row.innerHTML = `<span class="feed-time">${t.slice(0, 5)}</span><span class="feed-ohlc">${ohlc}</span>${tag}`;
+        candleFeed.insertBefore(row, candleFeed.firstChild);
+        while (candleFeed.children.length > 30) candleFeed.removeChild(candleFeed.lastChild);
+      }
 
-function parseStatsFromLog(line) {
-  // Day levels: R=74223  S=73126
-  const rl = line.match(/R=([\d.]+)/), sl = line.match(/S=([\d.]+)/);
-  if (rl) { document.getElementById('s-resist').textContent = fmt(rl[1]); }
-  if (sl) { document.getElementById('s-support').textContent = fmt(sl[1]); }
+      function parseStatsFromLog(line) {
+        // Day levels: R=74223  S=73126
+        const rl = line.match(/R=([\d.]+)/),
+          sl = line.match(/S=([\d.]+)/);
+        if (rl) {
+          document.getElementById('s-resist').textContent = fmt(rl[1]);
+        }
+        if (sl) {
+          document.getElementById('s-support').textContent = fmt(sl[1]);
+        }
 
-  // Tick time
-  const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-  if (tm && !line.includes('Next tick') && !line.includes('[UI]')) {
-    document.getElementById('s-tick').textContent = tm[1];
-  }
+        // Tick time
+        const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+        if (tm && !line.includes('Next tick') && !line.includes('[UI]')) {
+          document.getElementById('s-tick').textContent = tm[1];
+        }
 
-  // Next tick countdown
-  const nx = line.match(/Next tick in (\d+)s/);
-  if (nx) document.getElementById('s-tick-sub').textContent = `Next in ${nx[1]}s`;
+        // Next tick countdown
+        const nx = line.match(/Next tick in (\d+)s/);
+        if (nx) document.getElementById('s-tick-sub').textContent = `Next in ${nx[1]}s`;
 
-  // Candle close as price
-  const pr = line.match(/C:([\d.]+)/);
-  if (pr && (line.includes('in zone') || line.includes('outside zone') || line.includes('[SIGNAL]'))) {
-    document.getElementById('s-price').textContent = fmt(pr[1]);
-    document.getElementById('s-price-sub').textContent = line.includes('in zone') ? '📍 In Zone' : 'Outside Zone';
-  }
-}
+        // Candle close as price
+        const pr = line.match(/C:([\d.]+)/);
+        if (
+          pr &&
+          (line.includes('in zone') || line.includes('outside zone') || line.includes('[SIGNAL]'))
+        ) {
+          document.getElementById('s-price').textContent = fmt(pr[1]);
+          document.getElementById('s-price-sub').textContent = line.includes('in zone')
+            ? '📍 In Zone'
+            : 'Outside Zone';
+        }
+      }
 
-function fmt(v) {
-  return parseFloat(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+      function fmt(v) {
+        return parseFloat(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
+      }
+      function escHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
 
-const es = new EventSource('/api/events');
-es.addEventListener('log',    e => { appendLog(JSON.parse(e.data).line); });
-es.addEventListener('status', e => { applyStatus(JSON.parse(e.data)); });
-es.addEventListener('config', e => { applyConfigToUI(JSON.parse(e.data)); });
-es.onerror = () => {};
+      const es = new EventSource('/api/events');
+      es.addEventListener('log', (e) => {
+        appendLog(JSON.parse(e.data).line);
+      });
+      es.addEventListener('status', (e) => {
+        applyStatus(JSON.parse(e.data));
+      });
+      es.addEventListener('config', (e) => {
+        applyConfigToUI(JSON.parse(e.data));
+      });
+      es.onerror = () => {};
 
-// ── Init ──────────────────────────────────────────────────────────
-loadConfig();
-fetch('/api/status').then(r=>r.json()).then(applyStatus);
-</script>
-</body>
+      // ── Init ──────────────────────────────────────────────────────────
+      loadConfig();
+      fetch('/api/status')
+        .then((r) => r.json())
+        .then(applyStatus);
+    </script>
+  </body>
 </html>

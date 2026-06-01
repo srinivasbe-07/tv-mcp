@@ -1,740 +1,1195 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TV-MCP Dashboard</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #0f1117; color: #d1d5db;
-      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TV-MCP Dashboard</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #0f1117;
+        color: #d1d5db;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
 
-    /* ── Header ── */
-    header {
-      background: #1a1d27; border-bottom: 1px solid #2a2d3a;
-      padding: 0 20px; height: 52px;
-      display: flex; align-items: center; gap: 14px; flex-shrink: 0;
-    }
-    .logo { font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px; white-space: nowrap; }
-    .logo span { color: #3b82f6; }
-    .divider { width: 1px; height: 24px; background: #2a2d3a; flex-shrink: 0; }
-    .spacer { flex: 1; }
+      /* ── Header ── */
+      header {
+        background: #1a1d27;
+        border-bottom: 1px solid #2a2d3a;
+        padding: 0 20px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-shrink: 0;
+      }
+      .logo {
+        font-size: 15px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+      }
+      .logo span {
+        color: #3b82f6;
+      }
+      .divider {
+        width: 1px;
+        height: 24px;
+        background: #2a2d3a;
+        flex-shrink: 0;
+      }
+      .spacer {
+        flex: 1;
+      }
 
-    .tv-group { display: flex; align-items: center; gap: 8px; }
-    .tv-label { font-size: 11px; color: #6b7280; font-weight: 600; letter-spacing: 0.5px; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .dot-running { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
-    .dot-starting{ background: #facc15; animation: pulse 1s infinite; }
-    .dot-stopped { background: #4b5563; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+      .tv-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tv-label {
+        font-size: 11px;
+        color: #6b7280;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot-running {
+        background: #4ade80;
+        box-shadow: 0 0 6px #4ade80;
+      }
+      .dot-starting {
+        background: #facc15;
+        animation: pulse 1s infinite;
+      }
+      .dot-stopped {
+        background: #4b5563;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
 
-    .tv-stat { font-size: 12px; font-weight: 600; }
-    .c-green { color: #4ade80; } .c-yellow { color: #facc15; } .c-gray { color: #6b7280; }
+      .tv-stat {
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .c-green {
+        color: #4ade80;
+      }
+      .c-yellow {
+        color: #facc15;
+      }
+      .c-gray {
+        color: #6b7280;
+      }
 
-    .hdr-btn {
-      padding: 5px 13px; border-radius: 6px; font-size: 11px;
-      font-weight: 700; border: none; cursor: pointer; letter-spacing: 0.3px; white-space: nowrap;
-    }
-    .hdr-btn:disabled { opacity: .3; cursor: not-allowed; }
-    .btn-red   { background: #7f1d1d; color: #fca5a5; }
-    .btn-green { background: #14532d; color: #4ade80; }
-    .btn-ghost { background: transparent; color: #6b7280; border: 1px solid #2a2d3a; font-size: 11px; }
-    .btn-ghost:hover:not(:disabled) { color: #d1d5db; border-color: #4b5563; }
+      .hdr-btn {
+        padding: 5px 13px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+      }
+      .hdr-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      .btn-red {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .btn-green {
+        background: #14532d;
+        color: #4ade80;
+      }
+      .btn-ghost {
+        background: transparent;
+        color: #6b7280;
+        border: 1px solid #2a2d3a;
+        font-size: 11px;
+      }
+      .btn-ghost:hover:not(:disabled) {
+        color: #d1d5db;
+        border-color: #4b5563;
+      }
 
-    /* ── Main ── */
-    .main {
-      flex: 1; display: grid; grid-template-columns: 1fr 1fr;
-      overflow: hidden;
-    }
+      /* ── Main ── */
+      .main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow: hidden;
+      }
 
-    /* ── Panel ── */
-    .panel {
-      padding: 18px 20px; border-right: 1px solid #2a2d3a;
-      display: flex; flex-direction: column; gap: 14px; overflow: hidden;
-    }
-    .panel:last-child { border-right: none; }
+      /* ── Panel ── */
+      .panel {
+        padding: 18px 20px;
+        border-right: 1px solid #2a2d3a;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow: hidden;
+      }
+      .panel:last-child {
+        border-right: none;
+      }
 
-    .panel-hdr { display: flex; align-items: center; gap: 10px; }
-    .panel-title { font-size: 12px; font-weight: 700; color: #6b7280; letter-spacing: 1px; text-transform: uppercase; }
+      .panel-hdr {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .panel-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #6b7280;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
 
-    .chip {
-      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap;
-    }
-    .chip-active  { background: #052e16; color: #4ade80; }
-    .chip-inzone  { background: #422006; color: #fdba74; }
-    .chip-signal  { background: #1c1917; color: #facc15; }
-    .chip-trade   { background: #1e1b4b; color: #a78bfa; }
-    .chip-paused  { background: #1c1917; color: #f97316; border: 1px solid #292524; }
-    .chip-stopped { background: #111827; color: #4b5563; border: 1px solid #1f2937; }
-    .chip-running { background: #052e16; color: #4ade80; }
+      .chip {
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .chip-active {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .chip-inzone {
+        background: #422006;
+        color: #fdba74;
+      }
+      .chip-signal {
+        background: #1c1917;
+        color: #facc15;
+      }
+      .chip-trade {
+        background: #1e1b4b;
+        color: #a78bfa;
+      }
+      .chip-paused {
+        background: #1c1917;
+        color: #f97316;
+        border: 1px solid #292524;
+      }
+      .chip-stopped {
+        background: #111827;
+        color: #4b5563;
+        border: 1px solid #1f2937;
+      }
+      .chip-running {
+        background: #052e16;
+        color: #4ade80;
+      }
 
-    .panel-actions { margin-left: auto; display: flex; gap: 6px; }
-    .act-btn {
-      padding: 5px 12px; border-radius: 6px; font-size: 11px;
-      font-weight: 700; border: none; cursor: pointer; white-space: nowrap;
-    }
-    .act-btn:disabled { opacity: .3; cursor: not-allowed; }
-    .act-stop    { background: #7f1d1d; color: #fca5a5; }
-    .act-start   { background: #14532d; color: #4ade80; }
-    .act-restart { background: #1e3a5f; color: #93c5fd; }
-    .act-open    { background: transparent; color: #6b7280; border: 1px solid #2a2d3a; font-size: 10px; }
-    .act-open:hover { color: #d1d5db; }
+      .panel-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+      }
+      .act-btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .act-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      .act-stop {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .act-start {
+        background: #14532d;
+        color: #4ade80;
+      }
+      .act-restart {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .act-open {
+        background: transparent;
+        color: #6b7280;
+        border: 1px solid #2a2d3a;
+        font-size: 10px;
+      }
+      .act-open:hover {
+        color: #d1d5db;
+      }
 
-    /* ── Confirmation dialog ── */
-    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:999; align-items:center; justify-content:center; }
-    .confirm-overlay.open { display:flex; }
-    .confirm-box { background:#1a1d27; border:1px solid #374151; border-radius:12px; padding:24px 28px; min-width:260px; text-align:center; }
-    .confirm-box p { color:#e5e7eb; font-size:14px; margin:0 0 20px; }
-    .confirm-btns { display:flex; gap:10px; justify-content:center; }
-    .confirm-btns button { padding:7px 20px; border-radius:8px; border:none; font-size:12px; font-weight:700; cursor:pointer; }
-    .confirm-yes { background:#b91c1c; color:#fff; }
-    .confirm-no  { background:#374151; color:#d1d5db; }
+      /* ── Confirmation dialog ── */
+      .confirm-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      }
+      .confirm-overlay.open {
+        display: flex;
+      }
+      .confirm-box {
+        background: #1a1d27;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        padding: 24px 28px;
+        min-width: 260px;
+        text-align: center;
+      }
+      .confirm-box p {
+        color: #e5e7eb;
+        font-size: 14px;
+        margin: 0 0 20px;
+      }
+      .confirm-btns {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+      .confirm-btns button {
+        padding: 7px 20px;
+        border-radius: 8px;
+        border: none;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .confirm-yes {
+        background: #b91c1c;
+        color: #fff;
+      }
+      .confirm-no {
+        background: #374151;
+        color: #d1d5db;
+      }
 
-    /* ── Stats card ── */
-    .stats-card {
-      background: #13151f; border: 1px solid #2a2d3a; border-radius: 12px;
-      overflow-y: auto; flex: 0 0 auto; max-height: 56%;
-    }
+      /* ── Stats card ── */
+      .stats-card {
+        background: #13151f;
+        border: 1px solid #2a2d3a;
+        border-radius: 12px;
+        overflow-y: auto;
+        flex: 0 0 auto;
+        max-height: 56%;
+      }
 
-    /* ── Log panel ── */
-    .log-panel {
-      display: none; flex-direction: column;
-      background: #13151f; border: 1px solid #2a2d3a; border-radius: 12px;
-      overflow: hidden; flex: 1; min-height: 120px;
-    }
-    .log-panel.visible { display: flex; }
-    .log-hdr {
-      padding: 6px 14px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
-      color: #374151; text-transform: uppercase; background: #0f1117;
-      border-bottom: 1px solid #1f2937; flex-shrink: 0;
-    }
-    .log-body {
-      overflow-y: auto; flex: 1; padding: 6px 0;
-    }
-    .log-row {
-      display: flex; gap: 8px; padding: 2px 14px;
-      font-size: 11px; font-family: 'Consolas','Courier New', monospace;
-    }
-    .log-t { color: #374151; flex-shrink: 0; min-width: 50px; }
-    .l-ok   { color: #4ade80; } .l-fail  { color: #f87171; }
-    .l-sig  { color: #facc15; font-weight: 700; } .l-flip { color: #f97316; font-weight: 700; }
-    .l-trade{ color: #a78bfa; } .l-ui   { color: #3b82f6; }
-    .l-err  { color: #f87171; } .l-warn { color: #f97316; }
-    .l-pos  { color: #a78bfa; font-weight: 700; }
-    .l-info { color: #4b5563; }
+      /* ── Log panel ── */
+      .log-panel {
+        display: none;
+        flex-direction: column;
+        background: #13151f;
+        border: 1px solid #2a2d3a;
+        border-radius: 12px;
+        overflow: hidden;
+        flex: 1;
+        min-height: 120px;
+      }
+      .log-panel.visible {
+        display: flex;
+      }
+      .log-hdr {
+        padding: 6px 14px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #374151;
+        text-transform: uppercase;
+        background: #0f1117;
+        border-bottom: 1px solid #1f2937;
+        flex-shrink: 0;
+      }
+      .log-body {
+        overflow-y: auto;
+        flex: 1;
+        padding: 6px 0;
+      }
+      .log-row {
+        display: flex;
+        gap: 8px;
+        padding: 2px 14px;
+        font-size: 11px;
+        font-family: 'Consolas', 'Courier New', monospace;
+      }
+      .log-t {
+        color: #374151;
+        flex-shrink: 0;
+        min-width: 50px;
+      }
+      .l-ok {
+        color: #4ade80;
+      }
+      .l-fail {
+        color: #f87171;
+      }
+      .l-sig {
+        color: #facc15;
+        font-weight: 700;
+      }
+      .l-flip {
+        color: #f97316;
+        font-weight: 700;
+      }
+      .l-trade {
+        color: #a78bfa;
+      }
+      .l-ui {
+        color: #3b82f6;
+      }
+      .l-err {
+        color: #f87171;
+      }
+      .l-warn {
+        color: #f97316;
+      }
+      .l-pos {
+        color: #a78bfa;
+        font-weight: 700;
+      }
+      .l-info {
+        color: #4b5563;
+      }
 
-    .stat-section {
-      padding: 5px 16px 4px;
-      font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #374151;
-      text-transform: uppercase; background: #0f1117; border-bottom: 1px solid #1f2937;
-    }
+      .stat-section {
+        padding: 5px 16px 4px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #374151;
+        text-transform: uppercase;
+        background: #0f1117;
+        border-bottom: 1px solid #1f2937;
+      }
 
-    .stat-row {
-      display: flex; align-items: center;
-      padding: 10px 16px; border-bottom: 1px solid #1a1d27; gap: 10px;
-    }
-    .stat-row:last-child { border-bottom: none; }
+      .stat-row {
+        display: flex;
+        align-items: center;
+        padding: 10px 16px;
+        border-bottom: 1px solid #1a1d27;
+        gap: 10px;
+      }
+      .stat-row:last-child {
+        border-bottom: none;
+      }
 
-    .stat-key {
-      font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
-      color: #4b5563; text-transform: uppercase; width: 88px; flex-shrink: 0;
-    }
-    .stat-val {
-      font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; flex: 1;
-    }
-    .stat-sub { font-size: 10px; color: #4b5563; margin-left: auto; white-space: nowrap; }
+      .stat-key {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        color: #4b5563;
+        text-transform: uppercase;
+        width: 88px;
+        flex-shrink: 0;
+      }
+      .stat-val {
+        font-size: 14px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        flex: 1;
+      }
+      .stat-sub {
+        font-size: 10px;
+        color: #4b5563;
+        margin-left: auto;
+        white-space: nowrap;
+      }
 
-    .v-white  { color: #f9fafb; } .v-green { color: #4ade80; } .v-red   { color: #f87171; }
-    .v-yellow { color: #facc15; } .v-blue  { color: #60a5fa; } .v-gray  { color: #4b5563; }
-    .v-orange { color: #fb923c; } .v-purple{ color: #a78bfa; }
+      .v-white {
+        color: #f9fafb;
+      }
+      .v-green {
+        color: #4ade80;
+      }
+      .v-red {
+        color: #f87171;
+      }
+      .v-yellow {
+        color: #facc15;
+      }
+      .v-blue {
+        color: #60a5fa;
+      }
+      .v-gray {
+        color: #4b5563;
+      }
+      .v-orange {
+        color: #fb923c;
+      }
+      .v-purple {
+        color: #a78bfa;
+      }
 
-    /* Bias pill */
-    .bias-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
-    }
-    .bias-up   { background: #052e16; color: #4ade80; }
-    .bias-down { background: #7f1d1d; color: #f87171; }
+      /* Bias pill */
+      .bias-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .bias-up {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .bias-down {
+        background: #7f1d1d;
+        color: #f87171;
+      }
 
-    /* Position pill */
-    .pos-pill {
-      display: inline-flex; align-items: center;
-      padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
-    }
-    .pos-open   { background: #052e16; color: #4ade80; }
-    .pos-closed { background: #111827; color: #4b5563; border: 1px solid #1f2937; }
-    .pos-trade  { background: #1e1b4b; color: #a78bfa; }
+      /* Position pill */
+      .pos-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .pos-open {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .pos-closed {
+        background: #111827;
+        color: #4b5563;
+        border: 1px solid #1f2937;
+      }
+      .pos-trade {
+        background: #1e1b4b;
+        color: #a78bfa;
+      }
 
-    /* Position row (CE/PE style) */
-    .pos-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 16px; border-bottom: 1px solid #1a1d27;
-    }
-    .pos-row:last-child { border-bottom: none; }
-    .pos-label { font-size: 11px; font-weight: 700; color: #6b7280; }
-    .pos-sym   { font-size: 10px; color: #374151; margin-left: 8px; font-family: monospace; }
+      /* Position row (CE/PE style) */
+      .pos-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #1a1d27;
+      }
+      .pos-row:last-child {
+        border-bottom: none;
+      }
+      .pos-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #6b7280;
+      }
+      .pos-sym {
+        font-size: 10px;
+        color: #374151;
+        margin-left: 8px;
+        font-family: monospace;
+      }
 
-    /* TV ready banner */
-    .tv-banner {
-      display: none; align-items: center; justify-content: center; gap: 10px;
-      background: #052e16; border-bottom: 1px solid #166534;
-      padding: 7px 16px; font-size: 12px; font-weight: 700; color: #4ade80;
-      flex-shrink: 0;
-    }
-    .tv-banner.show { display: flex; }
-    .tv-banner.starting { background: #1c1400; border-color: #854d0e; color: #facc15; }
+      /* TV ready banner */
+      .tv-banner {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: #052e16;
+        border-bottom: 1px solid #166534;
+        padding: 7px 16px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #4ade80;
+        flex-shrink: 0;
+      }
+      .tv-banner.show {
+        display: flex;
+      }
+      .tv-banner.starting {
+        background: #1c1400;
+        border-color: #854d0e;
+        color: #facc15;
+      }
 
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 2px; }
-  </style>
-</head>
-<body>
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2a2d3a;
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <header>
+      <div class="logo">TV‑MCP <span>Dashboard</span></div>
+      <div class="divider"></div>
 
-<!-- HEADER -->
-<header>
-  <div class="logo">TV‑MCP <span>Dashboard</span></div>
-  <div class="divider"></div>
-
-  <div class="tv-group">
-    <div class="tv-label">TRADINGVIEW</div>
-    <div class="status-dot dot-stopped" id="tv-dot"></div>
-    <div class="tv-stat c-gray" id="tv-status">Stopped</div>
-    <button class="hdr-btn btn-green" id="btn-tv-toggle" onclick="tvStart()">▶ Start TV</button>
-  </div>
-
-  <div class="spacer"></div>
-  <button class="hdr-btn btn-ghost" onclick="window.open('/pattern','_blank')">Pattern Monitor ↗</button>
-  <button class="hdr-btn btn-ghost" onclick="window.open('/supertrend','_blank')">Supertrend Monitor ↗</button>
-</header>
-
-<!-- TV STATUS BANNER -->
-<div class="tv-banner" id="tv-banner">
-  <span id="tv-banner-text">● TradingView Ready — monitors can be started</span>
-</div>
-
-<!-- MAIN -->
-<div class="main">
-
-  <!-- ── PATTERN MONITOR ── -->
-  <div class="panel">
-    <div class="panel-hdr">
-      <div class="panel-title">Pattern Monitor</div>
-      <div class="chip chip-stopped" id="pat-chip">○ Stopped</div>
-      <div class="panel-actions">
-        <button class="act-btn act-start"   id="btn-mon-toggle"  disabled>▶ Start</button>
-        <button class="act-btn act-restart" id="btn-mon-restart" onclick="confirm2('Restart Pattern Monitor?', monRestart)" disabled style="display:none">↺ Restart</button>
-        <button class="act-btn act-open"    onclick="window.open('/pattern','_blank')">Open ↗</button>
+      <div class="tv-group">
+        <div class="tv-label">TRADINGVIEW</div>
+        <div class="status-dot dot-stopped" id="tv-dot"></div>
+        <div class="tv-stat c-gray" id="tv-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-tv-toggle" onclick="tvStart()">▶ Start TV</button>
       </div>
+
+      <div class="spacer"></div>
+      <button class="hdr-btn btn-ghost" onclick="window.open('/pattern', '_blank')">
+        Pattern Monitor ↗
+      </button>
+      <button class="hdr-btn btn-ghost" onclick="window.open('/supertrend', '_blank')">
+        Supertrend Monitor ↗
+      </button>
+    </header>
+
+    <!-- TV STATUS BANNER -->
+    <div class="tv-banner" id="tv-banner">
+      <span id="tv-banner-text">● TradingView Ready — monitors can be started</span>
     </div>
 
-    <div class="stats-card">
-
-      <div class="stat-section">Monitor State</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Bias</div>
-        <div class="stat-val" id="pat-bias"><span class="bias-pill bias-up">▲ BUY / CALL</span></div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Price</div>
-        <div class="stat-val v-white" id="pat-price">—</div>
-        <div class="stat-sub" id="pat-price-sub">waiting...</div>
-      </div>
-
-      <div class="stat-section">Zone &amp; Levels</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Zone</div>
-        <div class="stat-val v-orange" id="pat-zone">—</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Target</div>
-        <div class="stat-val v-green" id="pat-target">—</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Stop Loss</div>
-        <div class="stat-val v-gray" id="pat-sl">—</div>
-      </div>
-
-      <div class="stat-section">Day Levels</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Resistance</div>
-        <div class="stat-val v-red" id="pat-resist">—</div>
-        <div class="stat-sub">nearest high above</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Support</div>
-        <div class="stat-val v-green" id="pat-support">—</div>
-        <div class="stat-sub">nearest low below</div>
-      </div>
-
-      <div class="stat-section">Options</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Mode</div>
-        <div class="stat-val" id="pat-opt-mode"><span class="pos-pill pos-closed">OFF</span></div>
-      </div>
-      <div class="pos-row" id="pat-opt-row">
-        <div>
-          <span class="pos-label" id="pat-opt-side">CE</span>
-          <span class="pos-sym"   id="pat-opt-sym">—</span>
+    <!-- MAIN -->
+    <div class="main">
+      <!-- ── PATTERN MONITOR ── -->
+      <div class="panel">
+        <div class="panel-hdr">
+          <div class="panel-title">Pattern Monitor</div>
+          <div class="chip chip-stopped" id="pat-chip">○ Stopped</div>
+          <div class="panel-actions">
+            <button class="act-btn act-start" id="btn-mon-toggle" disabled>▶ Start</button>
+            <button
+              class="act-btn act-restart"
+              id="btn-mon-restart"
+              onclick="confirm2('Restart Pattern Monitor?', monRestart)"
+              disabled
+              style="display: none"
+            >
+              ↺ Restart
+            </button>
+            <button class="act-btn act-open" onclick="window.open('/pattern', '_blank')">
+              Open ↗
+            </button>
+          </div>
         </div>
-        <span class="pos-pill pos-closed" id="pat-opt-status">NO TRADE</span>
-      </div>
 
-      <div class="stat-section">Timing</div>
+        <div class="stats-card">
+          <div class="stat-section">Monitor State</div>
 
-      <div class="stat-row">
-        <div class="stat-key">Last Tick</div>
-        <div class="stat-val v-yellow" id="pat-tick">—</div>
-        <div class="stat-sub" id="pat-next">—</div>
-      </div>
+          <div class="stat-row">
+            <div class="stat-key">Bias</div>
+            <div class="stat-val" id="pat-bias">
+              <span class="bias-pill bias-up">▲ BUY / CALL</span>
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Price</div>
+            <div class="stat-val v-white" id="pat-price">—</div>
+            <div class="stat-sub" id="pat-price-sub">waiting...</div>
+          </div>
 
-    </div>
+          <div class="stat-section">Zone &amp; Levels</div>
 
-    <!-- Pattern log — visible only when running -->
-    <div class="log-panel" id="pat-log-panel">
-      <div class="log-hdr" id="pat-log-hdr">Live Log</div>
-      <div class="log-body" id="pat-log-body"></div>
-    </div>
+          <div class="stat-row">
+            <div class="stat-key">Zone</div>
+            <div class="stat-val v-orange" id="pat-zone">—</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Target</div>
+            <div class="stat-val v-green" id="pat-target">—</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Stop Loss</div>
+            <div class="stat-val v-gray" id="pat-sl">—</div>
+          </div>
 
-  </div>
+          <div class="stat-section">Day Levels</div>
 
-  <!-- ── SUPERTREND MONITOR ── -->
-  <div class="panel">
-    <div class="panel-hdr">
-      <div class="panel-title">Supertrend Monitor</div>
-      <div class="chip chip-stopped" id="st-chip">○ Stopped</div>
-      <div class="panel-actions">
-        <button class="act-btn act-start"   id="btn-st-toggle"  disabled>▶ Start</button>
-        <button class="act-btn act-restart" id="btn-st-restart" onclick="confirm2('Restart Supertrend Monitor?', stRestart)" disabled style="display:none">↺ Restart</button>
-        <button class="act-btn act-open"    onclick="window.open('/supertrend','_blank')">Open ↗</button>
-      </div>
-    </div>
+          <div class="stat-row">
+            <div class="stat-key">Resistance</div>
+            <div class="stat-val v-red" id="pat-resist">—</div>
+            <div class="stat-sub">nearest high above</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Support</div>
+            <div class="stat-val v-green" id="pat-support">—</div>
+            <div class="stat-sub">nearest low below</div>
+          </div>
 
-    <div class="stats-card">
+          <div class="stat-section">Options</div>
 
-      <div class="stat-section">Instrument</div>
+          <div class="stat-row">
+            <div class="stat-key">Mode</div>
+            <div class="stat-val" id="pat-opt-mode">
+              <span class="pos-pill pos-closed">OFF</span>
+            </div>
+          </div>
+          <div class="pos-row" id="pat-opt-row">
+            <div>
+              <span class="pos-label" id="pat-opt-side">CE</span>
+              <span class="pos-sym" id="pat-opt-sym">—</span>
+            </div>
+            <span class="pos-pill pos-closed" id="pat-opt-status">NO TRADE</span>
+          </div>
 
-      <div class="stat-row">
-        <div class="stat-key">Instrument</div>
-        <div class="stat-val v-purple" id="st-instr">—</div>
-        <div class="stat-sub" id="st-instr-sub">—</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Spot</div>
-        <div class="stat-val v-white" id="st-spot">—</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">ATM Strike</div>
-        <div class="stat-val v-yellow" id="st-atm">—</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">ITM Depth</div>
-        <div class="stat-val v-blue" id="st-itm">—</div>
-        <div class="stat-sub" id="st-itm-sub">—</div>
-      </div>
+          <div class="stat-section">Timing</div>
 
-      <div class="stat-section">Positions</div>
-
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">CE</span>
-          <span class="pos-sym" id="st-ce-sym">—</span>
+          <div class="stat-row">
+            <div class="stat-key">Last Tick</div>
+            <div class="stat-val v-yellow" id="pat-tick">—</div>
+            <div class="stat-sub" id="pat-next">—</div>
+          </div>
         </div>
-        <span class="pos-pill pos-closed" id="st-ce-pill">CLOSED</span>
-      </div>
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">PE</span>
-          <span class="pos-sym" id="st-pe-sym">—</span>
+
+        <!-- Pattern log — visible only when running -->
+        <div class="log-panel" id="pat-log-panel">
+          <div class="log-hdr" id="pat-log-hdr">Live Log</div>
+          <div class="log-body" id="pat-log-body"></div>
         </div>
-        <span class="pos-pill pos-closed" id="st-pe-pill">CLOSED</span>
       </div>
 
-      <div class="stat-section">Timing</div>
+      <!-- ── SUPERTREND MONITOR ── -->
+      <div class="panel">
+        <div class="panel-hdr">
+          <div class="panel-title">Supertrend Monitor</div>
+          <div class="chip chip-stopped" id="st-chip">○ Stopped</div>
+          <div class="panel-actions">
+            <button class="act-btn act-start" id="btn-st-toggle" disabled>▶ Start</button>
+            <button
+              class="act-btn act-restart"
+              id="btn-st-restart"
+              onclick="confirm2('Restart Supertrend Monitor?', stRestart)"
+              disabled
+              style="display: none"
+            >
+              ↺ Restart
+            </button>
+            <button class="act-btn act-open" onclick="window.open('/supertrend', '_blank')">
+              Open ↗
+            </button>
+          </div>
+        </div>
 
-      <div class="stat-row">
-        <div class="stat-key">Last Tick</div>
-        <div class="stat-val v-yellow" id="st-tick">—</div>
-        <div class="stat-sub" id="st-next">—</div>
+        <div class="stats-card">
+          <div class="stat-section">Instrument</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Instrument</div>
+            <div class="stat-val v-purple" id="st-instr">—</div>
+            <div class="stat-sub" id="st-instr-sub">—</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Spot</div>
+            <div class="stat-val v-white" id="st-spot">—</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">ATM Strike</div>
+            <div class="stat-val v-yellow" id="st-atm">—</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">ITM Depth</div>
+            <div class="stat-val v-blue" id="st-itm">—</div>
+            <div class="stat-sub" id="st-itm-sub">—</div>
+          </div>
+
+          <div class="stat-section">Positions</div>
+
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">CE</span>
+              <span class="pos-sym" id="st-ce-sym">—</span>
+            </div>
+            <span class="pos-pill pos-closed" id="st-ce-pill">CLOSED</span>
+          </div>
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">PE</span>
+              <span class="pos-sym" id="st-pe-sym">—</span>
+            </div>
+            <span class="pos-pill pos-closed" id="st-pe-pill">CLOSED</span>
+          </div>
+
+          <div class="stat-section">Timing</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Last Tick</div>
+            <div class="stat-val v-yellow" id="st-tick">—</div>
+            <div class="stat-sub" id="st-next">—</div>
+          </div>
+        </div>
+
+        <!-- Supertrend log — visible only when running -->
+        <div class="log-panel" id="st-log-panel">
+          <div class="log-hdr" id="st-log-hdr">Live Log</div>
+          <div class="log-body" id="st-log-body"></div>
+        </div>
       </div>
-
     </div>
 
-    <!-- Supertrend log — visible only when running -->
-    <div class="log-panel" id="st-log-panel">
-      <div class="log-hdr" id="st-log-hdr">Live Log</div>
-      <div class="log-body" id="st-log-body"></div>
+    <!-- Confirmation dialog -->
+    <div class="confirm-overlay" id="confirm-overlay">
+      <div class="confirm-box">
+        <p id="confirm-msg">Are you sure?</p>
+        <div class="confirm-btns">
+          <button class="confirm-yes" id="confirm-yes">Yes</button>
+          <button class="confirm-no" onclick="closeConfirm()">Cancel</button>
+        </div>
+      </div>
     </div>
 
-  </div>
+    <script>
+      // ── Confirmation dialog ───────────────────────────────────────────
+      function confirm2(msg, action) {
+        document.getElementById('confirm-msg').textContent = msg;
+        document.getElementById('confirm-yes').onclick = () => {
+          closeConfirm();
+          action();
+        };
+        document.getElementById('confirm-overlay').classList.add('open');
+      }
+      function closeConfirm() {
+        document.getElementById('confirm-overlay').classList.remove('open');
+      }
+      document.getElementById('confirm-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'confirm-overlay') closeConfirm();
+      });
 
-</div>
+      // ── Process control ───────────────────────────────────────────────
+      async function tvStart() {
+        document.getElementById('btn-tv-toggle').disabled = true;
+        await fetch('/api/tv/start', { method: 'POST' });
+      }
+      async function tvStop() {
+        await fetch('/api/tv/stop', { method: 'POST' });
+      }
+      async function monStart() {
+        document.getElementById('btn-mon-toggle').disabled = true;
+        await fetch('/api/monitor/start', { method: 'POST' });
+      }
+      async function monStop() {
+        await fetch('/api/monitor/stop', { method: 'POST' });
+      }
+      async function monRestart() {
+        await fetch('/api/monitor/restart', { method: 'POST' });
+      }
+      async function stStart() {
+        document.getElementById('btn-st-toggle').disabled = true;
+        await fetch('/api/st/start', { method: 'POST' });
+      }
+      async function stStop() {
+        await fetch('/api/st/stop', { method: 'POST' });
+      }
+      async function stRestart() {
+        await fetch('/api/st/restart', { method: 'POST' });
+      }
 
-<!-- Confirmation dialog -->
-<div class="confirm-overlay" id="confirm-overlay">
-  <div class="confirm-box">
-    <p id="confirm-msg">Are you sure?</p>
-    <div class="confirm-btns">
-      <button class="confirm-yes" id="confirm-yes">Yes</button>
-      <button class="confirm-no"  onclick="closeConfirm()">Cancel</button>
-    </div>
-  </div>
-</div>
+      // ── Process running flags ─────────────────────────────────────────
+      let stMonRunning = false;
 
-<script>
-// ── Confirmation dialog ───────────────────────────────────────────
-function confirm2(msg, action) {
-  document.getElementById('confirm-msg').textContent = msg;
-  document.getElementById('confirm-yes').onclick = () => { closeConfirm(); action(); };
-  document.getElementById('confirm-overlay').classList.add('open');
-}
-function closeConfirm() { document.getElementById('confirm-overlay').classList.remove('open'); }
-document.getElementById('confirm-overlay').addEventListener('click', e => { if (e.target.id === 'confirm-overlay') closeConfirm(); });
+      // ── Status ────────────────────────────────────────────────────────
+      function applyStatus(s) {
+        const tvRunning = s.tv === 'running';
 
-// ── Process control ───────────────────────────────────────────────
-async function tvStart()     { document.getElementById('btn-tv-toggle').disabled = true; await fetch('/api/tv/start', { method: 'POST' }); }
-async function tvStop()      { await fetch('/api/tv/stop',     { method: 'POST' }); }
-async function monStart()    { document.getElementById('btn-mon-toggle').disabled = true; await fetch('/api/monitor/start',   { method: 'POST' }); }
-async function monStop()     { await fetch('/api/monitor/stop',    { method: 'POST' }); }
-async function monRestart()  { await fetch('/api/monitor/restart', { method: 'POST' }); }
-async function stStart()     { document.getElementById('btn-st-toggle').disabled = true;  await fetch('/api/st/start',   { method: 'POST' }); }
-async function stStop()      { await fetch('/api/st/stop',    { method: 'POST' }); }
-async function stRestart()   { await fetch('/api/st/restart', { method: 'POST' }); }
+        // TV
+        const tvDot = document.getElementById('tv-dot');
+        const tvStat = document.getElementById('tv-status');
+        const btnTvT = document.getElementById('btn-tv-toggle');
+        const banner = document.getElementById('tv-banner');
+        const bannerTx = document.getElementById('tv-banner-text');
+        if (s.tv === 'running') {
+          tvDot.className = 'status-dot dot-running';
+          tvStat.className = 'tv-stat c-green';
+          tvStat.textContent = 'Running';
+          btnTvT.textContent = '■ Stop TV';
+          btnTvT.className = 'hdr-btn btn-red';
+          btnTvT.onclick = () => confirm2('Stop TradingView?', tvStop);
+          btnTvT.disabled = false;
+          banner.className = 'tv-banner show';
+          bannerTx.textContent = '● TradingView Ready — you can now start monitors';
+        } else if (s.tv === 'starting') {
+          tvDot.className = 'status-dot dot-starting';
+          tvStat.className = 'tv-stat c-yellow';
+          tvStat.textContent = 'Starting';
+          btnTvT.disabled = true;
+          banner.className = 'tv-banner show starting';
+          bannerTx.textContent = '⏳ TradingView is starting — please wait...';
+        } else {
+          tvDot.className = 'status-dot dot-stopped';
+          tvStat.className = 'tv-stat c-gray';
+          tvStat.textContent = 'Stopped';
+          btnTvT.textContent = '▶ Start TV';
+          btnTvT.className = 'hdr-btn btn-green';
+          btnTvT.onclick = tvStart;
+          btnTvT.disabled = false;
+          banner.className = 'tv-banner';
+        }
 
-// ── Process running flags ─────────────────────────────────────────
-let stMonRunning = false;
+        const tvActive = s.tv === 'running' || s.tv === 'starting';
 
-// ── Status ────────────────────────────────────────────────────────
-function applyStatus(s) {
-  const tvRunning = s.tv === 'running';
+        // Pattern Monitor — single toggle button
+        const btnMonT = document.getElementById('btn-mon-toggle');
+        const btnMonR = document.getElementById('btn-mon-restart');
+        const patLogPnl = document.getElementById('pat-log-panel');
+        const patLogHdr = document.getElementById('pat-log-hdr');
+        if (s.monitor === 'running') {
+          btnMonT.textContent = '■ Stop';
+          btnMonT.className = 'act-btn act-stop';
+          btnMonT.onclick = () => confirm2('Stop Pattern Monitor?', monStop);
+          btnMonT.disabled = false;
+          btnMonR.style.display = '';
+          btnMonR.disabled = false;
+          patLogPnl.classList.add('visible');
+          patLogHdr.textContent = 'Pattern Monitor — Live Log';
+          if (document.getElementById('pat-chip').textContent === '○ Stopped') setPatChip('active');
+        } else {
+          btnMonT.textContent = '▶ Start';
+          btnMonT.className = 'act-btn act-start';
+          btnMonT.onclick = monStart;
+          btnMonT.disabled = !tvRunning;
+          btnMonR.style.display = 'none';
+          if (tvActive) {
+            patLogPnl.classList.add('visible');
+            patLogHdr.textContent = 'TradingView — Startup Log';
+          } else {
+            patLogPnl.classList.remove('visible');
+          }
+          setPatChip('stopped');
+        }
 
-  // TV
-  const tvDot    = document.getElementById('tv-dot');
-  const tvStat   = document.getElementById('tv-status');
-  const btnTvT   = document.getElementById('btn-tv-toggle');
-  const banner   = document.getElementById('tv-banner');
-  const bannerTx = document.getElementById('tv-banner-text');
-  if (s.tv === 'running') {
-    tvDot.className = 'status-dot dot-running'; tvStat.className = 'tv-stat c-green'; tvStat.textContent = 'Running';
-    btnTvT.textContent = '■ Stop TV'; btnTvT.className = 'hdr-btn btn-red';
-    btnTvT.onclick = () => confirm2('Stop TradingView?', tvStop); btnTvT.disabled = false;
-    banner.className = 'tv-banner show';
-    bannerTx.textContent = '● TradingView Ready — you can now start monitors';
-  } else if (s.tv === 'starting') {
-    tvDot.className = 'status-dot dot-starting'; tvStat.className = 'tv-stat c-yellow'; tvStat.textContent = 'Starting';
-    btnTvT.disabled = true;
-    banner.className = 'tv-banner show starting';
-    bannerTx.textContent = '⏳ TradingView is starting — please wait...';
-  } else {
-    tvDot.className = 'status-dot dot-stopped'; tvStat.className = 'tv-stat c-gray'; tvStat.textContent = 'Stopped';
-    btnTvT.textContent = '▶ Start TV'; btnTvT.className = 'hdr-btn btn-green';
-    btnTvT.onclick = tvStart; btnTvT.disabled = false;
-    banner.className = 'tv-banner';
-  }
+        // Supertrend Monitor — single toggle button
+        const btnStT = document.getElementById('btn-st-toggle');
+        const btnStR = document.getElementById('btn-st-restart');
+        const stLogPnl = document.getElementById('st-log-panel');
+        const stLogHdr = document.getElementById('st-log-hdr');
+        stMonRunning = s.st === 'running';
+        if (stMonRunning) {
+          btnStT.textContent = '■ Stop';
+          btnStT.className = 'act-btn act-stop';
+          btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop);
+          btnStT.disabled = false;
+          btnStR.style.display = '';
+          btnStR.disabled = false;
+          stLogPnl.classList.add('visible');
+          stLogHdr.textContent = 'Supertrend Monitor — Live Log';
+          if (document.getElementById('st-chip').textContent === '○ Stopped') setStChip('running');
+        } else {
+          btnStT.textContent = '▶ Start';
+          btnStT.className = 'act-btn act-start';
+          btnStT.onclick = stStart;
+          btnStT.disabled = !tvRunning;
+          btnStR.style.display = 'none';
+          stLogPnl.classList.remove('visible');
+          setStChip('stopped');
+        }
+      }
 
-  const tvActive = s.tv === 'running' || s.tv === 'starting';
+      function setPatChip(state) {
+        const el = document.getElementById('pat-chip');
+        const map = {
+          active: ['chip-active', '● Active'],
+          inzone: ['chip-inzone', '📍 In Zone'],
+          signal: ['chip-signal', '⚡ Signal'],
+          trade: ['chip-trade', '🔵 Trade Open'],
+          paused: ['chip-paused', '⏸ Paused'],
+          stopped: ['chip-stopped', '○ Stopped'],
+        };
+        const [cls, txt] = map[state] || map.stopped;
+        el.className = `chip ${cls}`;
+        el.textContent = txt;
+      }
 
-  // Pattern Monitor — single toggle button
-  const btnMonT   = document.getElementById('btn-mon-toggle');
-  const btnMonR   = document.getElementById('btn-mon-restart');
-  const patLogPnl = document.getElementById('pat-log-panel');
-  const patLogHdr = document.getElementById('pat-log-hdr');
-  if (s.monitor === 'running') {
-    btnMonT.textContent = '■ Stop'; btnMonT.className = 'act-btn act-stop';
-    btnMonT.onclick = () => confirm2('Stop Pattern Monitor?', monStop);
-    btnMonT.disabled = false; btnMonR.style.display = ''; btnMonR.disabled = false;
-    patLogPnl.classList.add('visible');
-    patLogHdr.textContent = 'Pattern Monitor — Live Log';
-    if (document.getElementById('pat-chip').textContent === '○ Stopped') setPatChip('active');
-  } else {
-    btnMonT.textContent = '▶ Start'; btnMonT.className = 'act-btn act-start';
-    btnMonT.onclick = monStart;
-    btnMonT.disabled = !tvRunning; btnMonR.style.display = 'none';
-    if (tvActive) {
-      patLogPnl.classList.add('visible');
-      patLogHdr.textContent = 'TradingView — Startup Log';
-    } else {
-      patLogPnl.classList.remove('visible');
-    }
-    setPatChip('stopped');
-  }
+      function setStChip(state) {
+        const el = document.getElementById('st-chip');
+        if (state === 'running') {
+          el.className = 'chip chip-running';
+          el.textContent = '● Running';
+        } else {
+          el.className = 'chip chip-stopped';
+          el.textContent = '○ Stopped';
+        }
+      }
 
-  // Supertrend Monitor — single toggle button
-  const btnStT   = document.getElementById('btn-st-toggle');
-  const btnStR   = document.getElementById('btn-st-restart');
-  const stLogPnl = document.getElementById('st-log-panel');
-  const stLogHdr = document.getElementById('st-log-hdr');
-  stMonRunning = s.st === 'running';
-  if (stMonRunning) {
-    btnStT.textContent = '■ Stop'; btnStT.className = 'act-btn act-stop';
-    btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop);
-    btnStT.disabled = false; btnStR.style.display = ''; btnStR.disabled = false;
-    stLogPnl.classList.add('visible');
-    stLogHdr.textContent = 'Supertrend Monitor — Live Log';
-    if (document.getElementById('st-chip').textContent === '○ Stopped') setStChip('running');
-  } else {
-    btnStT.textContent = '▶ Start'; btnStT.className = 'act-btn act-start';
-    btnStT.onclick = stStart;
-    btnStT.disabled = !tvRunning; btnStR.style.display = 'none';
-    stLogPnl.classList.remove('visible');
-    setStChip('stopped');
-  }
-}
+      // ── Load config ───────────────────────────────────────────────────
+      function applyPatternConfig(c) {
+        renderBias(c.bias || 'up');
+        if (c.zone?.length === 2) {
+          const top = Math.max(...c.zone),
+            bot = Math.min(...c.zone);
+          document.getElementById('pat-zone').textContent = `${fmt(bot)} – ${fmt(top)}`;
+        }
+        document.getElementById('pat-target').textContent = c.target ? fmt(c.target) : '—';
+        document.getElementById('pat-sl').textContent = c.sl ? fmt(c.sl) : 'auto';
+        const optMode = document.getElementById('pat-opt-mode');
+        if (c.optionsMode) {
+          optMode.innerHTML = '<span class="pos-pill pos-open">● ON</span>';
+          document.getElementById('pat-opt-side').textContent = c.bias === 'down' ? 'PE' : 'CE';
+        } else {
+          optMode.innerHTML = '<span class="pos-pill pos-closed">OFF</span>';
+        }
+      }
 
-function setPatChip(state) {
-  const el = document.getElementById('pat-chip');
-  const map = {
-    active:  ['chip-active',  '● Active'],
-    inzone:  ['chip-inzone',  '📍 In Zone'],
-    signal:  ['chip-signal',  '⚡ Signal'],
-    trade:   ['chip-trade',   '🔵 Trade Open'],
-    paused:  ['chip-paused',  '⏸ Paused'],
-    stopped: ['chip-stopped', '○ Stopped'],
-  };
-  const [cls, txt] = map[state] || map.stopped;
-  el.className = `chip ${cls}`; el.textContent = txt;
-}
+      async function loadPatternConfig() {
+        try {
+          const c = await fetch('/api/config').then((r) => r.json());
+          applyPatternConfig(c);
+        } catch (_) {}
+      }
 
-function setStChip(state) {
-  const el = document.getElementById('st-chip');
-  if (state === 'running') { el.className = 'chip chip-running'; el.textContent = '● Running'; }
-  else                     { el.className = 'chip chip-stopped'; el.textContent = '○ Stopped'; }
-}
+      async function loadSTPosition() {
+        try {
+          const p = await fetch('/api/st/position').then((r) => r.json());
+          renderSTPosition(p.CE || 'closed', p.PE || 'closed');
+          if (p.lastATM) document.getElementById('st-atm').textContent = fmt(p.lastATM);
+          if (p.lastInstrument) {
+            document.getElementById('st-instr').textContent = p.lastInstrument;
+            document.getElementById('st-instr-sub').textContent =
+              p.lastInstrument === 'NIFTY' ? 'Mon/Tue/Fri' : 'Wed/Thu';
+            document.getElementById('st-itm').textContent =
+              p.lastITMDepth != null ? `ITM-${p.lastITMDepth}` : '—';
+          }
+        } catch (_) {}
+      }
 
-// ── Load config ───────────────────────────────────────────────────
-function applyPatternConfig(c) {
-    renderBias(c.bias || 'up');
-    if (c.zone?.length === 2) {
-      const top = Math.max(...c.zone), bot = Math.min(...c.zone);
-      document.getElementById('pat-zone').textContent = `${fmt(bot)} – ${fmt(top)}`;
-    }
-    document.getElementById('pat-target').textContent = c.target ? fmt(c.target) : '—';
-    document.getElementById('pat-sl').textContent     = c.sl ? fmt(c.sl) : 'auto';
-    const optMode = document.getElementById('pat-opt-mode');
-    if (c.optionsMode) {
-      optMode.innerHTML = '<span class="pos-pill pos-open">● ON</span>';
-      document.getElementById('pat-opt-side').textContent = c.bias === 'down' ? 'PE' : 'CE';
-    } else {
-      optMode.innerHTML = '<span class="pos-pill pos-closed">OFF</span>';
-    }
-}
+      function renderBias(b) {
+        const el = document.getElementById('pat-bias');
+        if (b === 'down') el.innerHTML = '<span class="bias-pill bias-down">▼ SELL / PUT</span>';
+        else el.innerHTML = '<span class="bias-pill bias-up">▲ BUY / CALL</span>';
+      }
 
-async function loadPatternConfig() {
-  try {
-    const c = await fetch('/api/config').then(r => r.json());
-    applyPatternConfig(c);
-  } catch (_) {}
-}
+      function renderSTPosition(ce, pe) {
+        const cePill = document.getElementById('st-ce-pill');
+        const pePill = document.getElementById('st-pe-pill');
+        cePill.className = `pos-pill ${ce === 'open' ? 'pos-open' : 'pos-closed'}`;
+        cePill.textContent = ce.toUpperCase();
+        pePill.className = `pos-pill ${pe === 'open' ? 'pos-open' : 'pos-closed'}`;
+        pePill.textContent = pe.toUpperCase();
+      }
 
+      function fmt(v) {
+        return parseFloat(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+      }
 
-async function loadSTPosition() {
-  try {
-    const p = await fetch('/api/st/position').then(r => r.json());
-    renderSTPosition(p.CE || 'closed', p.PE || 'closed');
-    if (p.lastATM)        document.getElementById('st-atm').textContent = fmt(p.lastATM);
-    if (p.lastInstrument) {
-      document.getElementById('st-instr').textContent     = p.lastInstrument;
-      document.getElementById('st-instr-sub').textContent = p.lastInstrument === 'NIFTY' ? 'Mon/Tue/Fri' : 'Wed/Thu';
-      document.getElementById('st-itm').textContent       = p.lastITMDepth != null ? `ITM-${p.lastITMDepth}` : '—';
-    }
-  } catch (_) {}
-}
+      // ── Countdown timers ──────────────────────────────────────────────
+      let patNextSecs = null;
+      let stLastTickMs = null;
+      const ST_POLL_MS = 60000;
 
-function renderBias(b) {
-  const el = document.getElementById('pat-bias');
-  if (b === 'down') el.innerHTML = '<span class="bias-pill bias-down">▼ SELL / PUT</span>';
-  else              el.innerHTML = '<span class="bias-pill bias-up">▲ BUY / CALL</span>';
-}
+      setInterval(() => {
+        if (patNextSecs !== null && patNextSecs > 0) {
+          patNextSecs--;
+          document.getElementById('pat-next').textContent = `next in ${patNextSecs}s`;
+        }
+        if (stLastTickMs !== null) {
+          const elapsed = Math.floor((Date.now() - stLastTickMs) / 1000);
+          const remaining = Math.max(0, Math.floor(ST_POLL_MS / 1000) - elapsed);
+          document.getElementById('st-next').textContent =
+            remaining > 0 ? `next in ${remaining}s` : 'overdue';
+        }
+      }, 1000);
 
-function renderSTPosition(ce, pe) {
-  const cePill = document.getElementById('st-ce-pill');
-  const pePill = document.getElementById('st-pe-pill');
-  cePill.className = `pos-pill ${ce === 'open' ? 'pos-open' : 'pos-closed'}`;
-  cePill.textContent = ce.toUpperCase();
-  pePill.className = `pos-pill ${pe === 'open' ? 'pos-open' : 'pos-closed'}`;
-  pePill.textContent = pe.toUpperCase();
-}
+      // ── Log helpers ───────────────────────────────────────────────────
+      function escHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
 
-function fmt(v) { return parseFloat(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
+      function logClass(line) {
+        if (line.includes('[OK]')) return 'l-ok';
+        if (line.includes('[FAIL]')) return 'l-fail';
+        if (line.includes('[SIGNAL]')) return 'l-sig';
+        if (line.includes('[FLIP]') || line.includes('MANUAL FLIP')) return 'l-flip';
+        if (
+          line.includes('[LONG]') ||
+          line.includes('[SHORT]') ||
+          line.includes('[TARGET') ||
+          line.includes('[SL HIT]') ||
+          line.includes('[TRAIL]')
+        )
+          return 'l-trade';
+        if (line.includes('[POSITION]')) return 'l-pos';
+        if (line.includes('[UI]') || line.includes('[TV]')) return 'l-ui';
+        if (line.includes('[ERR]') || line.includes('[CRASH]') || line.includes('ERROR'))
+          return 'l-err';
+        if (line.includes('Outside market') || line.includes('Tick skipped')) return 'l-warn';
+        return 'l-info';
+      }
 
-// ── Countdown timers ──────────────────────────────────────────────
-let patNextSecs = null;
-let stLastTickMs = null;
-const ST_POLL_MS = 60000;
+      function appendLog(bodyEl, line) {
+        if (!line.trim()) return;
+        const t = (line.match(/\[(\d{2}:\d{2}:\d{2})\]/) || [])[1] || '';
+        const text = t ? line.replace(`[${t}]`, '').trim() : line;
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        row.innerHTML = `<span class="log-t">${t}</span><span class="${logClass(line)}">${escHtml(text)}</span>`;
+        bodyEl.appendChild(row);
+        while (bodyEl.children.length > 80) bodyEl.removeChild(bodyEl.firstChild);
+        bodyEl.scrollTop = bodyEl.scrollHeight;
+      }
 
-setInterval(() => {
-  if (patNextSecs !== null && patNextSecs > 0) {
-    patNextSecs--;
-    document.getElementById('pat-next').textContent = `next in ${patNextSecs}s`;
-  }
-  if (stLastTickMs !== null) {
-    const elapsed = Math.floor((Date.now() - stLastTickMs) / 1000);
-    const remaining = Math.max(0, Math.floor(ST_POLL_MS / 1000) - elapsed);
-    document.getElementById('st-next').textContent = remaining > 0 ? `next in ${remaining}s` : 'overdue';
-  }
-}, 1000);
+      // ── Pattern SSE ───────────────────────────────────────────────────
+      const patLogBody = document.getElementById('pat-log-body');
+      const patES = new EventSource('/api/events');
+      patES.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
+      patES.addEventListener('config', (e) => applyPatternConfig(JSON.parse(e.data)));
+      patES.addEventListener('log', (e) => {
+        const line = JSON.parse(e.data).line;
+        appendLog(patLogBody, line);
+        parsePatternLine(line);
+      });
+      patES.onerror = () => {};
 
-// ── Log helpers ───────────────────────────────────────────────────
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function parsePatternLine(line) {
+        // Day levels: R=74223  S=73126
+        const rl = line.match(/R=([\d.]+)/);
+        const sl = line.match(/\bS=([\d.]+)/);
+        if (rl) document.getElementById('pat-resist').textContent = fmt(rl[1]);
+        if (sl) document.getElementById('pat-support').textContent = fmt(sl[1]);
 
-function logClass(line) {
-  if (line.includes('[OK]'))                                   return 'l-ok';
-  if (line.includes('[FAIL]'))                                 return 'l-fail';
-  if (line.includes('[SIGNAL]'))                               return 'l-sig';
-  if (line.includes('[FLIP]') || line.includes('MANUAL FLIP')) return 'l-flip';
-  if (line.includes('[LONG]') || line.includes('[SHORT]') ||
-      line.includes('[TARGET') || line.includes('[SL HIT]') ||
-      line.includes('[TRAIL]'))                                return 'l-trade';
-  if (line.includes('[POSITION]'))                             return 'l-pos';
-  if (line.includes('[UI]') || line.includes('[TV]'))          return 'l-ui';
-  if (line.includes('[ERR]') || line.includes('[CRASH]') ||
-      line.includes('ERROR'))                                  return 'l-err';
-  if (line.includes('Outside market') || line.includes('Tick skipped')) return 'l-warn';
-  return 'l-info';
-}
+        // Candle close price: C:XXXXX
+        const pr = line.match(/\bC:([\d.]+)/);
+        if (pr) {
+          document.getElementById('pat-price').textContent = fmt(pr[1]);
+          const sub = line.includes('in zone')
+            ? '📍 in zone'
+            : line.includes('outside')
+              ? 'outside zone'
+              : 'last candle';
+          document.getElementById('pat-price-sub').textContent = sub;
+        }
 
-function appendLog(bodyEl, line) {
-  if (!line.trim()) return;
-  const t = (line.match(/\[(\d{2}:\d{2}:\d{2})\]/) || [])[1] || '';
-  const text = t ? line.replace(`[${t}]`, '').trim() : line;
-  const row = document.createElement('div');
-  row.className = 'log-row';
-  row.innerHTML = `<span class="log-t">${t}</span><span class="${logClass(line)}">${escHtml(text)}</span>`;
-  bodyEl.appendChild(row);
-  while (bodyEl.children.length > 80) bodyEl.removeChild(bodyEl.firstChild);
-  bodyEl.scrollTop = bodyEl.scrollHeight;
-}
+        // Status chip
+        if (line.includes('[LONG]') || line.includes('[SHORT]')) setPatChip('trade');
+        else if (line.includes('[SIGNAL]')) setPatChip('signal');
+        else if (line.includes('in zone')) setPatChip('inzone');
+        else if (line.includes('[TARGET HIT]') || line.includes('[SL HIT]')) {
+          setPatChip('active');
+          document.getElementById('pat-opt-status').className = 'pos-pill pos-closed';
+          document.getElementById('pat-opt-status').textContent = 'NO TRADE';
+        } else if (
+          line.includes('Paused') ||
+          line.includes('[ZONE BREAK]') ||
+          line.includes('[FLIP]')
+        )
+          setPatChip('paused');
+        else if (line.includes('outside zone') || pr) setPatChip('active');
 
-// ── Pattern SSE ───────────────────────────────────────────────────
-const patLogBody = document.getElementById('pat-log-body');
-const patES = new EventSource('/api/events');
-patES.addEventListener('status', e => applyStatus(JSON.parse(e.data)));
-patES.addEventListener('config', e => applyPatternConfig(JSON.parse(e.data)));
-patES.addEventListener('log', e => {
-  const line = JSON.parse(e.data).line;
-  appendLog(patLogBody, line);
-  parsePatternLine(line);
-});
-patES.onerror = () => {};
+        // Option symbol: "Options: will watch NIFTY260603C23550" or "Options mode: NIFTY260603C23550"
+        const optM = line.match(/Options[^:]*:\s+(?:will watch\s+)?([A-Z0-9]+)\s/);
+        if (optM) document.getElementById('pat-opt-sym').textContent = optM[1];
 
-function parsePatternLine(line) {
-  // Day levels: R=74223  S=73126
-  const rl = line.match(/R=([\d.]+)/);
-  const sl = line.match(/\bS=([\d.]+)/);
-  if (rl) document.getElementById('pat-resist').textContent  = fmt(rl[1]);
-  if (sl) document.getElementById('pat-support').textContent = fmt(sl[1]);
+        // Trade open
+        if (line.includes('[LONG]') || line.includes('[SHORT]')) {
+          document.getElementById('pat-opt-status').className = 'pos-pill pos-trade';
+          document.getElementById('pat-opt-status').textContent = 'TRADE OPEN';
+        }
 
-  // Candle close price: C:XXXXX
-  const pr = line.match(/\bC:([\d.]+)/);
-  if (pr) {
-    document.getElementById('pat-price').textContent = fmt(pr[1]);
-    const sub = line.includes('in zone') ? '📍 in zone' : line.includes('outside') ? 'outside zone' : 'last candle';
-    document.getElementById('pat-price-sub').textContent = sub;
-  }
+        // Bias from FLIP or MANUAL FLIP
+        const biasM = line.match(/Bias\s*→\s*(UP|DOWN)/i) || line.match(/bias.*?:\s*(up|down)/i);
+        if (biasM) renderBias(biasM[1].toLowerCase());
 
-  // Status chip
-  if (line.includes('[LONG]') || line.includes('[SHORT]')) setPatChip('trade');
-  else if (line.includes('[SIGNAL]'))                      setPatChip('signal');
-  else if (line.includes('in zone'))                       setPatChip('inzone');
-  else if (line.includes('[TARGET HIT]') || line.includes('[SL HIT]')) {
-    setPatChip('active');
-    document.getElementById('pat-opt-status').className = 'pos-pill pos-closed';
-    document.getElementById('pat-opt-status').textContent = 'NO TRADE';
-  }
-  else if (line.includes('Paused') || line.includes('[ZONE BREAK]') || line.includes('[FLIP]')) setPatChip('paused');
-  else if (line.includes('outside zone') || pr)            setPatChip('active');
+        // Tick time
+        const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+        if (tm && !line.includes('[UI]') && !line.includes('[TV]')) {
+          document.getElementById('pat-tick').textContent = tm[1];
+        }
 
-  // Option symbol: "Options: will watch NIFTY260603C23550" or "Options mode: NIFTY260603C23550"
-  const optM = line.match(/Options[^:]*:\s+(?:will watch\s+)?([A-Z0-9]+)\s/);
-  if (optM) document.getElementById('pat-opt-sym').textContent = optM[1];
+        // Next tick countdown
+        const nx = line.match(/Next tick in (\d+)s/);
+        if (nx) {
+          patNextSecs = parseInt(nx[1]);
+        }
+      }
 
-  // Trade open
-  if (line.includes('[LONG]') || line.includes('[SHORT]')) {
-    document.getElementById('pat-opt-status').className = 'pos-pill pos-trade';
-    document.getElementById('pat-opt-status').textContent = 'TRADE OPEN';
-  }
+      // ── Supertrend SSE ────────────────────────────────────────────────
+      const stLogBody = document.getElementById('st-log-body');
+      const stES = new EventSource('/api/st/events');
+      stES.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
+      stES.addEventListener('log', (e) => {
+        const line = JSON.parse(e.data).line;
+        if (stMonRunning) appendLog(stLogBody, line);
+        parseSTLine(line);
+      });
+      stES.onerror = () => {};
 
-  // Bias from FLIP or MANUAL FLIP
-  const biasM = line.match(/Bias\s*→\s*(UP|DOWN)/i) || line.match(/bias.*?:\s*(up|down)/i);
-  if (biasM) renderBias(biasM[1].toLowerCase());
+      function parseSTLine(line) {
+        // Main tick: "NIFTY: 23623.50  ATM: 23600  ITM-1  ... CE:CLOSED  PE:CLOSED"
+        const m = line.match(/^(NIFTY|SENSEX):\s*([\d.]+)\s+ATM:\s*(\d+)\s+ITM-(\d+)/);
+        if (m) {
+          document.getElementById('st-instr').textContent = m[1];
+          document.getElementById('st-instr-sub').textContent =
+            m[1] === 'NIFTY' ? 'Mon/Tue/Fri' : 'Wed/Thu';
+          document.getElementById('st-spot').textContent = fmt(m[2]);
+          document.getElementById('st-atm').textContent = fmt(m[3]);
+          document.getElementById('st-itm').textContent = `ITM-${m[4]}`;
+          stLastTickMs = Date.now();
 
-  // Tick time
-  const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-  if (tm && !line.includes('[UI]') && !line.includes('[TV]')) {
-    document.getElementById('pat-tick').textContent = tm[1];
-  }
+          const ceM = line.match(/CE:(OPEN|CLOSED)/);
+          const peM = line.match(/PE:(OPEN|CLOSED)/);
+          if (ceM) renderSTPosition(ceM[1].toLowerCase(), peM ? peM[1].toLowerCase() : 'closed');
+        }
 
-  // Next tick countdown
-  const nx = line.match(/Next tick in (\d+)s/);
-  if (nx) { patNextSecs = parseInt(nx[1]); }
-}
+        // Position change
+        const posM = line.match(/\[POSITION\] (CE|PE) (OPENED|CLOSED)/);
+        if (posM) {
+          const pill = document.getElementById(`st-${posM[1].toLowerCase()}-pill`);
+          const open = posM[2] === 'OPENED';
+          pill.className = `pos-pill ${open ? 'pos-open' : 'pos-closed'}`;
+          pill.textContent = open ? 'OPEN' : 'CLOSED';
+        }
 
-// ── Supertrend SSE ────────────────────────────────────────────────
-const stLogBody = document.getElementById('st-log-body');
-const stES = new EventSource('/api/st/events');
-stES.addEventListener('status', e => applyStatus(JSON.parse(e.data)));
-stES.addEventListener('log', e => {
-  const line = JSON.parse(e.data).line;
-  if (stMonRunning) appendLog(stLogBody, line);
-  parseSTLine(line);
-});
-stES.onerror = () => {};
+        // Alert updated — extract symbol: "[CE:role] "supertrendLongEntry" updated to NIFTY260603C23550"
+        const symM = line.match(/updated to\s+([A-Z0-9]+)/);
+        if (symM) {
+          if (line.includes('[CE:')) document.getElementById('st-ce-sym').textContent = symM[1];
+          if (line.includes('[PE:')) document.getElementById('st-pe-sym').textContent = symM[1];
+        }
 
-function parseSTLine(line) {
-  // Main tick: "NIFTY: 23623.50  ATM: 23600  ITM-1  ... CE:CLOSED  PE:CLOSED"
-  const m = line.match(/^(NIFTY|SENSEX):\s*([\d.]+)\s+ATM:\s*(\d+)\s+ITM-(\d+)/);
-  if (m) {
-    document.getElementById('st-instr').textContent     = m[1];
-    document.getElementById('st-instr-sub').textContent = m[1] === 'NIFTY' ? 'Mon/Tue/Fri' : 'Wed/Thu';
-    document.getElementById('st-spot').textContent      = fmt(m[2]);
-    document.getElementById('st-atm').textContent       = fmt(m[3]);
-    document.getElementById('st-itm').textContent       = `ITM-${m[4]}`;
-    stLastTickMs = Date.now();
+        // ITM depth source
+        const itmSrc = line.match(/ITM-(\d+)\s+\(([-\w]+)\)/);
+        if (itmSrc) document.getElementById('st-itm-sub').textContent = itmSrc[2];
 
-    const ceM = line.match(/CE:(OPEN|CLOSED)/);
-    const peM = line.match(/PE:(OPEN|CLOSED)/);
-    if (ceM) renderSTPosition(ceM[1].toLowerCase(), peM ? peM[1].toLowerCase() : 'closed');
-  }
+        // Tick time
+        const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+        if (tm && !line.includes('[UI]') && !line.includes('[TV]')) {
+          document.getElementById('st-tick').textContent = tm[1];
+          stLastTickMs = Date.now();
+        }
+      }
 
-  // Position change
-  const posM = line.match(/\[POSITION\] (CE|PE) (OPENED|CLOSED)/);
-  if (posM) {
-    const pill = document.getElementById(`st-${posM[1].toLowerCase()}-pill`);
-    const open = posM[2] === 'OPENED';
-    pill.className = `pos-pill ${open ? 'pos-open' : 'pos-closed'}`;
-    pill.textContent = open ? 'OPEN' : 'CLOSED';
-  }
-
-  // Alert updated — extract symbol: "[CE:role] "supertrendLongEntry" updated to NIFTY260603C23550"
-  const symM = line.match(/updated to\s+([A-Z0-9]+)/);
-  if (symM) {
-    if (line.includes('[CE:')) document.getElementById('st-ce-sym').textContent = symM[1];
-    if (line.includes('[PE:')) document.getElementById('st-pe-sym').textContent = symM[1];
-  }
-
-  // ITM depth source
-  const itmSrc = line.match(/ITM-(\d+)\s+\(([-\w]+)\)/);
-  if (itmSrc) document.getElementById('st-itm-sub').textContent = itmSrc[2];
-
-  // Tick time
-  const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-  if (tm && !line.includes('[UI]') && !line.includes('[TV]')) {
-    document.getElementById('st-tick').textContent = tm[1];
-    stLastTickMs = Date.now();
-  }
-}
-
-// ── Init ──────────────────────────────────────────────────────────
-loadPatternConfig();
-loadSTPosition();
-fetch('/api/status').then(r => r.json()).then(applyStatus);
-</script>
-</body>
+      // ── Init ──────────────────────────────────────────────────────────
+      loadPatternConfig();
+      loadSTPosition();
+      fetch('/api/status')
+        .then((r) => r.json())
+        .then(applyStatus);
+    </script>
+  </body>
 </html>

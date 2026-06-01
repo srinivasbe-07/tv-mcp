@@ -15,19 +15,19 @@ npm run ui
 
 Then open **http://localhost:3000** in the browser.
 
-| Step | Action |
-| ---- | ------ |
-| 1 | Click **▶ Start TV** — waits until TradingView CDP is ready (green banner) |
-| 2 | Click **▶ Start** on Pattern Monitor and/or Supertrend Monitor |
-| 3 | Live status + logs appear in each panel |
-| 4 | Click **Open ↗** to open the full control page in a new tab |
+| Step | Action                                                                     |
+| ---- | -------------------------------------------------------------------------- |
+| 1    | Click **▶ Start TV** — waits until TradingView CDP is ready (green banner) |
+| 2    | Click **▶ Start** on Pattern Monitor and/or Supertrend Monitor             |
+| 3    | Live status + logs appear in each panel                                    |
+| 4    | Click **Open ↗** to open the full control page in a new tab                |
 
 ### Pages
 
-| URL | Purpose |
-| --- | ------- |
-| `http://localhost:3000` | Dashboard — overview + start/stop all processes |
-| `http://localhost:3000/pattern` | Pattern Monitor — full config, log, candle feed |
+| URL                                | Purpose                                           |
+| ---------------------------------- | ------------------------------------------------- |
+| `http://localhost:3000`            | Dashboard — overview + start/stop all processes   |
+| `http://localhost:3000/pattern`    | Pattern Monitor — full config, log, candle feed   |
 | `http://localhost:3000/supertrend` | Supertrend Monitor — ITM override, CE/PE position |
 
 ### Keys (still work when running from terminal directly)

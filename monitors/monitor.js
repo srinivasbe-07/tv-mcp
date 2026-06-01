@@ -370,9 +370,9 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
   const qualifiedSymbol = `${exchange}:${symbol}`;
 
   // Check if the chart is already on the right symbol — skip switch + wait if so.
-  const currentSymbol = await cdpChart.cdp.executeScript(
-    `window.TradingViewApi?._activeChartWidgetWV?._value?.symbol?.() || ''`
-  ).catch(() => '');
+  const currentSymbol = await cdpChart.cdp
+    .executeScript(`window.TradingViewApi?._activeChartWidgetWV?._value?.symbol?.() || ''`)
+    .catch(() => '');
   const needsSwitch = currentSymbol !== qualifiedSymbol;
 
   if (needsSwitch) {

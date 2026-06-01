@@ -104,10 +104,10 @@ if (!chartTargets.length) {
   process.exit(1);
 }
 
-const spotTargets = chartTargets.filter(t => t.role === 'SPOT');
-const ceTargets   = chartTargets.filter(t => t.role === 'CE');
-const peTargets   = chartTargets.filter(t => t.role === 'PE');
-const otherTargets = chartTargets.filter(t => !['SPOT','CE','PE'].includes(t.role));
+const spotTargets = chartTargets.filter((t) => t.role === 'SPOT');
+const ceTargets = chartTargets.filter((t) => t.role === 'CE');
+const peTargets = chartTargets.filter((t) => t.role === 'PE');
+const otherTargets = chartTargets.filter((t) => !['SPOT', 'CE', 'PE'].includes(t.role));
 
 function printGroup(label, list) {
   console.log(`\n── ${label} ─────────────────────────────────`);
@@ -136,8 +136,8 @@ console.log('VERDICT');
 console.log('═'.repeat(60));
 
 const hasSpot = spotTargets.length >= 1;
-const hasCE   = ceTargets.length >= 1;
-const hasPE   = peTargets.length >= 1;
+const hasCE = ceTargets.length >= 1;
+const hasPE = peTargets.length >= 1;
 
 if (hasSpot && hasCE && hasPE) {
   console.log('\n✅  All 3 tabs found — multi-tab assignment READY.\n');
@@ -147,7 +147,7 @@ if (hasSpot && hasCE && hasPE) {
 } else {
   console.log('\n⚠  Missing tabs:');
   if (!hasSpot) console.log('   ✗  NIFTY spot tab — open a chart layout showing NSE:NIFTY');
-  if (!hasCE)   console.log('   ✗  CE tab — open a chart layout showing a NIFTY CE option');
-  if (!hasPE)   console.log('   ✗  PE tab — open a chart layout showing a NIFTY PE option');
+  if (!hasCE) console.log('   ✗  CE tab — open a chart layout showing a NIFTY CE option');
+  if (!hasPE) console.log('   ✗  PE tab — open a chart layout showing a NIFTY PE option');
   console.log('\n   In TradingView: use the layout tabs (top) to open 3 separate charts.\n');
 }

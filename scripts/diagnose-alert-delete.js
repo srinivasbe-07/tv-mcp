@@ -29,7 +29,7 @@ try {
       }
     })()
   `);
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1000));
 
   // Step 2: List all alert names
   console.log('── Step 2: Alert names in DOM ──');
@@ -84,7 +84,7 @@ try {
         container?.querySelector('[data-name="alert-delete-button"]')?.click();
       })()
     `);
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 800));
 
     // Check if a confirmation dialog appeared
     const afterClick = await cdp.executeScript(`
@@ -109,7 +109,6 @@ try {
       console.log('  No dialog appeared after click');
     }
   }
-
 } catch (e) {
   console.error('Error:', e.message);
 } finally {

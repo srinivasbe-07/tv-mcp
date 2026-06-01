@@ -1,324 +1,521 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TV-MCP Dashboard (Mockup)</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #0f1117; color: #d1d5db;
-      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TV-MCP Dashboard (Mockup)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #0f1117;
+        color: #d1d5db;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
 
-    /* ── Header ── */
-    header {
-      background: #1a1d27; border-bottom: 1px solid #2a2d3a;
-      padding: 0 20px; height: 52px;
-      display: flex; align-items: center; gap: 14px; flex-shrink: 0;
-    }
-    .logo { font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
-    .logo span { color: #3b82f6; }
-    .divider { width: 1px; height: 24px; background: #2a2d3a; flex-shrink: 0; }
-    .spacer { flex: 1; }
+      /* ── Header ── */
+      header {
+        background: #1a1d27;
+        border-bottom: 1px solid #2a2d3a;
+        padding: 0 20px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-shrink: 0;
+      }
+      .logo {
+        font-size: 15px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.3px;
+      }
+      .logo span {
+        color: #3b82f6;
+      }
+      .divider {
+        width: 1px;
+        height: 24px;
+        background: #2a2d3a;
+        flex-shrink: 0;
+      }
+      .spacer {
+        flex: 1;
+      }
 
-    .tv-group { display: flex; align-items: center; gap: 8px; }
-    .tv-label { font-size: 11px; color: #6b7280; font-weight: 600; letter-spacing: 0.5px; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .dot-running { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
-    .dot-stopped { background: #4b5563; }
-    .tv-status { font-size: 12px; font-weight: 600; color: #4ade80; }
+      .tv-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tv-label {
+        font-size: 11px;
+        color: #6b7280;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot-running {
+        background: #4ade80;
+        box-shadow: 0 0 6px #4ade80;
+      }
+      .dot-stopped {
+        background: #4b5563;
+      }
+      .tv-status {
+        font-size: 12px;
+        font-weight: 600;
+        color: #4ade80;
+      }
 
-    .hdr-btn {
-      padding: 5px 13px; border-radius: 6px; font-size: 11px;
-      font-weight: 700; border: none; cursor: pointer; letter-spacing: 0.3px;
-    }
-    .btn-red   { background: #7f1d1d; color: #fca5a5; }
-    .btn-ghost { background: transparent; color: #6b7280; border: 1px solid #2a2d3a; }
-    .btn-ghost:hover { color: #d1d5db; border-color: #4b5563; }
+      .hdr-btn {
+        padding: 5px 13px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        letter-spacing: 0.3px;
+      }
+      .btn-red {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .btn-ghost {
+        background: transparent;
+        color: #6b7280;
+        border: 1px solid #2a2d3a;
+      }
+      .btn-ghost:hover {
+        color: #d1d5db;
+        border-color: #4b5563;
+      }
 
-    /* ── Main grid ── */
-    .main {
-      flex: 1; display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0;
-      overflow: hidden;
-    }
+      /* ── Main grid ── */
+      .main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        overflow: hidden;
+      }
 
-    /* ── Monitor panel ── */
-    .panel {
-      padding: 20px;
-      border-right: 1px solid #2a2d3a;
-      display: flex; flex-direction: column; gap: 14px;
-      overflow: hidden;
-    }
-    .panel:last-child { border-right: none; }
+      /* ── Monitor panel ── */
+      .panel {
+        padding: 20px;
+        border-right: 1px solid #2a2d3a;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow: hidden;
+      }
+      .panel:last-child {
+        border-right: none;
+      }
 
-    /* Panel header */
-    .panel-hdr {
-      display: flex; align-items: center; gap: 10px;
-    }
-    .panel-title { font-size: 13px; font-weight: 700; color: #9ca3af; letter-spacing: 0.8px; text-transform: uppercase; }
-    .panel-chip {
-      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
-    }
-    .chip-active  { background: #052e16; color: #4ade80; }
-    .chip-inzone  { background: #422006; color: #fdba74; }
-    .chip-trade   { background: #1e1b4b; color: #a78bfa; }
-    .chip-paused  { background: #1c1917; color: #f97316; border: 1px solid #292524; }
-    .chip-stopped { background: #111827; color: #4b5563; border: 1px solid #1f2937; }
-    .chip-running { background: #052e16; color: #4ade80; }
+      /* Panel header */
+      .panel-hdr {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .panel-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #9ca3af;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+      }
+      .panel-chip {
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .chip-active {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .chip-inzone {
+        background: #422006;
+        color: #fdba74;
+      }
+      .chip-trade {
+        background: #1e1b4b;
+        color: #a78bfa;
+      }
+      .chip-paused {
+        background: #1c1917;
+        color: #f97316;
+        border: 1px solid #292524;
+      }
+      .chip-stopped {
+        background: #111827;
+        color: #4b5563;
+        border: 1px solid #1f2937;
+      }
+      .chip-running {
+        background: #052e16;
+        color: #4ade80;
+      }
 
-    .panel-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-    .act-btn {
-      padding: 5px 12px; border-radius: 6px; font-size: 11px;
-      font-weight: 700; border: none; cursor: pointer;
-    }
-    .act-stop  { background: #7f1d1d; color: #fca5a5; }
-    .act-start { background: #14532d; color: #4ade80; }
-    .act-open  { background: transparent; color: #6b7280; border: 1px solid #2a2d3a; font-size: 10px; }
-    .act-open:hover { color: #d1d5db; }
+      .panel-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .act-btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+      }
+      .act-stop {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .act-start {
+        background: #14532d;
+        color: #4ade80;
+      }
+      .act-open {
+        background: transparent;
+        color: #6b7280;
+        border: 1px solid #2a2d3a;
+        font-size: 10px;
+      }
+      .act-open:hover {
+        color: #d1d5db;
+      }
 
-    /* Stats card */
-    .stats-card {
-      background: #13151f; border: 1px solid #2a2d3a; border-radius: 12px;
-      overflow: hidden; flex: 1;
-    }
+      /* Stats card */
+      .stats-card {
+        background: #13151f;
+        border: 1px solid #2a2d3a;
+        border-radius: 12px;
+        overflow: hidden;
+        flex: 1;
+      }
 
-    .stat-row {
-      display: flex; align-items: center;
-      padding: 11px 16px; border-bottom: 1px solid #1f2937;
-      gap: 12px;
-    }
-    .stat-row:last-child { border-bottom: none; }
-    .stat-key {
-      font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
-      color: #4b5563; text-transform: uppercase; width: 90px; flex-shrink: 0;
-    }
-    .stat-val {
-      font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
-      flex: 1;
-    }
-    .stat-sub { font-size: 10px; color: #4b5563; margin-left: auto; }
+      .stat-row {
+        display: flex;
+        align-items: center;
+        padding: 11px 16px;
+        border-bottom: 1px solid #1f2937;
+        gap: 12px;
+      }
+      .stat-row:last-child {
+        border-bottom: none;
+      }
+      .stat-key {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        color: #4b5563;
+        text-transform: uppercase;
+        width: 90px;
+        flex-shrink: 0;
+      }
+      .stat-val {
+        font-size: 14px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        flex: 1;
+      }
+      .stat-sub {
+        font-size: 10px;
+        color: #4b5563;
+        margin-left: auto;
+      }
 
-    .v-white  { color: #f9fafb; }
-    .v-green  { color: #4ade80; }
-    .v-red    { color: #f87171; }
-    .v-yellow { color: #facc15; }
-    .v-orange { color: #fb923c; }
-    .v-purple { color: #a78bfa; }
-    .v-gray   { color: #6b7280; }
-    .v-blue   { color: #60a5fa; }
+      .v-white {
+        color: #f9fafb;
+      }
+      .v-green {
+        color: #4ade80;
+      }
+      .v-red {
+        color: #f87171;
+      }
+      .v-yellow {
+        color: #facc15;
+      }
+      .v-orange {
+        color: #fb923c;
+      }
+      .v-purple {
+        color: #a78bfa;
+      }
+      .v-gray {
+        color: #6b7280;
+      }
+      .v-blue {
+        color: #60a5fa;
+      }
 
-    /* Section divider inside card */
-    .stat-section {
-      padding: 6px 16px 3px;
-      font-size: 9px; font-weight: 700; letter-spacing: 1px;
-      color: #374151; text-transform: uppercase;
-      background: #0f1117; border-bottom: 1px solid #1f2937;
-    }
+      /* Section divider inside card */
+      .stat-section {
+        padding: 6px 16px 3px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #374151;
+        text-transform: uppercase;
+        background: #0f1117;
+        border-bottom: 1px solid #1f2937;
+      }
 
-    /* bias pill */
-    .bias-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
-    }
-    .bias-up   { background: #052e16; color: #4ade80; }
-    .bias-down { background: #7f1d1d; color: #f87171; }
+      /* bias pill */
+      .bias-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .bias-up {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .bias-down {
+        background: #7f1d1d;
+        color: #f87171;
+      }
 
-    /* position pill */
-    .pos-pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
-    }
-    .pos-open   { background: #052e16; color: #4ade80; }
-    .pos-closed { background: #111827; color: #4b5563; border: 1px solid #1f2937; }
+      /* position pill */
+      .pos-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .pos-open {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .pos-closed {
+        background: #111827;
+        color: #4b5563;
+        border: 1px solid #1f2937;
+      }
 
-    /* CE/PE row */
-    .pos-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 16px; border-bottom: 1px solid #1f2937;
-    }
-    .pos-row:last-child { border-bottom: none; }
-    .pos-label { font-size: 11px; font-weight: 700; color: #6b7280; letter-spacing: 0.5px; }
-    .pos-sym { font-size: 11px; color: #4b5563; margin-left: 6px; }
-  </style>
-</head>
-<body>
+      /* CE/PE row */
+      .pos-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #1f2937;
+      }
+      .pos-row:last-child {
+        border-bottom: none;
+      }
+      .pos-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #6b7280;
+        letter-spacing: 0.5px;
+      }
+      .pos-sym {
+        font-size: 11px;
+        color: #4b5563;
+        margin-left: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <header>
+      <div class="logo">TV‑MCP <span>Dashboard</span></div>
+      <div class="divider"></div>
+      <div class="tv-group">
+        <div class="tv-label">TRADINGVIEW</div>
+        <div class="status-dot dot-running"></div>
+        <div class="tv-status">Running</div>
+        <button class="hdr-btn btn-red">■ Stop TV</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="hdr-btn btn-ghost">Pattern Monitor →</button>
+      <button class="hdr-btn btn-ghost">Supertrend Monitor →</button>
+    </header>
 
-<!-- HEADER -->
-<header>
-  <div class="logo">TV‑MCP <span>Dashboard</span></div>
-  <div class="divider"></div>
-  <div class="tv-group">
-    <div class="tv-label">TRADINGVIEW</div>
-    <div class="status-dot dot-running"></div>
-    <div class="tv-status">Running</div>
-    <button class="hdr-btn btn-red">■ Stop TV</button>
-  </div>
-  <div class="spacer"></div>
-  <button class="hdr-btn btn-ghost">Pattern Monitor →</button>
-  <button class="hdr-btn btn-ghost">Supertrend Monitor →</button>
-</header>
+    <!-- MAIN -->
+    <div class="main">
+      <!-- ── PATTERN MONITOR ── -->
+      <div class="panel">
+        <div class="panel-hdr">
+          <div class="panel-title">Pattern Monitor</div>
+          <div class="panel-chip chip-inzone">📍 IN ZONE</div>
+          <div class="panel-actions">
+            <button class="act-btn act-stop">■ Stop</button>
+            <button class="act-btn act-open">Open page ↗</button>
+          </div>
+        </div>
 
-<!-- MAIN -->
-<div class="main">
+        <div class="stats-card">
+          <div class="stat-section">Monitor State</div>
 
-  <!-- ── PATTERN MONITOR ── -->
-  <div class="panel">
-    <div class="panel-hdr">
-      <div class="panel-title">Pattern Monitor</div>
-      <div class="panel-chip chip-inzone">📍 IN ZONE</div>
-      <div class="panel-actions">
-        <button class="act-btn act-stop">■ Stop</button>
-        <button class="act-btn act-open">Open page ↗</button>
+          <div class="stat-row">
+            <div class="stat-key">Bias</div>
+            <div class="stat-val"><span class="bias-pill bias-up">▲ BUY / CALL</span></div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Status</div>
+            <div class="stat-val">
+              <span class="panel-chip chip-inzone" style="font-size: 11px">📍 In Zone</span>
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Price</div>
+            <div class="stat-val v-white">23,623</div>
+            <div class="stat-sub">last 3-min close</div>
+          </div>
+
+          <div class="stat-section">Zone &amp; Levels</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Zone</div>
+            <div class="stat-val v-orange">23,293 – 23,356</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Target</div>
+            <div class="stat-val v-green">23,500</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Stop Loss</div>
+            <div class="stat-val v-gray">auto</div>
+          </div>
+
+          <div class="stat-section">Day Levels</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Resistance</div>
+            <div class="stat-val v-red">74,223</div>
+            <div class="stat-sub">nearest high above</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Support</div>
+            <div class="stat-val v-green">73,126</div>
+            <div class="stat-sub">nearest low below</div>
+          </div>
+
+          <div class="stat-section">Options</div>
+
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">Mode</span>
+            </div>
+            <span class="pos-pill pos-open">● ON</span>
+          </div>
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">Side</span>
+              <span class="pos-sym">bias=up → CALL (CE)</span>
+            </div>
+            <span
+              class="pos-pill pos-open"
+              style="background: #1e1b4b; color: #a78bfa; border: none"
+              >CE</span
+            >
+          </div>
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">Symbol</span>
+              <span class="pos-sym">NIFTY260603C23550</span>
+            </div>
+            <span class="pos-pill pos-open">TRADE OPEN</span>
+          </div>
+
+          <div class="stat-section">Timing</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Last Tick</div>
+            <div class="stat-val v-yellow">09:18:23</div>
+            <div class="stat-sub">next in 41s</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SUPERTREND MONITOR ── -->
+      <div class="panel">
+        <div class="panel-hdr">
+          <div class="panel-title">Supertrend Monitor</div>
+          <div class="panel-chip chip-stopped">○ Stopped</div>
+          <div class="panel-actions">
+            <button class="act-btn act-start">▶ Start</button>
+            <button class="act-btn act-open">Open page ↗</button>
+          </div>
+        </div>
+
+        <div class="stats-card">
+          <div class="stat-section">Instrument</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Instrument</div>
+            <div class="stat-val v-purple">NIFTY</div>
+            <div class="stat-sub">Mon/Tue/Fri</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">Spot</div>
+            <div class="stat-val v-gray">—</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">ATM Strike</div>
+            <div class="stat-val v-gray">23,600</div>
+            <div class="stat-sub">last known</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-key">ITM Depth</div>
+            <div class="stat-val v-blue">ITM-1</div>
+            <div class="stat-sub">day-based rule</div>
+          </div>
+
+          <div class="stat-section">Positions</div>
+
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">CE</span>
+              <span class="pos-sym">NIFTY260603C23550</span>
+            </div>
+            <span class="pos-pill pos-closed">CLOSED</span>
+          </div>
+          <div class="pos-row">
+            <div>
+              <span class="pos-label">PE</span>
+              <span class="pos-sym">NIFTY260603P23650</span>
+            </div>
+            <span class="pos-pill pos-closed">CLOSED</span>
+          </div>
+
+          <div class="stat-section">Timing</div>
+
+          <div class="stat-row">
+            <div class="stat-key">Last Tick</div>
+            <div class="stat-val v-gray">—</div>
+            <div class="stat-sub">not running</div>
+          </div>
+        </div>
       </div>
     </div>
-
-    <div class="stats-card">
-
-      <div class="stat-section">Monitor State</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Bias</div>
-        <div class="stat-val"><span class="bias-pill bias-up">▲ BUY / CALL</span></div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Status</div>
-        <div class="stat-val"><span class="panel-chip chip-inzone" style="font-size:11px">📍 In Zone</span></div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Price</div>
-        <div class="stat-val v-white">23,623</div>
-        <div class="stat-sub">last 3-min close</div>
-      </div>
-
-      <div class="stat-section">Zone &amp; Levels</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Zone</div>
-        <div class="stat-val v-orange">23,293 – 23,356</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Target</div>
-        <div class="stat-val v-green">23,500</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Stop Loss</div>
-        <div class="stat-val v-gray">auto</div>
-      </div>
-
-      <div class="stat-section">Day Levels</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Resistance</div>
-        <div class="stat-val v-red">74,223</div>
-        <div class="stat-sub">nearest high above</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Support</div>
-        <div class="stat-val v-green">73,126</div>
-        <div class="stat-sub">nearest low below</div>
-      </div>
-
-      <div class="stat-section">Options</div>
-
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">Mode</span>
-        </div>
-        <span class="pos-pill pos-open">● ON</span>
-      </div>
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">Side</span>
-          <span class="pos-sym">bias=up → CALL (CE)</span>
-        </div>
-        <span class="pos-pill pos-open" style="background:#1e1b4b;color:#a78bfa;border:none">CE</span>
-      </div>
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">Symbol</span>
-          <span class="pos-sym">NIFTY260603C23550</span>
-        </div>
-        <span class="pos-pill pos-open">TRADE OPEN</span>
-      </div>
-
-      <div class="stat-section">Timing</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Last Tick</div>
-        <div class="stat-val v-yellow">09:18:23</div>
-        <div class="stat-sub">next in 41s</div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- ── SUPERTREND MONITOR ── -->
-  <div class="panel">
-    <div class="panel-hdr">
-      <div class="panel-title">Supertrend Monitor</div>
-      <div class="panel-chip chip-stopped">○ Stopped</div>
-      <div class="panel-actions">
-        <button class="act-btn act-start">▶ Start</button>
-        <button class="act-btn act-open">Open page ↗</button>
-      </div>
-    </div>
-
-    <div class="stats-card">
-
-      <div class="stat-section">Instrument</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Instrument</div>
-        <div class="stat-val v-purple">NIFTY</div>
-        <div class="stat-sub">Mon/Tue/Fri</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">Spot</div>
-        <div class="stat-val v-gray">—</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">ATM Strike</div>
-        <div class="stat-val v-gray">23,600</div>
-        <div class="stat-sub">last known</div>
-      </div>
-      <div class="stat-row">
-        <div class="stat-key">ITM Depth</div>
-        <div class="stat-val v-blue">ITM-1</div>
-        <div class="stat-sub">day-based rule</div>
-      </div>
-
-      <div class="stat-section">Positions</div>
-
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">CE</span>
-          <span class="pos-sym">NIFTY260603C23550</span>
-        </div>
-        <span class="pos-pill pos-closed">CLOSED</span>
-      </div>
-      <div class="pos-row">
-        <div>
-          <span class="pos-label">PE</span>
-          <span class="pos-sym">NIFTY260603P23650</span>
-        </div>
-        <span class="pos-pill pos-closed">CLOSED</span>
-      </div>
-
-      <div class="stat-section">Timing</div>
-
-      <div class="stat-row">
-        <div class="stat-key">Last Tick</div>
-        <div class="stat-val v-gray">—</div>
-        <div class="stat-sub">not running</div>
-      </div>
-
-    </div>
-  </div>
-
-</div>
-</body>
+  </body>
 </html>
