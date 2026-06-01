@@ -12,3 +12,4 @@ run-sensex-update.js
 config/monitor-config.json
 config/pattern-monitor-config.json
 config/algotest-config.json
+logs/drawn-ids.json
