@@ -184,39 +184,53 @@ export class AlertTools {
               }
             }
 
-            // Step 4: Set "Only Once" frequency if requested
-            if (${fireOnce}) {
-              const onceBtn = Array.from(
-                document.querySelectorAll('button, [class*="button-"], [role="radio"], [class*="item-"]')
-              ).find(el => {
-                const txt = el.textContent?.trim();
-                return txt === 'Only Once' || txt === 'Once' || txt === 'Only once';
-              });
-              if (onceBtn) {
-                onceBtn.click();
-                await new Promise(r => setTimeout(r, 200));
-              }
-            }
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
 
-            // Step 5: Set price level
+            // Step 4: Set price level — clear first so React sees the change
             const priceInput = document.querySelector('input.input-gr1VjUfr');
             if (!priceInput) return { success: false, message: 'Conditions form did not open after symbol selection' };
 
             priceInput.focus();
             await new Promise(r => setTimeout(r, 100));
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(priceInput, '');
+            priceInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 50));
             nativeSetter.call(priceInput, String(${level}));
             priceInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+            priceInput.dispatchEvent(new Event('change', { bubbles: true }));
             await new Promise(r => setTimeout(r, 400));
-            priceInput.dispatchEvent(new Event('blur', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 400));
+
+            // Step 5: Set "Only Once" frequency if requested
+            // Wait for frequency buttons to render, then find by text
+            if (${fireOnce}) {
+              await new Promise(r => setTimeout(r, 300));
+              const onceBtn = Array.from(
+                document.querySelectorAll('button, [role="radio"], label, [class*="item-"], [class*="button-"]')
+              ).find(el => {
+                const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                return txt === 'only once' || txt === 'once';
+              });
+              if (onceBtn) {
+                onceBtn.click();
+                await new Promise(r => setTimeout(r, 300));
+              }
+            }
 
             // Step 6+7: Set alert name + message.
             // Strategy A — direct: some TV versions expose name input in the main form.
-            // Strategy B — sub-dialog: older/current TV opens a separate dialog via a button.
+            // Strategy B — sub-dialog: current TV opens a separate dialog via a button.
             const taSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
             let nameSetMethod = 'none';
             {
+              const setInput = (inp, val) => {
+                inp.focus();
+                nativeSetter.call(inp, '');
+                inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                nativeSetter.call(inp, val);
+                inp.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+              };
+
               // Strategy A: look for any visible text input that is NOT the price input
               const directNameInput = Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).find(i =>
                 i.offsetParent !== null &&
@@ -224,9 +238,8 @@ export class AlertTools {
                 !i.classList.toString().includes('gr1VjUfr')
               );
               if (directNameInput) {
-                directNameInput.focus();
-                nativeSetter.call(directNameInput, '${alertName}');
-                directNameInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+                await new Promise(r => setTimeout(r, 100));
+                setInput(directNameInput, '${alertName}');
                 await new Promise(r => setTimeout(r, 300));
                 const directMsgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
                 if (directMsgArea && '${alertMessage}') {
@@ -266,20 +279,18 @@ export class AlertTools {
                     );
 
                   if (nameInput) {
-                    nameInput.focus();
-                    await new Promise(r => setTimeout(r, 100));
-                    // Clear + set via execCommand (works for React controlled inputs & contenteditable)
-                    document.execCommand('selectAll', false, null);
-                    document.execCommand('insertText', false, '${alertName}');
-                    // Also set via nativeSetter as belt-and-suspenders for plain inputs
+                    await new Promise(r => setTimeout(r, 150));
                     if (nameInput.tagName === 'INPUT') {
-                      nativeSetter.call(nameInput, '${alertName}');
-                      nameInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+                      setInput(nameInput, '${alertName}');
+                    } else {
+                      // contenteditable
+                      nameInput.focus();
+                      document.execCommand('selectAll', false, null);
+                      document.execCommand('insertText', false, '${alertName}');
                     }
                     await new Promise(r => setTimeout(r, 300));
                     nameSetMethod = 'subdialog';
                   } else {
-                    // Dump what IS in the DOM so we can identify the right element
                     const domInfo = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
                       .filter(e => e.offsetParent !== null)
                       .map(e => e.tagName + '[' + (e.type || e.contentEditable || '') + ']' + (e.placeholder ? '=' + e.placeholder.slice(0,20) : ''))
@@ -298,7 +309,6 @@ export class AlertTools {
                   );
                   if (applyBtn) { applyBtn.click(); await new Promise(r => setTimeout(r, 800)); }
                 }
-                // If no button found, collect debug info for diagnostics
                 if (!msgBtn) {
                   const visibleBtns = Array.from(document.querySelectorAll('button'))
                     .filter(b => b.offsetParent !== null)
