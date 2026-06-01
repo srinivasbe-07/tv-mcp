@@ -30,6 +30,13 @@ import fs from 'fs';
 import readline from 'readline';
 
 // ---------------------------------------------------------------------------
+// Supertrend Monitor owns one dedicated NIFTY spot chart tab.
+// The tab stays on NIFTY for spot price reads.
+// When updating CE/PE alerts, it switches to the option, does the update,
+// then switches back to NIFTY.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 const POLL_MS = 60_000;
@@ -48,8 +55,8 @@ const PE_ALERTS = { entry: 'supertrendshortEntry', exit: 'supertrendShortExit' }
 // Day-of-week instrument routing (IST weekday: 1=Mon … 5=Fri)
 export const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
 
-// NIFTY ITM depth by day: Mon/Tue/Fri → ITM-1
-export const NIFTY_ITM_BY_DAY = { 1: 1, 2: 1, 5: 1 };
+// NIFTY ITM depth by day: Mon/Tue → ITM-2, Fri → ITM-1
+export const NIFTY_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
 
 // Returns ITM depth for given day + instrument (override via CLI --itm flag)
 export function calcITMDepth(dayOfWeek, instrument, cliOverride = null) {
@@ -356,14 +363,26 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
   const symbol = buildSymbol(cfg, strike, side);
   const results = [];
 
-  // Switch chart to the target symbol so it appears as $ChartMainSeries$ in the alert dropdown.
-  // The dropdown only shows: alert's current symbol + chart's current main symbol.
+  // Load the target option symbol on this chart tab before updating the alert.
+  // The alert dropdown only shows: (1) alert's current symbol, (2) chart's current symbol.
+  // We need (2) to be the new strike so we can select it.
   const exchange = cfg.spotSymbol.split(':')[0]; // 'NSE' for NIFTY, 'BSE' for SENSEX
   const qualifiedSymbol = `${exchange}:${symbol}`;
-  log(`  Switching chart to ${qualifiedSymbol}`);
-  await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
-  // Wait for TradingView to settle after chart switch before interacting with alerts panel
-  await new Promise((r) => setTimeout(r, 3000));
+
+  // Check if the chart is already on the right symbol — skip switch + wait if so.
+  const currentSymbol = await cdpChart.cdp.executeScript(
+    `window.TradingViewApi?._activeChartWidgetWV?._value?.symbol?.() || ''`
+  ).catch(() => '');
+  const needsSwitch = currentSymbol !== qualifiedSymbol;
+
+  if (needsSwitch) {
+    log(`  Loading ${qualifiedSymbol} on chart tab...`);
+    await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
+    // Wait for TradingView to settle after chart switch before interacting with alerts panel
+    await new Promise((r) => setTimeout(r, 3000));
+  } else {
+    log(`  Chart tab already on ${qualifiedSymbol}`);
+  }
 
   for (const [role, name] of Object.entries(alertDefs)) {
     let lastResult = null;
@@ -494,10 +513,19 @@ async function main() {
   process.on('uncaughtException', (e) => log(`[CRASH] ${e.message}`));
   process.on('unhandledRejection', (e) => log(`[CRASH] ${e?.message || e}`));
 
-  const cdp = new CDPManager();
+  // ── Connect to this monitor's dedicated chart tab ─────────────────
+  // Each monitor owns one NIFTY spot tab, auto-created if missing.
+  // Tab stays on NIFTY for spot price reads.
+  // Switches to CE/PE for alert updates, then switches back to NIFTY.
+  let cdp;
+  let bgCDP = null;
+
   try {
+    const tabId = await CDPManager.ensureMonitorTab('./logs/supertrend-tab.json');
+    cdp = new CDPManager(tabId, './logs/supertrend-tab.json');
     await cdp.connect();
-    log('CDP connected');
+    log(`CDP connected (tab: ${tabId.slice(0, 16)})`);
+    // bgCDP not needed — this tab stays on NIFTY for spot reads
   } catch (e) {
     console.error('CDP connect failed:', e.message);
     console.error('Start TradingView first:  .\\launch-tv.ps1');
@@ -507,9 +535,6 @@ async function main() {
   const cdpAlerts = new AlertTools(cdp);
   const cdpChart = new ChartTools(cdp);
 
-  // Open a background tab for price reads — keeps main chart undisturbed
-  let bgCDP = await openBackgroundTab();
-
   // Keyboard shortcuts
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
@@ -518,16 +543,20 @@ async function main() {
     let ctrlCPending = false;
     let ctrlCTimer = null;
 
+    async function shutdown() {
+      log('Exiting...');
+      saveState();
+      if (bgCDP) bgCDP.close();
+      await cdp.disconnect();
+      process.exit(0);
+    }
+
     process.stdin.on('keypress', async (ch, key) => {
       if (!key) return;
       if (key.ctrl && key.name === 'c') {
         if (ctrlCPending) {
           clearTimeout(ctrlCTimer);
-          log('Exiting...');
-          saveState();
-          if (bgCDP) bgCDP.close();
-          await cdp.disconnect();
-          process.exit(0);
+          await shutdown();
         } else {
           ctrlCPending = true;
           log('Press Ctrl+C again within 3s to exit, or [q] to quit');
@@ -540,11 +569,7 @@ async function main() {
       }
       if (key.name === 'q') {
         if (ctrlCTimer) clearTimeout(ctrlCTimer);
-        log('Exiting...');
-        saveState();
-        if (bgCDP) bgCDP.close();
-        await cdp.disconnect();
-        process.exit(0);
+        await shutdown();
       }
       if (key.name === 'c') {
         state.CE = state.CE === 'open' ? 'closed' : 'open';
@@ -599,8 +624,8 @@ async function main() {
         processHistoryForPositionChanges(history, state);
       }
 
-      // 3. Get spot price via background tab (main chart untouched); fallback to main if needed
-      const spot = await getSpot(bgCDP || cdp, cfg.spotSymbol);
+      // 3. Get spot price — tab is on NIFTY, reads directly without switching.
+      const spot = await getSpot(cdp, cfg.spotSymbol);
 
       if (!spot || spot < (MIN_SPOT[instrName] || 10000)) {
         log(`${instrName} spot invalid (${spot}) — ignoring tick`);
@@ -642,18 +667,22 @@ async function main() {
       const ceStrike = atm - itmDepth * cfg.strikeInterval;
       const peStrike = atm + itmDepth * cfg.strikeInterval;
 
-      // 4. Update CE alerts if no CE position
+      // 4. Update CE alerts — switch tab to CE option, update, switch back to NIFTY
       if (state.CE === 'closed') {
         log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
         await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg);
+        // Switch back to NIFTY spot after CE operations
+        await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       } else {
         log(`CE position OPEN — skipping CE symbol update`);
       }
 
-      // 5. Update PE alerts if no PE position
+      // 5. Update PE alerts — switch tab to PE option, update, switch back to NIFTY
       if (state.PE === 'closed') {
         log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
         await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg);
+        // Switch back to NIFTY spot after PE operations
+        await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       } else {
         log(`PE position OPEN — skipping PE symbol update`);
       }

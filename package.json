@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
+    "ui": "node ui/server.js",
     "test": "node tests/test-unit.js && node tests/test-monitor.js",
     "test:unit": "node tests/test-unit.js && node tests/test-monitor.js",
     "test:live": "node tests/test.js",
@@ -25,7 +26,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "chrome-remote-interface": "^0.33.2"
+    "chrome-remote-interface": "^0.33.2",
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

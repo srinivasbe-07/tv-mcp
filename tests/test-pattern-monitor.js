@@ -100,25 +100,25 @@ await test('all succeed → lastAlertCandleTime updated (no duplicate on next ca
   return calls1 === 3 && calls2 === 3; // no extra calls on duplicate
 });
 
-await test('LONG (bias=up) → TradeEntry uses candle.high with crosses_up', async () => {
+await test('CE (bias=up) → TradeEntry uses candle.high with crosses_up', async () => {
   _resetLastAlertCandleTime();
   const mock = makeMock();
   const candle = makeCandle({ high: 110, low: 95 });
-  await createTradeAlerts(mock, 'up', candle, 120, 0, 'BTCUSD', null, 0);
+  await createTradeAlerts(mock, 'up', candle, 120, 0, 'NIFTY260602C23400', null, 0);
   const entry = mock.calls.find((c) => c.args?.name === 'TradeEntry');
   return entry?.args?.level === 110 && entry?.args?.condition === 'crosses_up';
 });
 
-await test('SHORT (bias=down) → TradeEntry uses candle.low', async () => {
+await test('PE (bias=down) → TradeEntry also uses candle.high (always long on option)', async () => {
   _resetLastAlertCandleTime();
   const mock = makeMock();
   const candle = makeCandle({ high: 110, low: 95 });
-  await createTradeAlerts(mock, 'down', candle, 80, 0, 'BTCUSD', null, 0);
+  await createTradeAlerts(mock, 'down', candle, 130, 0, 'NIFTY260602P23700', null, 0);
   const entry = mock.calls.find((c) => c.args?.name === 'TradeEntry');
-  return entry?.args?.level === 95;
+  return entry?.args?.level === 110 && entry?.args?.condition === 'crosses_up';
 });
 
-await test('LONG → Entry crosses_up, SL crosses_down, Target crosses_down (pullback to target)', async () => {
+await test('always: Entry crosses_up, SL crosses_down, Target crosses_up', async () => {
   _resetLastAlertCandleTime();
   const mock = makeMock();
   await createTradeAlerts(
@@ -137,7 +137,7 @@ await test('LONG → Entry crosses_up, SL crosses_down, Target crosses_down (pul
   return (
     entry?.args?.condition === 'crosses_up' &&
     sl?.args?.condition === 'crosses_down' &&
-    tgt?.args?.condition === 'crosses_down'
+    tgt?.args?.condition === 'crosses_up'
   );
 });
 

@@ -211,36 +211,102 @@ export class AlertTools {
             priceInput.dispatchEvent(new Event('blur', { bubbles: true }));
             await new Promise(r => setTimeout(r, 400));
 
-            // Step 6: Set alert name — try multiple strategies
-            const allTextInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])'));
-            const nameInput =
-              // Strategy 1: placeholder mentions "name"
-              allTextInputs.find(i => i !== priceInput && i.placeholder?.toLowerCase().includes('name')) ||
-              // Strategy 2: inside a container with "name" label
-              allTextInputs.find(i => {
-                if (i === priceInput) return false;
-                const wrap = i.closest('[class*="field"], [class*="row"], [class*="input"], [class*="wrap"]');
-                return wrap?.textContent?.toLowerCase().includes('name');
-              }) ||
-              // Strategy 3: first text input that is NOT the price input (fallback)
-              allTextInputs.find(i => i !== priceInput && i.value !== String(${level}));
+            // Step 6+7: Set alert name + message.
+            // Strategy A — direct: some TV versions expose name input in the main form.
+            // Strategy B — sub-dialog: older/current TV opens a separate dialog via a button.
+            const taSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+            let nameSetMethod = 'none';
+            {
+              // Strategy A: look for any visible text input that is NOT the price input
+              const directNameInput = Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).find(i =>
+                i.offsetParent !== null &&
+                i !== priceInput &&
+                !i.classList.toString().includes('gr1VjUfr')
+              );
+              if (directNameInput) {
+                directNameInput.focus();
+                nativeSetter.call(directNameInput, '${alertName}');
+                directNameInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+                await new Promise(r => setTimeout(r, 300));
+                const directMsgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
+                if (directMsgArea && '${alertMessage}') {
+                  taSetter.call(directMsgArea, '${alertMessage}');
+                  directMsgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                  await new Promise(r => setTimeout(r, 200));
+                }
+                nameSetMethod = 'direct';
+              } else {
+                // Strategy B: click "Name and Message" button to open sub-dialog
+                const EXCL = ['app,', 'toasts', 'webhook', 'sound', 'create', 'save', 'cancel'];
+                const isExcluded = (b) => EXCL.some(w => (b.textContent?.toLowerCase() || '').includes(w));
+                const msgBtn =
+                  Array.from(document.querySelectorAll('button[class*="apply-overflow-tooltip--check-children"]'))
+                    .find(b => b.offsetParent !== null && !isExcluded(b)) ||
+                  Array.from(document.querySelectorAll('button')).find(b =>
+                    b.offsetParent !== null &&
+                    (b.textContent?.trim() === 'Name and Message' ||
+                     b.textContent?.includes('Name and Message') ||
+                     b.getAttribute('aria-label')?.toLowerCase().includes('name'))
+                  ) ||
+                  Array.from(document.querySelectorAll('button[class*="overflow"], button[class*="apply-"]'))
+                    .find(b => b.offsetParent !== null && !isExcluded(b));
 
-            if (nameInput && '${alertName}') {
-              nameInput.focus();
-              await new Promise(r => setTimeout(r, 100));
-              nativeSetter.call(nameInput, '${alertName}');
-              nameInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-              nameInput.dispatchEvent(new Event('change', { bubbles: true }));
-              await new Promise(r => setTimeout(r, 300));
-            }
+                if (msgBtn) {
+                  msgBtn.click();
+                  await new Promise(r => setTimeout(r, 1500));
 
-            // Step 7: Set message (textarea on Conditions tab)
-            const msgArea = document.querySelector('textarea');
-            if (msgArea && '${alertMessage}') {
-              const taSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-              taSetter.call(msgArea, '${alertMessage}');
-              msgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
-              await new Promise(r => setTimeout(r, 200));
+                  // Find name input — try every input variant TV might use
+                  const nameInput =
+                    Array.from(document.querySelectorAll('input')).find(i =>
+                      i.offsetParent !== null && i !== priceInput &&
+                      !i.classList.toString().includes('gr1VjUfr')
+                    ) ||
+                    Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
+                      e.offsetParent !== null
+                    );
+
+                  if (nameInput) {
+                    nameInput.focus();
+                    await new Promise(r => setTimeout(r, 100));
+                    // Clear + set via execCommand (works for React controlled inputs & contenteditable)
+                    document.execCommand('selectAll', false, null);
+                    document.execCommand('insertText', false, '${alertName}');
+                    // Also set via nativeSetter as belt-and-suspenders for plain inputs
+                    if (nameInput.tagName === 'INPUT') {
+                      nativeSetter.call(nameInput, '${alertName}');
+                      nameInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+                    }
+                    await new Promise(r => setTimeout(r, 300));
+                    nameSetMethod = 'subdialog';
+                  } else {
+                    // Dump what IS in the DOM so we can identify the right element
+                    const domInfo = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
+                      .filter(e => e.offsetParent !== null)
+                      .map(e => e.tagName + '[' + (e.type || e.contentEditable || '') + ']' + (e.placeholder ? '=' + e.placeholder.slice(0,20) : ''))
+                      .slice(0, 8).join('|');
+                    nameSetMethod = 'subdialog-no-input:' + domInfo;
+                  }
+
+                  const msgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
+                  if (msgArea && '${alertMessage}') {
+                    taSetter.call(msgArea, '${alertMessage}');
+                    msgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                    await new Promise(r => setTimeout(r, 200));
+                  }
+                  const applyBtn = Array.from(document.querySelectorAll('button')).find(b =>
+                    b.offsetParent !== null && b.textContent?.trim() === 'Apply'
+                  );
+                  if (applyBtn) { applyBtn.click(); await new Promise(r => setTimeout(r, 800)); }
+                }
+                // If no button found, collect debug info for diagnostics
+                if (!msgBtn) {
+                  const visibleBtns = Array.from(document.querySelectorAll('button'))
+                    .filter(b => b.offsetParent !== null)
+                    .map(b => b.textContent?.trim().slice(0, 40))
+                    .filter(Boolean).slice(0, 10);
+                  nameSetMethod = 'not-found:' + visibleBtns.join('|');
+                }
+              }
             }
 
             // Step 8: Webhook — navigate to Notifications tab, enable webhook, set URL
@@ -305,6 +371,7 @@ export class AlertTools {
             return {
               success,
               nameSet: nameFound,
+              nameSetMethod,
               alertId: '${alertId}',
               symbol: '${symbol}',
               condition: '${condition}',

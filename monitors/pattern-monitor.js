@@ -23,6 +23,34 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import readline from 'readline';
 
+// ---------------------------------------------------------------------------
+// Each monitor owns its own dedicated NIFTY chart tab (created automatically
+// at startup). The tab normally shows NIFTY spot; switches to the relevant
+// option only when needed, then switches back to NIFTY when done.
+// ---------------------------------------------------------------------------
+let _currentTabSymbol = null; // tracks what symbol the tab is currently showing
+
+/**
+ * Switches the monitor's chart tab to `symbol`.
+ * No-op if already on that symbol.
+ */
+async function switchTabTo(cdp, symbol) {
+  if (_currentTabSymbol === symbol) return;
+  await cdp.executeScript(`
+    (async function() {
+      try {
+        const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
+        if (!widget) return;
+        for (const m of ['setSymbol','changeSymbol','setTicker']) {
+          if (typeof widget[m] === 'function') { widget[m]('${symbol}'); break; }
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      } catch(_) {}
+    })()
+  `).catch(() => {});
+  _currentTabSymbol = symbol;
+}
+
 const CONFIG_FILE = './config/pattern-monitor-config.json';
 const ALGOTEST_FILE = './config/algotest-config.json';
 const LOG_FILE = './logs/pattern-monitor.log';
@@ -167,26 +195,10 @@ function isBullishEngulfing(curr, prev) {
   );
 }
 
-function isBearishEngulfing(curr, prev) {
-  return (
-    curr.close < curr.open &&
-    prev.close > prev.open &&
-    curr.open >= prev.close &&
-    curr.close <= prev.open
-  );
-}
-
 function detectBullishPattern(curr, prev) {
   if (isHammer(curr)) return 'Hammer';
   if (isDoji(curr)) return 'Doji';
   if (prev && isBullishEngulfing(curr, prev)) return 'BullishEngulfing';
-  return null;
-}
-
-function detectBearishPattern(curr, prev) {
-  if (isShootingStar(curr)) return 'ShootingStar';
-  if (isDoji(curr)) return 'Doji';
-  if (prev && isBearishEngulfing(curr, prev)) return 'BearishEngulfing';
   return null;
 }
 
@@ -323,6 +335,7 @@ function calcSwingHigh(bars) {
 // Create trade alerts (Entry + SL + Target)
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
+let alertsCreatedAt = null;   // wall-clock ms when last set of trade alerts was created
 let tradeEntryLevel = null; // saved on alert creation — used for trail SL to breakeven
 let slTrailedToBreakeven = false;
 let activeTradeSymbol = null; // option symbol when in options mode
@@ -342,10 +355,11 @@ async function createTradeAlerts(
     return;
   }
 
-  const isLong = bias === 'up';
-  const tradeType = isLong ? 'LONG' : 'SHORT';
-  const entryLevel = isLong ? candle.high : candle.low;
-  const slLevel = sl || (isLong ? candle.low : candle.high);
+  // Always long on the option chart: CE for bias=up, PE for bias=down.
+  // Entry above candle HIGH, SL below candle LOW, target crosses up.
+  const tradeType  = bias === 'up' ? 'CE LONG' : 'PE LONG';
+  const entryLevel = candle.high;
+  const slLevel    = sl || candle.low;
 
   log(`  [${tradeType}] Entry:${entryLevel}  SL:${slLevel}  Target:${target}`);
 
@@ -385,7 +399,7 @@ async function createTradeAlerts(
     log(`  [FAIL] TradeEntry: ${d1.message || 'unknown error'}`);
     return;
   }
-  log(`  [OK] TradeEntry at ${entryLevel}${d1.nameSet === false ? ' [WARN: name not set]' : ''}`);
+  log(`  [OK] TradeEntry at ${entryLevel}${d1.nameSet === false ? ` [WARN: name not set — method:${d1.nameSetMethod}]` : ''}`);
 
   await new Promise((r) => setTimeout(r, _delayMs));
 
@@ -409,7 +423,7 @@ async function createTradeAlerts(
 
   const r3 = await cdpAlerts.handle('alert_create', {
     symbol,
-    condition: 'crosses_down',
+    condition: 'crosses_up',
     level: target,
     name: 'TradeTarget',
     message: exitMsg,
@@ -424,6 +438,7 @@ async function createTradeAlerts(
   log(`  [OK] TradeTarget at ${target}${d3.nameSet === false ? ' [WARN: name not set]' : ''}`);
 
   lastAlertCandleTime = candle.time;
+  alertsCreatedAt = Date.now();
   tradeEntryLevel = entryLevel;
   slTrailedToBreakeven = false;
   log(`  All 3 alerts created${webhook ? ' (Algotest webhook set)' : ''}`);
@@ -443,8 +458,16 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
 
     const tradeAlerts = alerts.filter((a) => TRADE_ALERT_NAMES.includes(a.name));
     if (tradeAlerts.length === 0) {
+      // If alerts were created recently (< 45 min), name may not have been set in TV dialog.
+      // Keep trade state alive rather than resetting — prevents re-creating alerts every tick.
+      const recentMs = 45 * 60 * 1000;
+      if (alertsCreatedAt && Date.now() - alertsCreatedAt < recentMs) {
+        log('[WARN] Named trade alerts not found but created recently — preserving trade state (check TV alert names)');
+        return;
+      }
       log('[RESET] No trade alerts found on TradingView — clearing trade state');
       lastAlertCandleTime = null;
+      alertsCreatedAt = null;
       tradeEntryLevel = null;
       slTrailedToBreakeven = false;
       activeTradeSymbol = null;
@@ -471,6 +494,7 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
       }
     }
     lastAlertCandleTime = null;
+    alertsCreatedAt = null;
     tradeEntryLevel = null;
     slTrailedToBreakeven = false;
     activeTradeSymbol = null;
@@ -511,7 +535,7 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
 // Trail SL to breakeven once price reaches trailToCostAt
 // ---------------------------------------------------------------------------
 async function trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints) {
-  if (!trailPoints || !tradeEntryLevel || cfg.bias !== 'up' || slTrailedToBreakeven) return;
+  if (!trailPoints || !tradeEntryLevel || slTrailedToBreakeven) return;
 
   const trailTrigger = tradeEntryLevel + trailPoints;
   const tf = String(cfg.candleTimeframe || '3');
@@ -787,26 +811,42 @@ async function drawImportantLevels(cdp, levels) {
 }
 
 // ---------------------------------------------------------------------------
-// Clear only zone + important level lines (keep day H/L)
+// Clear only zone lines (keep day H/L and important levels)
 // ---------------------------------------------------------------------------
 async function clearZoneAndLevels(cdp) {
-  const removeScript = `
+  if (!drawnZoneIds.length) {
+    drawnZoneIds = [];
+    lastDrawnZoneKey = '';
+    saveDrawnIds();
+    log('Zone cleared (nothing to remove)');
+    return;
+  }
+
+  const script = `
     (function() {
       try {
         const chart = window.TradingViewApi?.activeChart?.();
-        if (!chart) return;
-        ${JSON.stringify(drawnZoneIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
-        ${JSON.stringify(drawnImportantIds)}.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
-      } catch(_e) {}
+        if (!chart) return { removed: 0 };
+        const ids = ${JSON.stringify(drawnZoneIds)};
+
+        // First pass: removeEntity by stored ID
+        ids.forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+
+        // Second pass: verify via getAllShapes and remove any that survived
+        if (typeof chart.getAllShapes === 'function') {
+          const allIds = new Set((chart.getAllShapes() || []).map(s => s.id));
+          ids.filter(id => allIds.has(id))
+             .forEach(id => { try { chart.removeEntity(id); } catch(_e) {} });
+        }
+        return { removed: ids.length };
+      } catch(e) { return { error: e.message }; }
     })()
   `;
-  await cdp.executeScript(removeScript).catch(() => {});
+  await cdp.executeScript(script).catch(() => {});
   drawnZoneIds = [];
-  drawnImportantIds = [];
   lastDrawnZoneKey = '';
-  lastDrawnImportantKey = '';
   saveDrawnIds();
-  log('Zone and important levels cleared');
+  log('Zone cleared');
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,6 +1152,8 @@ async function tick(cdp, cdpAlerts) {
 
       if (!isInZone(curr, zone)) {
         log(`${tf}-min candle H:${curr.high} L:${curr.low} — outside zone`);
+        // Out of zone: restore spot tab to NIFTY so user sees zone lines
+        await switchTabTo(cdp, symbol);
       } else {
         // In options mode: fetch ITM CE option candles for pattern detection
         let patternCandle = curr;
@@ -1124,7 +1166,12 @@ async function tick(cdp, cdpAlerts) {
           const spotPrice = bars[bars.length - 1]?.close || curr.close;
           const optSym = buildOptionSymbol(instrName, spotPrice, itmDepth, cfg.bias);
           if (optSym) {
-            optBars = await fetchBars(cdp, optSym, tf, 10);
+            // Switch spot tab to option so user can watch option price action
+            await switchTabTo(cdp, optSym);
+            // Multi-tab: use dedicated option CDPManager (no switching on data tab).
+            // Single-tab: falls back to cdp with internal symbol switching.
+            const cdpOpt = cdp;
+            optBars = await fetchBars(cdpOpt, optSym, tf, 10);
             if (optBars.length >= 3) {
               patternCandle = optBars[optBars.length - 2];
               patternPrev = optBars[optBars.length - 3];
@@ -1139,16 +1186,14 @@ async function tick(cdp, cdpAlerts) {
           }
         }
 
-        const pattern =
-          cfg.bias === 'up'
-            ? detectBullishPattern(patternCandle, patternPrev)
-            : detectBearishPattern(patternCandle, patternPrev);
+        // Detect bullish pattern on the option candle (options mode) or spot candle.
+        const pattern = detectBullishPattern(patternCandle, patternPrev);
 
         if (pattern) {
           // Auto target: swing high from recent option (or spot) bars
           let effectiveTarget = target;
           if (!effectiveTarget && isOptionsMode) {
-            const swingBars = (optBars || bars).slice(0, -1); // exclude forming candle
+            const swingBars = (optBars || bars).slice(0, -1);
             effectiveTarget = calcSwingHigh(swingBars);
             log(`Auto target (swing high): ${effectiveTarget}`);
           }
@@ -1160,8 +1205,13 @@ async function tick(cdp, cdpAlerts) {
           log(
             `[SIGNAL] ${pattern} in zone! O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close}`
           );
+          // Multi-tab: create alerts on the option tab (CE or PE).
+          // Single-tab: falls back to cdpAlerts (same as before).
+          const cdpAlertsOpt = (_cdpCE && _cdpPE)
+            ? new AlertTools(cdp)
+            : cdpAlerts;
           const created = await createTradeAlerts(
-            cdpAlerts,
+            cdpAlertsOpt,
             cfg.bias,
             patternCandle,
             effectiveTarget,
@@ -1171,11 +1221,11 @@ async function tick(cdp, cdpAlerts) {
           );
           if (created) {
             activeTradeSymbol = tradeSymbol;
-            const entryLevel = cfg.bias === 'up' ? patternCandle.high : patternCandle.low;
+            const entryLevel = patternCandle.high;
             const checkBars = await fetchBars(cdp, tradeSymbol, tf, 3);
             const live = checkBars[checkBars.length - 1];
             if (live) {
-              const missed = cfg.bias === 'up' ? live.close > entryLevel : live.close < entryLevel;
+              const missed = live.close > entryLevel;
               if (missed) {
                 log(
                   `[MISSED?] Price ${live.close} already ${cfg.bias === 'up' ? 'above' : 'below'} entry ${entryLevel} — entry may have been missed`
@@ -1219,6 +1269,7 @@ async function tick(cdp, cdpAlerts) {
           log(`[ZONE BREAK] Monitor PAUSED — reconfigure zones then set active: true`);
           cfg.active = false;
           saveConfig(cfg);
+          await switchTabTo(cdp, symbol); // restore NIFTY spot view
         } else {
           // ── Liquidity grab check ──────────────────────────────────────────
           const grabbedLevel = isLiquidityGrab(curr15, prev15, cfg.bias, allLevels, tolerance);
@@ -1255,6 +1306,7 @@ async function tick(cdp, cdpAlerts) {
             cfg.bias = newBias;
             cfg.active = false;
             saveConfig(cfg);
+            await switchTabTo(cdp, symbol); // restore NIFTY spot view
           } else {
             log(
               `15-min check: no zone break, no liquidity grab (H:${curr15?.high} L:${curr15?.low})`
@@ -1332,10 +1384,17 @@ async function main() {
     `Symbol: ${effectiveSymbol} | Bias: ${cfg.bias?.toUpperCase()} | Zone: ${_startZa.join('-')} | Active: ${cfg.active}`
   );
 
-  const cdp = new CDPManager();
+  // ── Connect to this monitor's dedicated chart tab ─────────────────
+  // Each monitor owns one NIFTY spot tab. The tab is created automatically
+  // if it doesn't exist yet and its ID is saved to a registry file.
+  // Within the tab: stays on NIFTY normally, switches to option when in zone,
+  // switches back to NIFTY when done.
+  let cdp;
   try {
+    const tabId = await CDPManager.ensureMonitorTab('./logs/pattern-tab.json');
+    cdp = new CDPManager(tabId, './logs/pattern-tab.json');
     await cdp.connect();
-    log('CDP connected');
+    log(`CDP connected (tab: ${tabId.slice(0, 16)})`);
   } catch (e) {
     log(`CDP connect failed: ${e.message}`);
     process.exit(1);
@@ -1345,13 +1404,17 @@ async function main() {
 
   let sigintPending = false;
   let sigintTimer = null;
+  async function shutdown() {
+    log('Exiting...');
+    await clearAllDrawings(cdp);
+    await cdp.disconnect();
+    process.exit(0);
+  }
+
   process.on('SIGINT', async () => {
     if (sigintPending) {
       clearTimeout(sigintTimer);
-      log('Exiting...');
-      await clearAllDrawings(cdp);
-      await cdp.disconnect();
-      process.exit(0);
+      await shutdown();
     } else {
       sigintPending = true;
       log('Press Ctrl+C again within 3s to exit, or [q] to quit');
@@ -1427,8 +1490,7 @@ async function main() {
       }
 
       if (!c.active) {
-        // active=false → clear zone and important levels, keep day H/L
-        log('[CONFIG] active: false — clearing zone and important levels');
+        log('[CONFIG] active: false — clearing zone');
         await clearZoneAndLevels(cdp);
         return;
       }
@@ -1499,10 +1561,7 @@ async function main() {
       }
       if (key.name === 'q') {
         if (ctrlCTimer) clearTimeout(ctrlCTimer);
-        log('Exiting...');
-        await clearAllDrawings(cdp);
-        await cdp.disconnect();
-        process.exit(0);
+        await shutdown();
       }
       if (key.name === 'a') {
         const c = loadConfig();

@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pattern Monitor — UI Mockup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #d1d5db;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2a2d3a;
+      padding: 0 20px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .logo { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
+    .logo span { color: #3b82f6; }
+
+    .status-chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+    }
+    .status-chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .status-active   { background: #052e16; color: #4ade80; }
+    .status-active .dot { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    .status-paused   { background: #1c1917; color: #f97316; }
+    .status-paused .dot { background: #f97316; }
+    .status-trade    { background: #1e1b4b; color: #a78bfa; }
+    .status-trade .dot { background: #a78bfa; box-shadow: 0 0 6px #a78bfa; }
+
+    .symbol-badge {
+      background: #1e2030; border: 1px solid #2a2d3a;
+      padding: 4px 10px; border-radius: 6px;
+      font-size: 13px; font-weight: 600; color: #93c5fd;
+    }
+
+    .spacer { flex: 1; }
+
+    .hdr-btn {
+      padding: 6px 14px; border-radius: 6px; font-size: 12px;
+      font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s;
+    }
+    .hdr-btn:hover { opacity: 0.85; }
+    .btn-flip  { background: #374151; color: #d1d5db; }
+    .btn-stop  { background: #7f1d1d; color: #fca5a5; }
+    .btn-start { background: #14532d; color: #86efac; }
+    .btn-primary { background: #1d4ed8; color: #fff; }
+
+    /* ── Main Layout ─────────────────────────────────────────── */
+    .main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: 1fr;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Left Panel ──────────────────────────────────────────── */
+    .left-panel {
+      background: #13151f;
+      border-right: 1px solid #2a2d3a;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-title {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+      color: #6b7280; text-transform: uppercase; margin-bottom: 10px;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    /* Bias Toggle */
+    .bias-toggle {
+      display: grid; grid-template-columns: 1fr 1fr;
+      background: #0f1117; border-radius: 8px; padding: 3px; gap: 3px;
+    }
+    .bias-btn {
+      padding: 8px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+      transition: all 0.15s;
+    }
+    .bias-up.active   { background: #14532d; color: #4ade80; }
+    .bias-up.inactive { background: transparent; color: #4b5563; }
+    .bias-down.active { background: #7f1d1d; color: #f87171; }
+    .bias-down.inactive { background: transparent; color: #4b5563; }
+
+    /* Form fields */
+    label {
+      display: block; font-size: 11px; color: #6b7280;
+      margin-bottom: 4px; font-weight: 500;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%; background: #0f1117;
+      border: 1px solid #2a2d3a; border-radius: 6px;
+      color: #d1d5db; font-size: 13px; padding: 7px 10px;
+      outline: none; transition: border-color 0.15s;
+    }
+    input:focus, select:focus { border-color: #3b82f6; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* Zone visual */
+    .zone-visual {
+      background: #0f1117; border-radius: 6px; padding: 8px 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 8px; border: 1px solid #2a2d3a;
+    }
+    .zone-bar {
+      flex: 1; height: 6px; background: #1e2030; border-radius: 3px;
+      margin: 0 10px; position: relative; overflow: visible;
+    }
+    .zone-fill {
+      position: absolute; height: 100%; background: #d97706;
+      border-radius: 3px; left: 35%; width: 20%;
+    }
+    .zone-price { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+
+    /* Key Levels */
+    .levels-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .level-tag {
+      display: flex; align-items: center; gap: 5px;
+      background: #1e1b4b; border: 1px solid #312e81;
+      border-radius: 20px; padding: 3px 8px 3px 10px;
+      font-size: 12px; color: #a78bfa;
+    }
+    .level-tag button {
+      background: none; border: none; color: #6b7280;
+      cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
+    }
+    .level-tag button:hover { color: #f87171; }
+    .add-level-btn {
+      background: none; border: 1px dashed #374151;
+      border-radius: 20px; padding: 3px 10px;
+      font-size: 12px; color: #6b7280; cursor: pointer;
+    }
+    .add-level-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+
+    /* Active Toggle */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .toggle {
+      position: relative; width: 40px; height: 22px;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; background: #374151;
+      border-radius: 22px; cursor: pointer; transition: 0.2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; left: 3px; top: 3px; transition: 0.2s;
+    }
+    input:checked + .toggle-slider { background: #1d4ed8; }
+    input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    .save-btn {
+      width: 100%; padding: 10px; background: #1d4ed8;
+      color: #fff; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      letter-spacing: 0.5px; transition: background 0.15s;
+    }
+    .save-btn:hover { background: #2563eb; }
+
+    /* ── Right Panel ─────────────────────────────────────────── */
+    .right-panel {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    /* Status Cards */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 16px;
+      border-bottom: 1px solid #2a2d3a;
+      background: #13151f;
+    }
+
+    .stat-card {
+      background: #1a1d27; border: 1px solid #2a2d3a;
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .stat-label { font-size: 10px; color: #6b7280; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 6px; }
+    .stat-value { font-size: 20px; font-weight: 700; color: #f9fafb; font-variant-numeric: tabular-nums; }
+    .stat-sub   { font-size: 11px; color: #6b7280; margin-top: 3px; }
+    .stat-up    { color: #4ade80; }
+    .stat-down  { color: #f87171; }
+    .stat-neutral { color: #facc15; }
+
+    /* Bottom: ticker + log */
+    .bottom-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+    }
+
+    /* Candle Feed */
+    .candle-panel {
+      border-right: 1px solid #2a2d3a;
+      overflow-y: auto;
+      padding: 14px;
+    }
+
+    .candle-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border-radius: 6px;
+      font-size: 12px; font-variant-numeric: tabular-nums;
+      border-bottom: 1px solid #1a1d27;
+    }
+    .candle-row:hover { background: #1a1d27; }
+    .candle-time { color: #6b7280; width: 48px; flex-shrink: 0; }
+    .candle-ohlc { flex: 1; color: #9ca3af; }
+    .candle-tag {
+      padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: 700;
+    }
+    .tag-zone    { background: #422006; color: #fdba74; }
+    .tag-signal  { background: #052e16; color: #4ade80; }
+    .tag-outside { background: #1a1d27; color: #4b5563; }
+    .tag-trade   { background: #1e1b4b; color: #a78bfa; }
+
+    /* Log Panel */
+    .log-panel { overflow-y: auto; padding: 14px; }
+
+    .log-line {
+      display: flex; gap: 8px; font-size: 12px;
+      padding: 4px 0; border-bottom: 1px solid #1a1d27;
+      font-variant-numeric: tabular-nums;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .log-time { color: #4b5563; flex-shrink: 0; }
+    .log-ok      { color: #4ade80; }
+    .log-fail    { color: #f87171; }
+    .log-signal  { color: #facc15; font-weight: 700; }
+    .log-info    { color: #9ca3af; }
+    .log-flip    { color: #f97316; font-weight: 700; }
+    .log-trade   { color: #a78bfa; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">Pattern<span>Monitor</span></div>
+
+  <div class="status-chip status-active">
+    <div class="dot"></div> ACTIVE
+  </div>
+
+  <div class="symbol-badge">BTCUSD.P · 3min</div>
+
+  <div class="spacer"></div>
+
+  <button class="hdr-btn btn-flip">⇅ Flip Bias</button>
+  <button class="hdr-btn btn-stop">■ Pause</button>
+  <button class="hdr-btn btn-primary">⟳ Reload</button>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+
+    <!-- Bias -->
+    <div class="card">
+      <div class="section-title">Bias</div>
+      <div class="bias-toggle">
+        <button class="bias-btn bias-up active">▲ BUY / CALL</button>
+        <button class="bias-btn bias-down inactive">▼ SELL / PUT</button>
+      </div>
+    </div>
+
+    <!-- Zone -->
+    <div class="card">
+      <div class="section-title">Zone</div>
+      <div class="field-row">
+        <div>
+          <label>Top</label>
+          <input type="number" value="73873" />
+        </div>
+        <div>
+          <label>Bottom</label>
+          <input type="number" value="73807" />
+        </div>
+      </div>
+      <div class="zone-visual">
+        <span class="zone-price">73807</span>
+        <div class="zone-bar"><div class="zone-fill"></div></div>
+        <span class="zone-price">73873</span>
+      </div>
+    </div>
+
+    <!-- Target & SL -->
+    <div class="card">
+      <div class="section-title">Trade Levels</div>
+      <div class="field-row">
+        <div>
+          <label>Target</label>
+          <input type="number" value="74235" />
+        </div>
+        <div>
+          <label>Stop Loss (0 = auto)</label>
+          <input type="number" value="0" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Key Levels -->
+    <div class="card">
+      <div class="section-title">Important Levels</div>
+      <div class="levels-list">
+        <div class="level-tag">74000 <button>×</button></div>
+        <div class="level-tag">73000 <button>×</button></div>
+        <button class="add-level-btn">+ Add Level</button>
+      </div>
+    </div>
+
+    <!-- Advanced -->
+    <div class="card">
+      <div class="section-title">Advanced</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <label>Symbol (blank = NIFTY/SENSEX auto)</label>
+          <input type="text" value="BTCUSD.P" />
+        </div>
+        <div class="field-row">
+          <div>
+            <label>Candle Timeframe</label>
+            <select>
+              <option>1 min</option>
+              <option selected>3 min</option>
+              <option>5 min</option>
+              <option>15 min</option>
+            </select>
+          </div>
+          <div>
+            <label>Trail SL (pts)</label>
+            <input type="number" value="100" />
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span style="font-size:12px;color:#9ca3af">Ignore Market Hours</span>
+          <label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span style="font-size:12px;color:#9ca3af">Options Mode</span>
+          <label class="toggle"><input type="checkbox" /><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active + Save -->
+    <div class="card">
+      <div class="toggle-row" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600;color:#d1d5db">Active</span>
+        <label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
+      </div>
+      <button class="save-btn">SAVE &amp; APPLY</button>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- Stats Row -->
+    <div class="status-grid">
+      <div class="stat-card">
+        <div class="stat-label">BTC Price</div>
+        <div class="stat-value stat-up">73,867</div>
+        <div class="stat-sub">+0.12% · In Zone</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Resistance (D-1 H)</div>
+        <div class="stat-value" style="color:#f87171">74,223</div>
+        <div class="stat-sub">356 pts above</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Support (D-1 L)</div>
+        <div class="stat-value" style="color:#4ade80">73,126</div>
+        <div class="stat-sub">741 pts below</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Next Tick</div>
+        <div class="stat-value stat-neutral">2:45</div>
+        <div class="stat-sub">Last: 08:24:00</div>
+      </div>
+    </div>
+
+    <!-- Bottom: Candle Feed + Log -->
+    <div class="bottom-panels">
+
+      <!-- Candle Feed -->
+      <div class="candle-panel">
+        <div class="section-title" style="margin-bottom:10px">3-Min Candle Feed</div>
+
+        <div class="candle-row">
+          <span class="candle-time">08:24</span>
+          <span class="candle-ohlc">O:73849 H:73879 L:73842 C:73868</span>
+          <span class="candle-tag tag-signal">SIGNAL</span>
+        </div>
+        <div class="candle-row">
+          <span class="candle-time">08:21</span>
+          <span class="candle-ohlc">O:73823 H:73867 L:73823 C:73867</span>
+          <span class="candle-tag tag-zone">IN ZONE</span>
+        </div>
+        <div class="candle-row">
+          <span class="candle-time">08:18</span>
+          <span class="candle-ohlc">O:73900 H:73928 L:73800 C:73823</span>
+          <span class="candle-tag tag-zone">IN ZONE</span>
+        </div>
+        <div class="candle-row">
+          <span class="candle-time">08:15</span>
+          <span class="candle-ohlc">O:73950 H:73994 L:73911 C:73900</span>
+          <span class="candle-tag tag-outside">OUTSIDE</span>
+        </div>
+        <div class="candle-row">
+          <span class="candle-time">08:12</span>
+          <span class="candle-ohlc">O:74037 H:74088 L:74031 C:73950</span>
+          <span class="candle-tag tag-outside">OUTSIDE</span>
+        </div>
+        <div class="candle-row">
+          <span class="candle-time">08:09</span>
+          <span class="candle-ohlc">O:74087 H:74087 L:73972 C:73989</span>
+          <span class="candle-tag tag-outside">OUTSIDE</span>
+        </div>
+        <div class="candle-row">
+          <span class="candle-time">08:06</span>
+          <span class="candle-ohlc">O:74117 H:74162 L:74089 C:74090</span>
+          <span class="candle-tag tag-outside">OUTSIDE</span>
+        </div>
+        <div class="candle-row" style="opacity:0.4">
+          <span class="candle-time">08:03</span>
+          <span class="candle-ohlc">O:74032 H:74045 L:74004 C:74037</span>
+          <span class="candle-tag tag-outside">OUTSIDE</span>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="log-panel">
+        <div class="section-title" style="margin-bottom:10px">Live Log</div>
+
+        <div class="log-line"><span class="log-time">08:24:18</span><span class="log-trade">[OK] TradeSL at 73842.17</span></div>
+        <div class="log-line"><span class="log-time">08:24:10</span><span class="log-ok">[OK] TradeEntry at 73879.01</span></div>
+        <div class="log-line"><span class="log-time">08:24:02</span><span class="log-signal">[SIGNAL] BullishEngulfing in zone!</span></div>
+        <div class="log-line"><span class="log-time">08:24:02</span><span class="log-trade">[LONG] Entry:73879 SL:73842 Target:74235</span></div>
+        <div class="log-line"><span class="log-time">08:21:07</span><span class="log-info">Next tick in 172s</span></div>
+        <div class="log-line"><span class="log-time">08:21:04</span><span class="log-info">Day levels: R=74223 S=73126</span></div>
+        <div class="log-line"><span class="log-time">08:21:00</span><span class="log-info">Candle in zone — no pattern</span></div>
+        <div class="log-line"><span class="log-time">08:18:00</span><span class="log-info">Candle in zone — no pattern</span></div>
+        <div class="log-line"><span class="log-time">08:15:07</span><span class="log-info">15-min: no zone break, no liquidity grab</span></div>
+        <div class="log-line"><span class="log-time">08:12:00</span><span class="log-info">3-min candle — outside zone</span></div>
+        <div class="log-line"><span class="log-time">08:09:00</span><span class="log-info">3-min candle — outside zone</span></div>
+        <div class="log-line"><span class="log-time">08:03:07</span><span class="log-flip">[FLIP] Liq grab at D-1 H (74024) → UP → DOWN</span></div>
+        <div class="log-line"><span class="log-time">08:03:00</span><span class="log-info">Candle in zone — no pattern</span></div>
+        <div class="log-line"><span class="log-time">07:57:00</span><span class="log-info">3-min candle — outside zone</span></div>
+        <div class="log-line"><span class="log-time">07:54:07</span><span class="log-ok">=== Monitor started ===</span></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

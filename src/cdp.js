@@ -1,13 +1,108 @@
 import CDP from 'chrome-remote-interface';
 
 export class CDPManager {
-  constructor() {
+  /**
+   * @param {string|null} targetId     - Connect to a specific CDP target by ID.
+   *                                     Pass null to auto-probe for the active chart.
+   * @param {string|null} registryFile - Path to per-monitor tab registry file.
+   *                                     If set and the tab is closed, a new tab is
+   *                                     created automatically and the registry updated.
+   */
+  constructor(targetId = null, registryFile = null) {
     this.client = null;
     this.connected = false;
-    this.port = 9222; // Default Chrome DevTools Protocol port
+    this.port = 9222;
+    this.targetId = targetId;
+    this.registryFile = registryFile;
     this.retryCount = 0;
     this.maxRetries = 3;
-    this.retryDelay = 1000; // ms
+    this.retryDelay = 1000;
+  }
+
+  /**
+   * Probes all CDP targets and returns chart targets with their current symbol.
+   * @returns {Promise<Array<{id, symbol, timeframe}>>}
+   */
+  static async probeChartTargets(port = 9222) {
+    const targets = await CDP.List({ port });
+    const chartTargets = targets.filter(
+      t => (t.type === 'page' || t.type === 'webview') && t.url?.includes('tradingview.com')
+    );
+    const results = [];
+    for (const t of chartTargets) {
+      try {
+        const probe = await CDP({ port, target: t.id });
+        await probe.Runtime.enable();
+        const { result } = await probe.Runtime.evaluate({
+          expression: `(function() {
+            const api = window.TradingViewApi;
+            if (!api) return null;
+            const widget = api._activeChartWidgetWV?._value;
+            const chart  = api.activeChart?.();
+            return {
+              symbol:    widget?.symbol?.() || chart?.symbol?.() || null,
+              timeframe: widget?.resolution?.() || chart?.resolution?.() || null,
+            };
+          })()`,
+          returnByValue: true,
+        });
+        await probe.close();
+        if (result?.value?.symbol) results.push({ id: t.id, ...result.value });
+      } catch (_) {}
+    }
+    return results;
+  }
+
+  /**
+   * Ensures a dedicated NIFTY spot chart tab exists for a monitor.
+   * Saves the tab ID in a per-monitor registry file so it survives restarts.
+   * Creates a new tab if the registered one is dead.
+   *
+   * @param {string} registryFile  e.g. './logs/pattern-tab.json'
+   * @param {number} port
+   * @returns {Promise<string>} target ID to pass into new CDPManager(targetId)
+   */
+  static async ensureMonitorTab(registryFile, port = 9222) {
+    const fs = await import('fs');
+
+    // Load saved tab ID from previous run
+    let savedId = null;
+    try { savedId = JSON.parse(fs.default.readFileSync(registryFile, 'utf8')).targetId; } catch (_) {}
+
+    // Check if the saved tab is still alive
+    const allTargets = await CDP.List({ port });
+    const liveIds = new Set(allTargets.map(t => t.id));
+    if (savedId && liveIds.has(savedId)) {
+      console.error(`[CDP] Reusing existing monitor tab ${savedId}`);
+      return savedId;
+    }
+
+    // Create a fresh tab cloned from an existing TradingView chart URL
+    const baseUrl = allTargets.find(t => t.url?.includes('tradingview.com/chart'))?.url;
+    if (!baseUrl) throw new Error('No TradingView chart URL found — is TradingView running?');
+
+    console.error('[CDP] Opening new monitor chart tab...');
+    const newTarget = await CDP.New({ port, url: baseUrl });
+    const client = await CDP({ port, target: newTarget.id });
+    await Promise.all([client.Page.enable(), client.Runtime.enable()]);
+
+    // Wait for TradingViewApi to be ready (up to 90s)
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      const r = await client.Runtime.evaluate({
+        expression: 'typeof window.TradingViewApi !== "undefined"',
+        returnByValue: true,
+      }).catch(() => ({ result: { value: false } }));
+      if (r?.result?.value === true) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    await client.close();
+
+    // Save registry
+    try { fs.default.mkdirSync('./logs', { recursive: true }); } catch (_) {}
+    fs.default.writeFileSync(registryFile, JSON.stringify({ targetId: newTarget.id }, null, 2));
+    console.error(`[CDP] New monitor tab ready: ${newTarget.id}`);
+    return newTarget.id;
   }
 
   isConnected() {
@@ -20,22 +115,52 @@ export class CDPManager {
     }
 
     try {
-      // Find the chart target specifically — TradingView Desktop has multiple targets
-      // (background pages, service workers, etc.) and the default first target may not
-      // be the chart page where window.TradingViewApi exists.
-      let target;
-      try {
+      let target = this.targetId;
+
+      // If we have a specific target, check it's still alive.
+      // If the tab was closed and we have a registry file, create a new tab.
+      if (target) {
+        const allTargets = await CDP.List({ port: this.port }).catch(() => []);
+        const alive = allTargets.some(t => t.id === target);
+        if (!alive) {
+          if (this.registryFile) {
+            console.error(`[CDP] Tab ${target.slice(0, 16)} was closed — creating new tab...`);
+            target = await CDPManager.ensureMonitorTab(this.registryFile, this.port);
+            this.targetId = target;
+          } else {
+            console.error(`[CDP] Tab ${target.slice(0, 16)} was closed — no registry file to recover`);
+          }
+        }
+      }
+
+      if (!target) {
+        // Auto-probe: find the chart target with window.TradingViewApi active.
         const targets = await CDP.List({ port: this.port });
-        const chartTarget = targets.find(
+        const chartTargets = targets.filter(
           (t) => t.type === 'page' && t.url?.includes('tradingview.com/chart')
         );
-        if (chartTarget) {
-          target = chartTarget.id;
-          console.error(`[CDP] Found chart target: ${chartTarget.url}`);
-        } else {
-          console.error(`[CDP] No chart target found — available: ${targets.map(t => t.url).join(', ')}`);
+        console.error(`[CDP] Found ${chartTargets.length} chart target(s) — probing for active API...`);
+        for (const t of chartTargets) {
+          try {
+            const probe = await CDP({ port: this.port, target: t.id });
+            await probe.Runtime.enable();
+            const result = await probe.Runtime.evaluate({
+              expression: 'typeof window.TradingViewApi !== "undefined"',
+              returnByValue: true,
+            });
+            await probe.close();
+            if (result?.result?.value === true) {
+              target = t.id;
+              console.error(`[CDP] Active chart API found on target ${t.id}`);
+              break;
+            }
+          } catch (_) {}
         }
-      } catch (_) {}
+        if (!target && chartTargets.length > 0) {
+          target = chartTargets[0].id;
+          console.error(`[CDP] No active API found — using first chart target`);
+        }
+      }
 
       this.client = await CDP({
         port: this.port,
