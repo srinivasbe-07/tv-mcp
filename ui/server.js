@@ -96,6 +96,21 @@ function broadcastStatus() {
   broadcast(stClients, 'status', s);
 }
 
+function broadcastPosition(pos) {
+  broadcast(patternClients, 'position', pos);
+  broadcast(stClients, 'position', pos);
+}
+
+// Watch position file — broadcast to all pages when monitor.js updates it
+fs.watch(POSITION_FILE, () => {
+  try {
+    const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    broadcastPosition(pos);
+  } catch (_) {
+    /* ignore */
+  }
+});
+
 // ── Pattern Monitor config ────────────────────────────────────────
 app.get('/api/config', (_req, res) => {
   try {
@@ -165,6 +180,7 @@ app.post('/api/st/position', (req, res) => {
     const updated = { ...current, ...req.body };
     fs.writeFileSync(POSITION_FILE, JSON.stringify(updated, null, 2));
     res.json({ ok: true });
+    broadcastPosition(updated);
     pushST(
       `[UI] Position updated — CE:${updated.CE?.toUpperCase()}  PE:${updated.PE?.toUpperCase()}`
     );
@@ -186,6 +202,12 @@ app.get('/api/events', (req, res) => {
     .slice(-50)
     .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
+  try {
+    const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
+  } catch (_) {
+    /* ignore */
+  }
   patternClients.push(res);
   req.on('close', () => {
     patternClients = patternClients.filter((c) => c !== res);
@@ -202,6 +224,12 @@ app.get('/api/st/events', (req, res) => {
     .slice(-50)
     .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
+  try {
+    const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
+  } catch (_) {
+    /* ignore */
+  }
   stClients.push(res);
   req.on('close', () => {
     stClients = stClients.filter((c) => c !== res);

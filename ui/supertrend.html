@@ -999,6 +999,18 @@
       const es = new EventSource('/api/st/events');
       es.addEventListener('log', (e) => appendLog(JSON.parse(e.data).line));
       es.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
+      es.addEventListener('position', (e) => {
+        const pos = JSON.parse(e.data);
+        ceState = pos.CE || 'closed';
+        peState = pos.PE || 'closed';
+        renderPosition();
+        updatePositionStats(ceState, peState);
+        if (pos.lastATM) document.getElementById('s-atm').textContent = pos.lastATM;
+        if (pos.lastInstrument) {
+          document.getElementById('s-instr').textContent = pos.lastInstrument;
+          document.getElementById('s-instr-sub').textContent = `ITM-${pos.lastITMDepth ?? '?'}`;
+        }
+      });
       es.onerror = () => {};
 
       loadConfig();
