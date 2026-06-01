@@ -521,7 +521,9 @@ async function main() {
   let bgCDP = null;
 
   try {
-    const tabId = await CDPManager.ensureMonitorTab('./logs/supertrend-tab.json');
+    const tabId = await CDPManager.ensureMonitorTab('./logs/supertrend-tab.json', 9222, [
+      './logs/pattern-tab.json',
+    ]);
     cdp = new CDPManager(tabId, './logs/supertrend-tab.json');
     await cdp.connect();
     log(`CDP connected (tab: ${tabId.slice(0, 16)})`);

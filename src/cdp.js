@@ -56,15 +56,17 @@ export class CDPManager {
   }
 
   /**
-   * Ensures a dedicated NIFTY spot chart tab exists for a monitor.
+   * Ensures a dedicated chart tab exists for a monitor.
    * Saves the tab ID in a per-monitor registry file so it survives restarts.
-   * Creates a new tab if the registered one is dead.
+   * On restart (saved tab gone), claims the first live chart tab not already
+   * owned by another monitor's registry file.
    *
-   * @param {string} registryFile  e.g. './logs/pattern-tab.json'
-   * @param {number} port
+   * @param {string}   registryFile   e.g. './logs/pattern-tab.json'
+   * @param {number}   port
+   * @param {string[]} otherRegistries  other monitors' registry files to avoid stealing their tab
    * @returns {Promise<string>} target ID to pass into new CDPManager(targetId)
    */
-  static async ensureMonitorTab(registryFile, port = 9222) {
+  static async ensureMonitorTab(registryFile, port = 9222, otherRegistries = []) {
     const fs = await import('fs');
 
     // Load saved tab ID from previous run
@@ -83,26 +85,27 @@ export class CDPManager {
       return savedId;
     }
 
-    // Create a fresh tab cloned from an existing TradingView chart URL
-    const baseUrl = allTargets.find((t) => t.url?.includes('tradingview.com/chart'))?.url;
-    if (!baseUrl) throw new Error('No TradingView chart URL found — is TradingView running?');
-
-    console.error('[CDP] Opening new monitor chart tab...');
-    const newTarget = await CDP.New({ port, url: baseUrl });
-    const client = await CDP({ port, target: newTarget.id });
-    await Promise.all([client.Page.enable(), client.Runtime.enable()]);
-
-    // Wait for TradingViewApi to be ready (up to 90s)
-    const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline) {
-      const r = await client.Runtime.evaluate({
-        expression: 'typeof window.TradingViewApi !== "undefined"',
-        returnByValue: true,
-      }).catch(() => ({ result: { value: false } }));
-      if (r?.result?.value === true) break;
-      await new Promise((r) => setTimeout(r, 1500));
+    // Collect tab IDs already claimed by other monitors
+    const claimedIds = new Set();
+    for (const reg of otherRegistries) {
+      try {
+        const id = JSON.parse(fs.default.readFileSync(reg, 'utf8')).targetId;
+        if (id) claimedIds.add(id);
+      } catch (_) {
+        /* ignore */
+      }
     }
-    await client.close();
+
+    // Pick the first live chart tab not already owned by another monitor
+    const chartTargets = allTargets.filter((t) => t.url?.includes('tradingview.com/chart'));
+    const unclaimed = chartTargets.find((t) => !claimedIds.has(t.id));
+
+    if (!unclaimed) {
+      const need = otherRegistries.length + 1;
+      throw new Error(
+        `No unclaimed chart tab available — open ${need} chart tab(s) in TradingView (one per monitor)`
+      );
+    }
 
     // Save registry
     try {
@@ -110,9 +113,9 @@ export class CDPManager {
     } catch (_) {
       /* ignore */
     }
-    fs.default.writeFileSync(registryFile, JSON.stringify({ targetId: newTarget.id }, null, 2));
-    console.error(`[CDP] New monitor tab ready: ${newTarget.id}`);
-    return newTarget.id;
+    fs.default.writeFileSync(registryFile, JSON.stringify({ targetId: unclaimed.id }, null, 2));
+    console.error(`[CDP] Claimed chart tab for this monitor: ${unclaimed.id}`);
+    return unclaimed.id;
   }
 
   isConnected() {

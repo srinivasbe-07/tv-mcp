@@ -1400,7 +1400,9 @@ async function main() {
   // switches back to NIFTY when done.
   let cdp;
   try {
-    const tabId = await CDPManager.ensureMonitorTab('./logs/pattern-tab.json');
+    const tabId = await CDPManager.ensureMonitorTab('./logs/pattern-tab.json', 9222, [
+      './logs/supertrend-tab.json',
+    ]);
     cdp = new CDPManager(tabId, './logs/pattern-tab.json');
     await cdp.connect();
     log(`CDP connected (tab: ${tabId.slice(0, 16)})`);
