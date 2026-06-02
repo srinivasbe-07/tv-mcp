@@ -395,9 +395,19 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
     await cdpChart.cdp
       .executeScript(
         `(async function() {
-          if (!document.querySelector('[data-name="alert-item-name"]')) {
-            const btn = document.querySelector('[data-name="alerts"]');
-            if (btn) { btn.click(); await new Promise(r => setTimeout(r, 800)); }
+          const btn = document.querySelector('[data-name="alerts"]');
+          if (!btn) return;
+          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
+          if (!hasItems()) {
+            const isActive = btn.classList.toString().includes('active') ||
+                             btn.getAttribute('aria-selected') === 'true' ||
+                             !!document.querySelector('[data-name="set-alert-button"]');
+            if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
+            btn.click();
+            for (let i = 0; i < 12; i++) {
+              await new Promise(r => setTimeout(r, 250));
+              if (hasItems()) break;
+            }
           }
         })()`
       )

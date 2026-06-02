@@ -649,22 +649,40 @@ export class AlertTools {
       const { alertName, symbol } = args;
       if (!alertName || !symbol) return this.error('alertName and symbol are required');
 
-      // Step 0: Ensure the Alerts panel is open and visible.
-      // Chart symbol switches (e.g. to NSE:NIFTY) can cause TradingView to hide
-      // or switch away from the Alerts panel. Click [data-name="alerts"] if needed,
-      // then wait for alert items to be fully rendered in the DOM.
+      // Step 0: Ensure the Alerts panel is active and showing items.
+      // Handles 3 problem states:
+      //   (a) Panel closed — click to open
+      //   (b) Panel collapsed — click to expand
+      //   (c) Log/Trade History tab selected — click alerts button to switch back
+      // Always activate the Alerts button rather than only when items are missing.
       await this.cdp.executeScript(`
         (async function() {
-          const hasItems = document.querySelector('[data-name="alert-item-name"]');
-          if (!hasItems) {
-            const btn = document.querySelector('[data-name="alerts"]');
-            if (btn) {
+          const btn = document.querySelector('[data-name="alerts"]');
+          if (!btn) return;
+
+          // Check if alerts panel is already active and showing items
+          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
+
+          if (!hasItems()) {
+            // Panel not showing items — could be closed, collapsed, or another tab is active.
+            // Check if button appears inactive (panel is closed/different tab).
+            const isActive = btn.classList.toString().includes('active') ||
+                             btn.getAttribute('aria-selected') === 'true' ||
+                             btn.getAttribute('aria-pressed') === 'true' ||
+                             !!document.querySelector('[data-name="set-alert-button"]');
+
+            if (isActive) {
+              // Panel appears open but no items — collapsed or filtered empty.
+              // Close and reopen to reset state.
               btn.click();
-              // Wait for items to render — poll up to 3 seconds
-              for (let i = 0; i < 12; i++) {
-                await new Promise(r => setTimeout(r, 250));
-                if (document.querySelector('[data-name="alert-item-name"]')) break;
-              }
+              await new Promise(r => setTimeout(r, 400));
+            }
+            // Open / switch to Alerts panel
+            btn.click();
+            // Poll up to 4 seconds for items to render
+            for (let i = 0; i < 16; i++) {
+              await new Promise(r => setTimeout(r, 250));
+              if (hasItems()) break;
             }
           }
         })()
