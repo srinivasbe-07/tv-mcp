@@ -443,7 +443,7 @@ function buildSymbolTest(cfg, strike, type) {
 }
 
 app.post('/api/test/supertrend', async (req, res) => {
-  const { instr = 'NIFTY', spot: spotOverride = null, itmOverride = null } = req.body;
+  const { instr = 'NIFTY', spot: spotOverride = null, itmOverride = null, side = null } = req.body;
   const instrName = instr.toUpperCase();
   const cfg = INSTRUMENTS_TEST[instrName];
   if (!cfg) return res.status(400).json({ error: `Unknown instrument: ${instrName}` });
@@ -506,12 +506,13 @@ app.post('/api/test/supertrend', async (req, res) => {
     log(`Spot: ${spot}   ATM: ${atm}   ITM-${itmDepth}`);
     log(`CE → ${ceSymbol}   PE → ${peSymbol}`);
 
-    const tests = [
+    const allTests = [
       { name: alertDefs.CE.entry, symbol: ceSymbol, side: 'CE', role: 'entry' },
       { name: alertDefs.CE.exit, symbol: ceSymbol, side: 'CE', role: 'exit' },
       { name: alertDefs.PE.entry, symbol: peSymbol, side: 'PE', role: 'entry' },
       { name: alertDefs.PE.exit, symbol: peSymbol, side: 'PE', role: 'exit' },
     ];
+    const tests = side ? allTests.filter((t) => t.side === side.toUpperCase()) : allTests;
 
     const results = [];
     for (const t of tests) {

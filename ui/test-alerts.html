@@ -223,6 +223,21 @@
         background: #1a1d27;
         color: #4b5563;
       }
+      .btn-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .run-btn-ce {
+        background: #052e16;
+        color: #4ade80;
+        border-color: #166534;
+      }
+      .run-btn-pe {
+        background: #7f1d1d;
+        color: #fca5a5;
+        border-color: #991b1b;
+      }
       .log-panel {
         background: #0a0c12;
         border: 1px solid #1e2130;
@@ -284,9 +299,10 @@
           </select>
         </div>
 
-        <button class="run-btn" id="nifty-btn" onclick="runTest('NIFTY')">
-          ▶ Test NIFTY Alerts
-        </button>
+        <div class="btn-row">
+          <button class="run-btn run-btn-ce" id="nifty-ce-btn" onclick="runTest('NIFTY','CE')">▶ Test CE</button>
+          <button class="run-btn run-btn-pe" id="nifty-pe-btn" onclick="runTest('NIFTY','PE')">▶ Test PE</button>
+        </div>
 
         <div class="results" id="nifty-results">
           <div class="result-row">
@@ -340,9 +356,10 @@
           </select>
         </div>
 
-        <button class="run-btn" id="sensex-btn" onclick="runTest('SENSEX')">
-          ▶ Test SENSEX Alerts
-        </button>
+        <div class="btn-row">
+          <button class="run-btn run-btn-ce" id="sensex-ce-btn" onclick="runTest('SENSEX','CE')">▶ Test CE</button>
+          <button class="run-btn run-btn-pe" id="sensex-pe-btn" onclick="runTest('SENSEX','PE')">▶ Test PE</button>
+        </div>
 
         <div class="results" id="sensex-results">
           <div class="result-row">
@@ -423,22 +440,35 @@
         sumEl.textContent = 'Running...';
       }
 
-      async function runTest(instr) {
+      async function runTest(instr, side = null) {
         const i = instr.toLowerCase();
-        const btn = document.getElementById(`${i}-btn`);
+        const activeRoles = side
+          ? ROLES.filter((r) => r.startsWith(side.toLowerCase() + '-'))
+          : ROLES;
+        const btnId = side ? `${i}-${side.toLowerCase()}-btn` : `${i}-btn`;
+        const btn = document.getElementById(btnId);
         btn.disabled = true;
-        resetCard(instr);
-        ROLES.forEach((r) => setStatus(instr, r, '', '…', 's-running'));
+
+        activeRoles.forEach((r) => setStatus(instr, r, '—', '·', 's-wait'));
+        const logEl = document.getElementById(`${i}-log`);
+        logEl.innerHTML = '';
+        logEl.classList.add('hidden');
+        const sumEl = document.getElementById(`${i}-summary`);
+        sumEl.className = 'summary sum-idle';
+        sumEl.textContent = 'Running...';
+
+        activeRoles.forEach((r) => setStatus(instr, r, '', '…', 's-running'));
 
         const spot = parseFloat(document.getElementById(`${i}-spot`).value) || null;
         const itmVal = document.getElementById(`${i}-itm`).value;
         const itmOverride = itmVal !== '' ? parseInt(itmVal) : null;
+        const total = activeRoles.length;
 
         try {
           const response = await fetch('/api/test/supertrend', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instr, spot, itmOverride }),
+            body: JSON.stringify({ instr, spot, itmOverride, side }),
           });
 
           const reader = response.body.getReader();
@@ -478,12 +508,12 @@
               } else if (eventType === 'done') {
                 const sumEl = document.getElementById(`${i}-summary`);
                 if (parsed.error) {
-                  ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
+                  activeRoles.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
                   sumEl.className = 'summary sum-fail';
                   sumEl.textContent = parsed.error;
                 } else if (failed === 0) {
                   sumEl.className = 'summary sum-ok';
-                  sumEl.textContent = `All 4 alerts updated ✓  (spot: ${parsed.spot}  ATM: ${parsed.atm}  ITM-${parsed.itmDepth})`;
+                  sumEl.textContent = `All ${total} alerts updated ✓  (spot: ${parsed.spot}  ATM: ${parsed.atm}  ITM-${parsed.itmDepth})`;
                 } else {
                   sumEl.className = 'summary sum-fail';
                   sumEl.textContent = `${passed} passed, ${failed} failed — check alert names in TradingView`;
@@ -492,7 +522,7 @@
             }
           }
         } catch (e) {
-          ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
+          activeRoles.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
           document.getElementById(`${i}-summary`).className = 'summary sum-fail';
           document.getElementById(`${i}-summary`).textContent = 'Server error: ' + e.message;
         } finally {
