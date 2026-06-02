@@ -708,27 +708,6 @@
 
       <div class="divider"></div>
 
-      <!-- Supertrend Monitor -->
-      <div class="proc-group">
-        <div class="proc-label">SUPERTREND</div>
-        <div class="status-dot dot-stopped" id="st-dot"></div>
-        <div class="proc-status text-gray" id="st-status">Stopped</div>
-        <button class="hdr-btn btn-green" id="btn-st-toggle" onclick="stStart()" disabled>
-          ▶ Start
-        </button>
-        <button
-          class="hdr-btn btn-blue"
-          id="btn-st-restart"
-          onclick="confirm2('Restart Supertrend Monitor?', stRestart)"
-          disabled
-          style="display: none"
-        >
-          ↺ Restart
-        </button>
-      </div>
-
-      <div class="divider"></div>
-
       <div class="spacer"></div>
 
       <div class="monitor-chip chip-stopped" id="active-chip">⏸ STOPPED</div>
@@ -1145,32 +1124,6 @@
           btnMonT.disabled = !tvRunning;
           btnMonR.style.display = 'none';
           renderActiveChip(false);
-        }
-
-        // Supertrend Monitor
-        const stDot = document.getElementById('st-dot');
-        const stStat = document.getElementById('st-status');
-        const btnStT = document.getElementById('btn-st-toggle');
-        const btnStR = document.getElementById('btn-st-restart');
-        if (s.st === 'running') {
-          stDot.className = 'status-dot dot-running';
-          stStat.className = 'proc-status text-green';
-          stStat.textContent = 'Running';
-          btnStT.textContent = '■ Stop';
-          btnStT.className = 'hdr-btn btn-red';
-          btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop);
-          btnStT.disabled = false;
-          btnStR.style.display = '';
-          btnStR.disabled = false;
-        } else {
-          stDot.className = 'status-dot dot-stopped';
-          stStat.className = 'proc-status text-gray';
-          stStat.textContent = 'Stopped';
-          btnStT.textContent = '▶ Start';
-          btnStT.className = 'hdr-btn btn-green';
-          btnStT.onclick = stStart;
-          btnStT.disabled = !tvRunning;
-          btnStR.style.display = 'none';
         }
       }
 

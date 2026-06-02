@@ -539,27 +539,6 @@
       </div>
 
       <div class="divider"></div>
-
-      <!-- Pattern Monitor -->
-      <div class="proc-group">
-        <div class="proc-label">PATTERN</div>
-        <div class="status-dot dot-stopped" id="mon-dot"></div>
-        <div class="proc-status text-gray" id="mon-status">Stopped</div>
-        <button class="hdr-btn btn-green" id="btn-mon-toggle" onclick="monStart()" disabled>
-          ▶ Start
-        </button>
-        <button
-          class="hdr-btn btn-blue"
-          id="btn-mon-restart"
-          onclick="confirm2('Restart Pattern Monitor?', monRestart)"
-          disabled
-          style="display: none"
-        >
-          ↺ Restart
-        </button>
-      </div>
-
-      <div class="divider"></div>
       <div class="spacer"></div>
 
       <div class="pos-chips">
@@ -887,33 +866,6 @@
           btnStT.onclick = stStart;
           btnStT.disabled = !tvRunning;
           btnStR.style.display = 'none';
-        }
-
-        // Pattern Monitor
-        const monDot = document.getElementById('mon-dot');
-        const monStat = document.getElementById('mon-status');
-        const btnMonT = document.getElementById('btn-mon-toggle');
-        const btnMonR = document.getElementById('btn-mon-restart');
-        if (s.monitor === 'running') {
-          monDot.className = 'status-dot dot-running';
-          monStat.className = 'proc-status text-green';
-          monStat.textContent = 'Running';
-          btnMonT.textContent = '■ Stop';
-          btnMonT.className = 'hdr-btn btn-red';
-          btnMonT.onclick = () => confirm2('Stop Pattern Monitor?', monStop);
-          btnMonT.disabled = false;
-          btnMonR.style.display = '';
-          btnMonR.disabled = false;
-        } else {
-          monDot.className = 'status-dot dot-stopped';
-          monStat.className = 'proc-status text-gray';
-          monStat.textContent = 'Stopped';
-          btnMonT.textContent = '▶ Start';
-          btnMonT.className = 'hdr-btn btn-green';
-          btnMonT.onclick = monStart;
-          btnMonS.disabled = !tvRunning;
-          btnMonX.disabled = true;
-          btnMonR.style.display = 'none';
         }
       }
 
