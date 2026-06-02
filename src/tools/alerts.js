@@ -231,38 +231,45 @@ export class AlertTools {
             await new Promise(r => setTimeout(r, 400));
             const priceVerified = priceInput.value === String(${level});
 
-            // Step 5: Set "Only Once" frequency if requested.
-            // Poll up to 2s for the frequency buttons to render.
+            // Step 5: Set trigger frequency.
+            // TV may carry over the previous alert's frequency setting, so always set explicitly.
             let onceBtnFound = false;
             let onceOptions = [];
-            if (${fireOnce}) {
-              // Frequency is a combo/dropdown. Default shows "Once Per Bar".
-              // Step 1: find the combo trigger by its current text and click to open it.
+            {
               const isVis2 = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+              const targetLabel = ${fireOnce} ? 'once only' : 'every time';
+
+              // Find the frequency combo — shows current selection text
               const freqCombo = Array.from(document.querySelectorAll('button, [class*="select-"], [role="combobox"], [role="button"]'))
-                .find(el => isVis2(el) && (el.innerText || el.textContent || '').trim().toLowerCase().includes('once per bar'));
+                .find(el => isVis2(el) && (() => {
+                  const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                  return t.includes('every time') || t.includes('once per bar') || t.includes('once only');
+                })());
 
               if (freqCombo) {
-                freqCombo.click();
-                await new Promise(r => setTimeout(r, 400));
+                const currentTxt = (freqCombo.innerText || freqCombo.textContent || '').trim().toLowerCase();
+                if (!currentTxt.includes(targetLabel)) {
+                  freqCombo.click();
+                  await new Promise(r => setTimeout(r, 400));
 
-                // Step 2: find "Only once" in the opened dropdown list
-                const dropItems = Array.from(document.querySelectorAll('[role="option"], [class*="item-"], li'))
-                  .filter(el => isVis2(el));
-                onceOptions = dropItems.map(el => (el.innerText || el.textContent || '').trim()).filter(Boolean).slice(0, 20);
+                  const dropItems = Array.from(document.querySelectorAll('[role="option"], [class*="item-"], li'))
+                    .filter(el => isVis2(el));
+                  onceOptions = dropItems.map(el => (el.innerText || el.textContent || '').trim()).filter(Boolean).slice(0, 20);
 
-                const onceItem = dropItems.find(el => {
-                  const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
-                  return txt === 'only once' || txt.includes('only once');
-                });
+                  const targetItem = dropItems.find(el => {
+                    const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return txt.startsWith(targetLabel);
+                  });
 
-                if (onceItem) {
-                  onceItem.click();
-                  onceBtnFound = true;
-                  await new Promise(r => setTimeout(r, 300));
+                  if (targetItem) {
+                    targetItem.click();
+                    onceBtnFound = true;
+                    await new Promise(r => setTimeout(r, 300));
+                  } else {
+                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                  }
                 } else {
-                  // Close dropdown without selecting
-                  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                  onceBtnFound = true; // already correct
                 }
               } else {
                 onceOptions = ['freq-combo-not-found'];
