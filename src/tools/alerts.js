@@ -658,10 +658,31 @@ export class AlertTools {
       const step0Diag = await this.cdp.executeScript(`
         (async function() {
           const btn = document.querySelector('[data-name="alerts"]');
-          if (!btn) return { skipped: 'no alerts button' };
+
+          // Capture context info regardless of btn state
+          const visibleAlertNames = Array.from(document.querySelectorAll('[data-name]'))
+            .filter(el => el.offsetParent !== null)
+            .map(el => el.getAttribute('data-name'))
+            .filter(n => n && n.toLowerCase().includes('alert'))
+            .slice(0, 20);
+
+          if (!btn) return {
+            skipped: 'no alerts button',
+            url: window.location.href.slice(0, 80),
+            visibleAlertNames,
+          };
 
           const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-          const diag = { hasItems: hasItems(), logListFound: false, tabsFound: [], clicked: null };
+          const diag = {
+            url: window.location.href.slice(0, 80),
+            hasItems: hasItems(),
+            btnClasses: btn.className.slice(0, 80),
+            setAlertBtn: !!document.querySelector('[data-name="set-alert-button"]'),
+            visibleAlertNames,
+            logListFound: false,
+            tabsFound: [],
+            clicked: null,
+          };
 
           if (!hasItems()) {
             const logList = document.querySelector('[data-name="alert-log-list"]');
