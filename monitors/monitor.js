@@ -10,8 +10,10 @@
  * only when ATM shifts or the instrument changes day-to-day.
  *
  * Position state is tracked by reading TradingView's alert history:
- *   supertrendLongEntry / supertrendshortEntry  → position OPEN
- *   supertrendLongExit  / supertrendShortExit   → position CLOSED
+ *   niftySupertrendLongEntry  / niftySupertrendShortEntry  → CE/PE OPEN  (NIFTY days)
+ *   niftySupertrendLongExit   / niftySupertrendShortExit   → CE/PE CLOSED (NIFTY days)
+ *   sensexSupertrendLongEntry / sensexSupertrendShortEntry → CE/PE OPEN  (SENSEX days)
+ *   sensexSupertrendLongExit  / sensexSupertrendShortExit  → CE/PE CLOSED (SENSEX days)
  *
  * Usage:  node monitor.js
  *         node monitor.js --ce open      (manual override: mark CE as open)
@@ -49,8 +51,16 @@ const LOG_FILE = './logs/monitor.log';
 fs.mkdirSync('./logs', { recursive: true });
 const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
 
-const CE_ALERTS = { entry: 'supertrendLongEntry', exit: 'supertrendLongExit' };
-const PE_ALERTS = { entry: 'supertrendshortEntry', exit: 'supertrendShortExit' };
+const ALERT_NAMES = {
+  NIFTY: {
+    CE: { entry: 'niftySupertrendLongEntry', exit: 'niftySupertrendLongExit' },
+    PE: { entry: 'niftySupertrendShortEntry', exit: 'niftySupertrendShortExit' },
+  },
+  SENSEX: {
+    CE: { entry: 'sensexSupertrendLongEntry', exit: 'sensexSupertrendLongExit' },
+    PE: { entry: 'sensexSupertrendShortEntry', exit: 'sensexSupertrendShortExit' },
+  },
+};
 
 // Day-of-week instrument routing (IST weekday: 1=Mon … 5=Fri)
 export const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
@@ -358,8 +368,8 @@ const ALERT_HISTORY_SCRIPT = `
 // ---------------------------------------------------------------------------
 // Core logic
 // ---------------------------------------------------------------------------
-async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg) {
-  const alertDefs = side === 'CE' ? CE_ALERTS : PE_ALERTS;
+async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
+  const alertDefs = ALERT_NAMES[instrName]?.[side] ?? ALERT_NAMES.NIFTY[side];
   const symbol = buildSymbol(cfg, strike, side);
   const results = [];
 
@@ -431,25 +441,30 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
     seenSet.add(key);
 
     const name = item.name;
-    if (name === CE_ALERTS.entry) {
+    const isCEEntry = Object.values(ALERT_NAMES).some((a) => a.CE.entry === name);
+    const isCEExit = Object.values(ALERT_NAMES).some((a) => a.CE.exit === name);
+    const isPEEntry = Object.values(ALERT_NAMES).some((a) => a.PE.entry === name);
+    const isPEExit = Object.values(ALERT_NAMES).some((a) => a.PE.exit === name);
+
+    if (isCEEntry) {
       if (stateObj.CE !== 'open') {
         stateObj.CE = 'open';
         changed = true;
         log(`[POSITION] CE OPENED  (alert: ${name})`);
       }
-    } else if (name === CE_ALERTS.exit) {
+    } else if (isCEExit) {
       if (stateObj.CE !== 'closed') {
         stateObj.CE = 'closed';
         changed = true;
         log(`[POSITION] CE CLOSED  (alert: ${name})`);
       }
-    } else if (name === PE_ALERTS.entry) {
+    } else if (isPEEntry) {
       if (stateObj.PE !== 'open') {
         stateObj.PE = 'open';
         changed = true;
         log(`[POSITION] PE OPENED  (alert: ${name})`);
       }
-    } else if (name === PE_ALERTS.exit) {
+    } else if (isPEExit) {
       if (stateObj.PE !== 'closed') {
         stateObj.PE = 'closed';
         changed = true;
@@ -486,8 +501,9 @@ async function main() {
   console.log(
     `Strike step        : ${todayInstr.strikeInterval}  |  ITM depth : ${todayInstr.itmDepth}  |  Poll : ${POLL_MS / 1000}s`
   );
-  console.log(`CE alerts          : ${CE_ALERTS.entry} / ${CE_ALERTS.exit}`);
-  console.log(`PE alerts          : ${PE_ALERTS.entry} / ${PE_ALERTS.exit}`);
+  const todayAlerts = ALERT_NAMES[todayInstr.name] ?? ALERT_NAMES.NIFTY;
+  console.log(`CE alerts          : ${todayAlerts.CE.entry} / ${todayAlerts.CE.exit}`);
+  console.log(`PE alerts          : ${todayAlerts.PE.entry} / ${todayAlerts.PE.exit}`);
   console.log(`Position state     : CE=${state.CE.toUpperCase()}  PE=${state.PE.toUpperCase()}`);
   const startConfig = loadConfig();
   const startConfigItm = [0, 1, 2].includes(startConfig.itmOverride)
@@ -669,21 +685,19 @@ async function main() {
       const ceStrike = atm - itmDepth * cfg.strikeInterval;
       const peStrike = atm + itmDepth * cfg.strikeInterval;
 
-      // 4. Update CE alerts — switch tab to CE option, update, switch back to NIFTY
+      // 4. Update CE alerts — switch tab to CE option, update, switch back to spot
       if (state.CE === 'closed') {
         log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
-        await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg);
-        // Switch back to NIFTY spot after CE operations
+        await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg, instrName);
         await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       } else {
         log(`CE position OPEN — skipping CE symbol update`);
       }
 
-      // 5. Update PE alerts — switch tab to PE option, update, switch back to NIFTY
+      // 5. Update PE alerts — switch tab to PE option, update, switch back to spot
       if (state.PE === 'closed') {
         log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
-        await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg);
-        // Switch back to NIFTY spot after PE operations
+        await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
         await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       } else {
         log(`PE position OPEN — skipping PE symbol update`);
