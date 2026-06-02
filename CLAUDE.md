@@ -54,6 +54,105 @@ Edit and save — changes apply instantly (no restart needed).
 
 ---
 
+## Pattern Monitor
+
+### What It Does
+
+Watches candlestick patterns forming inside a configured price zone. When a reversal pattern appears, it automatically creates 3 TradingView alerts (Entry, SL, Target) on the relevant option or spot symbol.
+
+### Patterns Detected
+
+| Pattern           | Bias    | Condition                                              |
+| ----------------- | ------- | ------------------------------------------------------ |
+| Hammer            | up      | Long lower wick ≥ 2× body, small upper wick            |
+| Bullish Engulfing | up      | Current green candle fully engulfs previous red candle |
+| Doji              | up/down | Body ≤ 10% of total range                              |
+| Shooting Star     | down    | Long upper wick ≥ 2× body, small lower wick            |
+
+### On Every Candle Close It
+
+1. Reads last completed candle (configurable timeframe, default 3-min)
+2. Checks if candle is **inside the zone** — if not, skips
+3. In **Options Mode**: switches to the ITM option chart, reads option candles for pattern detection
+4. Detects pattern on candle (option candle in options mode, spot candle otherwise)
+5. If pattern found → creates 3 alerts (Entry, SL, Target) and logs `[SIGNAL]`
+6. Watches 15-min candles for **liquidity grab** near key levels → auto-flips bias
+7. Checks if TradeSL or TradeTarget fired → cleans up all 3 alerts on exit
+8. Trails SL to breakeven once price reaches entry + trail points
+
+### Alerts Created on Signal
+
+| Name          | Condition    | Level                                | Fires |
+| ------------- | ------------ | ------------------------------------ | ----- |
+| `TradeEntry`  | crosses up   | Candle HIGH                          | Once  |
+| `TradeSL`     | crosses down | Candle LOW (or config `sl`)          | Once  |
+| `TradeTarget` | crosses up   | Config `target` (or auto swing high) | Once  |
+
+### Options Mode
+
+When `optionsMode: true` in config (and no custom `symbol`):
+
+- Spot enters zone → monitor switches chart to the **ITM option** (CE for bias=up, PE for bias=down)
+- Pattern detection runs on **option candles**, not spot candles
+- Alerts are created on the option symbol (e.g. `NIFTY260603C23300`)
+- ITM depth: Fri = ITM-1, Mon/Tue = ITM-2, SENSEX = ITM-2
+- Target 0 = auto (uses swing high from recent option bars)
+
+### Liquidity Grab & Bias Auto-Flip
+
+Monitors 15-min candles for a wick that reaches/exceeds a key level but closes back:
+
+- **bias=up**: wick above a resistance level + Shooting Star or Doji + closes below level → flip to `down`
+- **bias=down**: wick below a support level + Hammer or Doji + closes above level → flip to `up`
+
+Key levels used = last 10 days H/L (auto-fetched daily) + `importantLevels` from config.
+
+### Trail SL to Breakeven
+
+When price reaches `entry + trailToCostPoints`, TradeSL is moved to entry (breakeven):
+
+- NIFTY default: 15 pts
+- SENSEX default: 35 pts
+- Crypto/custom: disabled (0)
+- Set `trailToCostPoints: 0` in config to disable
+
+### Chart Drawings
+
+The monitor draws directly on TradingView:
+
+- **Zone** — box between zone top and bottom (blue = up bias, red = down bias)
+- **Important levels** — horizontal lines at each `importantLevels` price
+- **Nearest day level** — closest resistance (above price) and support (below price) from last 10 days
+- Drawings persist across restarts via `logs/drawn-ids.json`
+- Lines can be **dragged** on chart — drag sync writes new price back to config automatically
+
+### Config (`config/pattern-monitor-config.json`)
+
+| Field               | Example          | Notes                                                    |
+| ------------------- | ---------------- | -------------------------------------------------------- |
+| `bias`              | `"up"`           | `up` = buy CE/call, `down` = sell PE/put                 |
+| `zone`              | `[23356, 23293]` | Entry zone — order doesn't matter                        |
+| `target`            | `23500`          | Profit target price (0 = auto in options mode)           |
+| `sl`                | `0`              | Stop loss price (0 = auto candle extreme)                |
+| `importantLevels`   | `[23600]`        | Key S/R levels for liquidity grab detection              |
+| `active`            | `true`           | false = paused (no pattern detection)                    |
+| `candleTimeframe`   | `3`              | Candle size: 1, 3, 5, or 15 min                          |
+| `optionsMode`       | `true`           | Watch ITM option chart for patterns                      |
+| `itmOverride`       | `null`           | null = auto day rule, 0 = ATM, 1 = ITM-1, 2 = ITM-2      |
+| `trailToCostPoints` | `15`             | Points above entry to trail SL to breakeven (0 = off)    |
+| `ignoreMarketHours` | `false`          | true = run 24/7 (for crypto)                             |
+| `symbol`            | `"BTCUSD"`       | Override instrument (omit for NIFTY/SENSEX auto routing) |
+
+Config changes apply on the next candle close — no restart needed.
+
+### What It Does NOT Do
+
+- Does not manage Supertrend alerts — that is the Supertrend Monitor's job
+- Does not place orders — only creates TradingView alerts
+- Does not detect bearish patterns (Shooting Star, Bearish Engulfing) for entries — bias determines direction
+
+---
+
 ## Supertrend Monitor
 
 ### What It Does
