@@ -434,7 +434,7 @@ async function createTradeAlerts(
     name: 'TradeSL',
     message: exitMsg,
     webhook,
-    once: true,
+    once: false,
   });
   if (!d2) {
     log('  [FAIL] TradeSL failed after all retries — deleting TradeEntry, no trade');
@@ -452,7 +452,7 @@ async function createTradeAlerts(
     name: 'TradeTarget',
     message: exitMsg,
     webhook,
-    once: true,
+    once: false,
   });
   if (!d3) {
     log('  [FAIL] TradeTarget failed after all retries — deleting TradeEntry + TradeSL, no trade');

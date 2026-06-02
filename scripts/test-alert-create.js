@@ -177,16 +177,16 @@ try {
   const exitMsg  = token ? JSON.stringify({ access_token: token, alert_name: 'Exit'  }) : '';
 
   const alerts = [
-    { name: 'TradeEntry',  condition: 'crosses_up',   level: entry,  message: entryMsg, once: true },
-    { name: 'TradeSL',     condition: 'crosses_down',  level: sl,     message: exitMsg,  once: true },
-    { name: 'TradeTarget', condition: 'crosses_up',    level: target, message: exitMsg,  once: true },
+    { name: 'TradeEntry',  condition: 'crosses_up',   level: entry,  message: entryMsg, once: true  },
+    { name: 'TradeSL',     condition: 'crosses_down',  level: sl,     message: exitMsg,  once: false },
+    { name: 'TradeTarget', condition: 'crosses_up',    level: target, message: exitMsg,  once: false },
   ];
 
   console.log('─────────────────────────────────────────────────');
   console.log(`Symbol  : ${symbol}`);
   console.log(`Entry   : ${entry}  (crosses UP,   once)`);
-  console.log(`SL      : ${sl}  (crosses DOWN, once)`);
-  console.log(`Target  : ${target}  (crosses UP,   once)`);
+  console.log(`SL      : ${sl}  (crosses DOWN, every time)`);
+  console.log(`Target  : ${target}  (crosses UP,   every time)`);
   console.log(`Webhook : ${webhook || '(none)'}`);
   console.log('─────────────────────────────────────────────────\n');
 
