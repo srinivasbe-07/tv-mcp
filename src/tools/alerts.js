@@ -258,7 +258,7 @@ export class AlertTools {
                   .filter(t => t && t.length < 40).slice(0, 30);
                 onceBtn = els.find(el => {
                   const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
-                  return txt === 'only once' || txt === 'once' || txt.includes('only once');
+                  return txt === 'only once' || txt.includes('only once');
                 });
                 if (onceBtn) break;
               }
