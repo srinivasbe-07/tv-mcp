@@ -95,7 +95,9 @@ export const INSTRUMENTS = {
 };
 
 // IST = UTC + 5h30m
-const MARKET_OPEN_MIN = 9 * 60 + 15; // 09:15
+// Start at 09:10 (pre-open) so alerts are updated from indicative price
+// before Pine Script can fire at 09:15 market open.
+const MARKET_OPEN_MIN = 9 * 60 + 10; // 09:10 pre-open
 const MARKET_CLOSE_MIN = 15 * 60 + 30; // 15:30
 
 // ---------------------------------------------------------------------------
