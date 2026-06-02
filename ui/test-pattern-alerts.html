@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pattern Alert Test</title>
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
       body {
         font-family: 'Segoe UI', system-ui, sans-serif;
         background: #0f1117;
@@ -24,8 +28,14 @@
         gap: 12px;
         flex-shrink: 0;
       }
-      .logo { font-size: 14px; font-weight: 700; color: #fff; }
-      .logo span { color: #fb923c; }
+      .logo {
+        font-size: 14px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .logo span {
+        color: #fb923c;
+      }
       .nav-link {
         font-size: 11px;
         color: #6b7280;
@@ -34,7 +44,10 @@
         border-radius: 5px;
         border: 1px solid #2a2d3a;
       }
-      .nav-link:hover { color: #d1d5db; border-color: #4b5563; }
+      .nav-link:hover {
+        color: #d1d5db;
+        border-color: #4b5563;
+      }
       .main {
         flex: 1;
         padding: 20px;
@@ -69,9 +82,18 @@
         border-radius: 10px;
         letter-spacing: 0.5px;
       }
-      .badge-nifty  { background: #1e3a5f; color: #93c5fd; }
-      .badge-sensex { background: #2e1065; color: #a78bfa; }
-      .day-note { font-size: 10px; color: #6b7280; }
+      .badge-nifty {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .badge-sensex {
+        background: #2e1065;
+        color: #a78bfa;
+      }
+      .day-note {
+        font-size: 10px;
+        color: #6b7280;
+      }
       label {
         display: block;
         font-size: 11px;
@@ -79,7 +101,8 @@
         margin-bottom: 3px;
         font-weight: 500;
       }
-      input[type='number'], select {
+      input[type='number'],
+      select {
         width: 100%;
         background: #0f1117;
         border: 1px solid #2a2d3a;
@@ -89,8 +112,15 @@
         padding: 6px 9px;
         outline: none;
       }
-      input:focus, select:focus { border-color: #ea580c; }
-      .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      input:focus,
+      select:focus {
+        border-color: #ea580c;
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
       .run-btn {
         width: 100%;
         padding: 9px;
@@ -104,9 +134,18 @@
         letter-spacing: 0.5px;
         transition: opacity 0.15s;
       }
-      .run-btn:hover { opacity: 0.85; }
-      .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-      .results { display: flex; flex-direction: column; gap: 6px; }
+      .run-btn:hover {
+        opacity: 0.85;
+      }
+      .run-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .results {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
       .result-row {
         display: flex;
         align-items: center;
@@ -125,22 +164,57 @@
         min-width: 48px;
         text-align: center;
       }
-      .role-entry  { background: #052e16; color: #4ade80; }
-      .role-sl     { background: #7f1d1d; color: #fca5a5; }
-      .role-target { background: #1e3a5f; color: #93c5fd; }
-      .result-name  { flex: 1; color: #9ca3af; font-size: 10px; }
-      .result-level { color: #fb923c; font-size: 10px; min-width: 50px; text-align: right; }
+      .role-entry {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .role-sl {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .role-target {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .result-name {
+        flex: 1;
+        color: #9ca3af;
+        font-size: 10px;
+      }
+      .result-level {
+        color: #fb923c;
+        font-size: 10px;
+        min-width: 50px;
+        text-align: right;
+      }
       .result-status {
         font-size: 11px;
         font-weight: 700;
         min-width: 24px;
         text-align: center;
       }
-      .s-ok      { color: #4ade80; }
-      .s-fail    { color: #f87171; }
-      .s-wait    { color: #6b7280; }
-      .s-running { color: #facc15; animation: pulse 1s infinite; }
-      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      .s-ok {
+        color: #4ade80;
+      }
+      .s-fail {
+        color: #f87171;
+      }
+      .s-wait {
+        color: #6b7280;
+      }
+      .s-running {
+        color: #facc15;
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
       .summary {
         font-size: 12px;
         text-align: center;
@@ -148,9 +222,18 @@
         border-radius: 6px;
         font-weight: 600;
       }
-      .sum-ok   { background: #052e16; color: #4ade80; }
-      .sum-fail { background: #7f1d1d; color: #fca5a5; }
-      .sum-idle { background: #1a1d27; color: #4b5563; }
+      .sum-ok {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .sum-fail {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .sum-idle {
+        background: #1a1d27;
+        color: #4b5563;
+      }
       .log-panel {
         background: #0a0c12;
         border: 1px solid #1e2130;
@@ -162,16 +245,24 @@
         flex-direction: column;
         gap: 1px;
       }
-      .log-panel.hidden { display: none; }
+      .log-panel.hidden {
+        display: none;
+      }
       .log-line {
         font-family: 'Consolas', 'Courier New', monospace;
         font-size: 10px;
         color: #6b7280;
         line-height: 1.5;
       }
-      .log-line.ok  { color: #4ade80; }
-      .log-line.err { color: #f87171; }
-      .log-line.inf { color: #93c5fd; }
+      .log-line.ok {
+        color: #4ade80;
+      }
+      .log-line.err {
+        color: #f87171;
+      }
+      .log-line.inf {
+        color: #93c5fd;
+      }
     </style>
   </head>
   <body>
@@ -182,7 +273,6 @@
     </header>
 
     <div class="main">
-
       <!-- NIFTY card -->
       <div class="card" id="card-nifty">
         <div class="card-title">
@@ -298,15 +388,16 @@
         <div class="log-panel hidden" id="sensex-log"></div>
         <div class="summary sum-idle" id="sensex-summary">Not run yet</div>
       </div>
-
     </div>
 
     <script>
       const DAY_INSTR = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
       const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
       const todayInstr = DAY_INSTR[now.getUTCDay()] || 'NIFTY';
-      document.getElementById('nifty-day-note').textContent  = todayInstr === 'NIFTY'  ? '← today' : '(not today)';
-      document.getElementById('sensex-day-note').textContent = todayInstr === 'SENSEX' ? '← today' : '(not today)';
+      document.getElementById('nifty-day-note').textContent =
+        todayInstr === 'NIFTY' ? '← today' : '(not today)';
+      document.getElementById('sensex-day-note').textContent =
+        todayInstr === 'SENSEX' ? '← today' : '(not today)';
 
       const ROLES = ['entry', 'sl', 'target'];
 
@@ -314,8 +405,8 @@
         const i = instr.toLowerCase();
         document.getElementById(`${i}-${role}-lvl`).textContent = level != null ? level : '—';
         const st = document.getElementById(`${i}-${role}-st`);
-        st.textContent  = status;
-        st.className    = `result-status ${cls}`;
+        st.textContent = status;
+        st.className = `result-status ${cls}`;
       }
 
       function appendLog(instr, msg) {
@@ -324,10 +415,13 @@
         const line = document.createElement('div');
         line.className =
           'log-line' +
-          (msg.includes('✓') ? ' ok'
-           : msg.includes('✗') || msg.includes('ERROR') || msg.includes('FAIL') ? ' err'
-           : msg.includes('Spot:') || msg.includes('Option:') ? ' inf'
-           : '');
+          (msg.includes('✓')
+            ? ' ok'
+            : msg.includes('✗') || msg.includes('ERROR') || msg.includes('FAIL')
+              ? ' err'
+              : msg.includes('Spot:') || msg.includes('Option:')
+                ? ' inf'
+                : '');
         line.textContent = msg;
         panel.appendChild(line);
         panel.scrollTop = panel.scrollHeight;
@@ -338,7 +432,7 @@
         const btn = document.getElementById(`${i}-btn`);
         btn.disabled = true;
 
-        ROLES.forEach(r => setStatus(instr, r, null, '…', 's-running'));
+        ROLES.forEach((r) => setStatus(instr, r, null, '…', 's-running'));
         const logEl = document.getElementById(`${i}-log`);
         logEl.innerHTML = '';
         logEl.classList.add('hidden');
@@ -346,9 +440,9 @@
         sumEl.className = 'summary sum-idle';
         sumEl.textContent = 'Running...';
 
-        const spot       = parseFloat(document.getElementById(`${i}-spot`).value) || null;
-        const bias       = document.getElementById(`${i}-bias`).value;
-        const itmVal     = document.getElementById(`${i}-itm`).value;
+        const spot = parseFloat(document.getElementById(`${i}-spot`).value) || null;
+        const bias = document.getElementById(`${i}-bias`).value;
+        const itmVal = document.getElementById(`${i}-itm`).value;
         const itmOverride = itmVal !== '' ? parseInt(itmVal) : null;
 
         try {
@@ -358,10 +452,11 @@
             body: JSON.stringify({ instr, spot, bias, itmOverride }),
           });
 
-          const reader  = response.body.getReader();
+          const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-          let passed = 0, failed = 0;
+          let passed = 0,
+            failed = 0;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -373,11 +468,15 @@
 
             for (const part of parts) {
               const eventMatch = part.match(/^event:\s*(.+)/m);
-              const dataMatch  = part.match(/^data:\s*(.+)/m);
+              const dataMatch = part.match(/^data:\s*(.+)/m);
               if (!dataMatch) continue;
               const eventType = eventMatch?.[1]?.trim() || 'message';
               let parsed;
-              try { parsed = JSON.parse(dataMatch[1]); } catch (_) { continue; }
+              try {
+                parsed = JSON.parse(dataMatch[1]);
+              } catch (_) {
+                continue;
+              }
 
               if (eventType === 'log') {
                 appendLog(instr, parsed.msg);
@@ -387,7 +486,7 @@
                 ok ? passed++ : failed++;
               } else if (eventType === 'done') {
                 if (parsed.error) {
-                  ROLES.forEach(r => setStatus(instr, r, null, '✗', 's-fail'));
+                  ROLES.forEach((r) => setStatus(instr, r, null, '✗', 's-fail'));
                   sumEl.className = 'summary sum-fail';
                   sumEl.textContent = parsed.error;
                 } else if (failed === 0) {
@@ -401,7 +500,7 @@
             }
           }
         } catch (e) {
-          ROLES.forEach(r => setStatus(instr, r, null, '✗', 's-fail'));
+          ROLES.forEach((r) => setStatus(instr, r, null, '✗', 's-fail'));
           sumEl.className = 'summary sum-fail';
           sumEl.textContent = 'Server error: ' + e.message;
         } finally {

@@ -38,7 +38,9 @@ app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html'))
 app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
-app.get('/test-pattern-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-pattern-alerts.html')));
+app.get('/test-pattern-alerts', (_req, res) =>
+  res.sendFile(path.join(__dirname, 'test-pattern-alerts.html'))
+);
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -600,8 +602,16 @@ app.post('/api/test/supertrend', async (req, res) => {
 
 // ── Pattern Alert Test ────────────────────────────────────────────
 const PATTERN_ALERT_NAMES_TEST = {
-  NIFTY:  { entry: 'niftyPatternLongEntry',  sl: 'niftyPatternLongSL',  target: 'niftyPatternLongTarget'  },
-  SENSEX: { entry: 'sensexPatternLongEntry', sl: 'sensexPatternLongSL', target: 'sensexPatternLongTarget' },
+  NIFTY: {
+    entry: 'niftyPatternLongEntry',
+    sl: 'niftyPatternLongSL',
+    target: 'niftyPatternLongTarget',
+  },
+  SENSEX: {
+    entry: 'sensexPatternLongEntry',
+    sl: 'sensexPatternLongSL',
+    target: 'sensexPatternLongTarget',
+  },
 };
 const PATTERN_ITM_BY_DAY_TEST = { 1: 2, 2: 2, 5: 1 };
 
@@ -654,13 +664,15 @@ app.post('/api/test/pattern', async (req, res) => {
     // Calculate option symbol
     const day = nowIST().getUTCDay();
     const itmDepth =
-      itmOverride !== null ? itmOverride : (instrName === 'SENSEX' ? 2 : (PATTERN_ITM_BY_DAY_TEST[day] ?? 2));
+      itmOverride !== null
+        ? itmOverride
+        : instrName === 'SENSEX'
+          ? 2
+          : (PATTERN_ITM_BY_DAY_TEST[day] ?? 2);
     const atm = calcATMTest(spot, cfg.strikeInterval);
     const optType = bias === 'up' ? 'CE' : 'PE';
     const strike =
-      bias === 'up'
-        ? atm - itmDepth * cfg.strikeInterval
-        : atm + itmDepth * cfg.strikeInterval;
+      bias === 'up' ? atm - itmDepth * cfg.strikeInterval : atm + itmDepth * cfg.strikeInterval;
     const symbol = buildSymbolTest(cfg, strike, optType);
     const exchange = cfg.spotSymbol.split(':')[0];
 
@@ -684,7 +696,9 @@ app.post('/api/test/pattern', async (req, res) => {
         target = Math.round((entry + (entry - sl)) * 100) / 100;
         log(`Levels from last bar — Entry:${entry}  SL:${sl}  Target:${target}`);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     if (!entry) {
       entry = strike + 10;
       sl = Math.max(1, strike - 10);
@@ -694,8 +708,8 @@ app.post('/api/test/pattern', async (req, res) => {
 
     // Update the 3 fixed alerts
     const tests = [
-      { name: names.entry,  level: entry,  role: 'entry'  },
-      { name: names.sl,     level: sl,     role: 'sl'     },
+      { name: names.entry, level: entry, role: 'entry' },
+      { name: names.sl, level: sl, role: 'sl' },
       { name: names.target, level: target, role: 'target' },
     ];
 
@@ -710,16 +724,29 @@ app.post('/api/test/pattern', async (req, res) => {
         });
         const rawText = r?.content?.[0]?.text || '{}';
         let data = {};
-        if (!r?.isError) { try { data = JSON.parse(rawText); } catch { /* ignore */ } }
+        if (!r?.isError) {
+          try {
+            data = JSON.parse(rawText);
+          } catch {
+            /* ignore */
+          }
+        }
         const success = !r?.isError && !!data.success;
-        const message = r?.isError ? rawText : (data.message || rawText);
+        const message = r?.isError ? rawText : data.message || rawText;
         log(`[${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
         const result = { name: t.name, symbol, level: t.level, role: t.role, success, message };
         results.push(result);
         emit('result', result);
       } catch (e) {
         log(`[${t.role}] ✗ ERROR — ${e.message}`);
-        const result = { name: t.name, symbol, level: t.level, role: t.role, success: false, message: e.message };
+        const result = {
+          name: t.name,
+          symbol,
+          level: t.level,
+          role: t.role,
+          success: false,
+          message: e.message,
+        };
         results.push(result);
         emit('result', result);
       }

@@ -25,12 +25,20 @@ import { ChartTools } from '../src/tools/chart.js';
 const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
 const PATTERN_ITM_BY_DAY = { 1: 2, 2: 2, 3: 2, 4: 2, 5: 1 };
 const INSTRUMENTS = {
-  NIFTY:  { spotSymbol: 'NSE:NIFTY',  strikeInterval: 50,  expiryDay: 2, prefix: 'NIFTY' },
-  SENSEX: { spotSymbol: 'BSE:SENSEX', strikeInterval: 100, expiryDay: 4, prefix: 'BSX'   },
+  NIFTY: { spotSymbol: 'NSE:NIFTY', strikeInterval: 50, expiryDay: 2, prefix: 'NIFTY' },
+  SENSEX: { spotSymbol: 'BSE:SENSEX', strikeInterval: 100, expiryDay: 4, prefix: 'BSX' },
 };
 const PATTERN_ALERT_NAMES = {
-  NIFTY:  { entry: 'niftyPatternLongEntry',  sl: 'niftyPatternLongSL',  target: 'niftyPatternLongTarget'  },
-  SENSEX: { entry: 'sensexPatternLongEntry', sl: 'sensexPatternLongSL', target: 'sensexPatternLongTarget' },
+  NIFTY: {
+    entry: 'niftyPatternLongEntry',
+    sl: 'niftyPatternLongSL',
+    target: 'niftyPatternLongTarget',
+  },
+  SENSEX: {
+    entry: 'sensexPatternLongEntry',
+    sl: 'sensexPatternLongSL',
+    target: 'sensexPatternLongTarget',
+  },
 };
 
 function nowIST() {
@@ -51,9 +59,7 @@ function buildOptionSymbol(instrName, spot, itmDepth, bias) {
   if (!cfg) return null;
   const atm = calcATM(spot, cfg.strikeInterval);
   const strike =
-    bias === 'up'
-      ? atm - itmDepth * cfg.strikeInterval
-      : atm + itmDepth * cfg.strikeInterval;
+    bias === 'up' ? atm - itmDepth * cfg.strikeInterval : atm + itmDepth * cfg.strikeInterval;
   const d = getExpiry(cfg.expiryDay);
   const yy = String(d.getUTCFullYear()).slice(2);
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -64,15 +70,18 @@ function buildOptionSymbol(instrName, spot, itmDepth, bias) {
 
 // ── Parse CLI args ────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
-const arg  = (flag) => { const i = argv.indexOf(flag); return i !== -1 && argv[i + 1] ? argv[i + 1] : null; };
+const arg = (flag) => {
+  const i = argv.indexOf(flag);
+  return i !== -1 && argv[i + 1] ? argv[i + 1] : null;
+};
 
 const symbolArg = arg('--symbol');
-const instrArg  = (arg('--instr') || '').toUpperCase();
-const biasArg   = (arg('--bias') || 'up').toLowerCase();
-const spotArg   = arg('--spot')   ? parseFloat(arg('--spot'))   : null;
-const itmArg    = arg('--itm')    ? parseInt(arg('--itm'))      : null;
-const entryArg  = arg('--entry')  ? parseFloat(arg('--entry'))  : null;
-const slArg     = arg('--sl')     ? parseFloat(arg('--sl'))     : null;
+const instrArg = (arg('--instr') || '').toUpperCase();
+const biasArg = (arg('--bias') || 'up').toLowerCase();
+const spotArg = arg('--spot') ? parseFloat(arg('--spot')) : null;
+const itmArg = arg('--itm') ? parseInt(arg('--itm')) : null;
+const entryArg = arg('--entry') ? parseFloat(arg('--entry')) : null;
+const slArg = arg('--sl') ? parseFloat(arg('--sl')) : null;
 const targetArg = arg('--target') ? parseFloat(arg('--target')) : null;
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -83,18 +92,18 @@ try {
   console.log('[CDP] Connected\n');
 
   const cdpAlerts = new AlertTools(cdp);
-  const cdpChart  = new ChartTools(cdp);
+  const cdpChart = new ChartTools(cdp);
 
   // ── Resolve instrument ──────────────────────────────────────────────────────
-  const day        = nowIST().getUTCDay();
-  const instrName  = (instrArg && INSTRUMENTS[instrArg]) ? instrArg : (DAY_INSTRUMENT[day] || 'NIFTY');
-  const names      = PATTERN_ALERT_NAMES[instrName];
-  const instrCfg   = INSTRUMENTS[instrName];
+  const day = nowIST().getUTCDay();
+  const instrName = instrArg && INSTRUMENTS[instrArg] ? instrArg : DAY_INSTRUMENT[day] || 'NIFTY';
+  const names = PATTERN_ALERT_NAMES[instrName];
+  const instrCfg = INSTRUMENTS[instrName];
 
   // ── Resolve symbol and levels ───────────────────────────────────────────────
   let symbol = symbolArg;
-  let entry  = entryArg;
-  let sl     = slArg;
+  let entry = entryArg;
+  let sl = slArg;
   let target = targetArg;
 
   if (!symbol) {
@@ -130,16 +139,22 @@ try {
   if (!entry || !sl || !target) {
     console.log('Fetching recent bars to derive default levels ...');
     try {
-      const barsResult = await cdpChart.handle('data_get_ohlcv', { symbol, timeframe: '3', bars: 5 });
+      const barsResult = await cdpChart.handle('data_get_ohlcv', {
+        symbol,
+        timeframe: '3',
+        bars: 5,
+      });
       const bars = JSON.parse(barsResult?.content?.[0]?.text || '{}').bars || [];
       const last = bars[bars.length - 2] || bars[bars.length - 1];
       if (last) {
-        entry  = entry  ?? last.high;
-        sl     = sl     ?? Math.round((last.high - 5) * 100) / 100;
+        entry = entry ?? last.high;
+        sl = sl ?? Math.round((last.high - 5) * 100) / 100;
         target = target ?? Math.round((last.high + 10) * 100) / 100;
         console.log(`  Default from candle — Entry:${entry}  SL:${sl}  Target:${target}`);
       }
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
   }
 
   if (!entry || !sl || !target) {
@@ -157,23 +172,33 @@ try {
 
   // ── Update alerts ────────────────────────────────────────────────────────────
   const updates = [
-    { alertName: names.entry,  level: entry  },
-    { alertName: names.sl,     level: sl     },
+    { alertName: names.entry, level: entry },
+    { alertName: names.sl, level: sl },
     { alertName: names.target, level: target },
   ];
 
   let allOk = true;
   for (const u of updates) {
     process.stdout.write(`Updating ${u.alertName} @ ${u.level} ... `);
-    const r = await cdpAlerts.handle('alert_update', { alertName: u.alertName, symbol, level: u.level });
+    const r = await cdpAlerts.handle('alert_update', {
+      alertName: u.alertName,
+      symbol,
+      level: u.level,
+    });
 
     let d = {};
-    try { d = JSON.parse(r?.content?.[0]?.text || '{}'); } catch (_) { /* ignore */ }
+    try {
+      d = JSON.parse(r?.content?.[0]?.text || '{}');
+    } catch (_) {
+      /* ignore */
+    }
 
     if (d.success) {
       console.log('✓');
       console.log(`  symbol   : ${d.previousSymbol} → ${d.newSymbol}`);
-      console.log(`  level    : ${d.level}  set:${d.levelSet ? '✓' : '✗ WARN: level may not have committed'}`);
+      console.log(
+        `  level    : ${d.level}  set:${d.levelSet ? '✓' : '✗ WARN: level may not have committed'}`
+      );
     } else {
       allOk = false;
       console.log('✗ FAILED');
@@ -184,7 +209,9 @@ try {
   }
 
   console.log('─────────────────────────────────────────────────');
-  console.log(allOk ? '✓ All 3 alerts updated successfully' : '⚠ Some updates failed — check output above');
+  console.log(
+    allOk ? '✓ All 3 alerts updated successfully' : '⚠ Some updates failed — check output above'
+  );
 } catch (e) {
   console.error('Fatal error:', e.message);
 } finally {

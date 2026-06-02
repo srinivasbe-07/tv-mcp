@@ -88,8 +88,16 @@ const PATTERN_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
 
 // Fixed alert names — pre-created once manually in TradingView, updated each signal
 const PATTERN_ALERT_NAMES = {
-  NIFTY:  { entry: 'niftyPatternLongEntry',  sl: 'niftyPatternLongSL',  target: 'niftyPatternLongTarget'  },
-  SENSEX: { entry: 'sensexPatternLongEntry', sl: 'sensexPatternLongSL', target: 'sensexPatternLongTarget' },
+  NIFTY: {
+    entry: 'niftyPatternLongEntry',
+    sl: 'niftyPatternLongSL',
+    target: 'niftyPatternLongTarget',
+  },
+  SENSEX: {
+    entry: 'sensexPatternLongEntry',
+    sl: 'sensexPatternLongSL',
+    target: 'sensexPatternLongTarget',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -154,7 +162,6 @@ function validateConfig(cfg) {
 
   return errors;
 }
-
 
 // ---------------------------------------------------------------------------
 // Candle pattern detection
@@ -429,7 +436,11 @@ async function updateTradeAlerts(cdpAlerts, cdp, instrName, bias, candle, target
   }
 
   const parseResult = (r) => {
-    try { return JSON.parse(r?.content?.[0]?.text || '{}'); } catch (_) { return {}; }
+    try {
+      return JSON.parse(r?.content?.[0]?.text || '{}');
+    } catch (_) {
+      return {};
+    }
   };
 
   const tradeType = bias === 'up' ? 'CE LONG' : 'PE LONG';
@@ -439,22 +450,43 @@ async function updateTradeAlerts(cdpAlerts, cdp, instrName, bias, candle, target
   log(`  [${tradeType}] Entry:${entryLevel}  SL:${slLevel}  Target:${target}`);
   log(`  Updating: ${names.entry} / ${names.sl} / ${names.target}`);
 
-  const r1 = await cdpAlerts.handle('alert_update', { alertName: names.entry, symbol, level: entryLevel });
+  const r1 = await cdpAlerts.handle('alert_update', {
+    alertName: names.entry,
+    symbol,
+    level: entryLevel,
+  });
   const d1 = parseResult(r1);
   log(`  [Entry] ${d1.success ? 'OK' : 'FAIL'} — ${d1.message || d1.error || ''}`);
-  if (!d1.success) { log('  [FAIL] Entry update failed — aborting'); return; }
+  if (!d1.success) {
+    log('  [FAIL] Entry update failed — aborting');
+    return;
+  }
   await new Promise((r) => setTimeout(r, 500));
 
-  const r2 = await cdpAlerts.handle('alert_update', { alertName: names.sl, symbol, level: slLevel });
+  const r2 = await cdpAlerts.handle('alert_update', {
+    alertName: names.sl,
+    symbol,
+    level: slLevel,
+  });
   const d2 = parseResult(r2);
   log(`  [SL] ${d2.success ? 'OK' : 'FAIL'} — ${d2.message || d2.error || ''}`);
-  if (!d2.success) { log('  [FAIL] SL update failed — aborting'); return; }
+  if (!d2.success) {
+    log('  [FAIL] SL update failed — aborting');
+    return;
+  }
   await new Promise((r) => setTimeout(r, 500));
 
-  const r3 = await cdpAlerts.handle('alert_update', { alertName: names.target, symbol, level: target });
+  const r3 = await cdpAlerts.handle('alert_update', {
+    alertName: names.target,
+    symbol,
+    level: target,
+  });
   const d3 = parseResult(r3);
   log(`  [Target] ${d3.success ? 'OK' : 'FAIL'} — ${d3.message || d3.error || ''}`);
-  if (!d3.success) { log('  [FAIL] Target update failed — aborting'); return; }
+  if (!d3.success) {
+    log('  [FAIL] Target update failed — aborting');
+    return;
+  }
 
   lastAlertCandleTime = candle.time;
   alertsCreatedAt = Date.now();
