@@ -519,7 +519,9 @@ app.post('/api/test/supertrend', async (req, res) => {
       // Ensure Alerts panel is open and showing items BEFORE the chart switch.
       // If the panel is closed or another panel is active when the chart switches,
       // TradingView re-filters it to the new symbol — hiding the supertrend alerts.
-      await cdp.executeScript(`
+      await cdp
+        .executeScript(
+          `
         (async function() {
           const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
           if (!hasItems()) {
@@ -535,7 +537,9 @@ app.post('/api/test/supertrend', async (req, res) => {
             }
           }
         })()
-      `).catch(() => {});
+      `
+        )
+        .catch(() => {});
 
       log(`[${t.side}:${t.role}] Switching chart to ${t.symbol}...`);
       try {
