@@ -235,10 +235,10 @@ function makeState(overrides = {}) {
   return { CE: 'closed', PE: 'closed', seenHistoryKeys: [], ...overrides };
 }
 
-const CE_ENTRY = 'supertrendLongEntry';
-const CE_EXIT = 'supertrendLongExit';
-const PE_ENTRY = 'supertrendshortEntry';
-const PE_EXIT = 'supertrendShortExit';
+const CE_ENTRY = 'niftySupertrendLongEntry';
+const CE_EXIT = 'niftySupertrendLongExit';
+const PE_ENTRY = 'niftySupertrendShortEntry';
+const PE_EXIT = 'niftySupertrendShortExit';
 
 section('processHistoryForPositionChanges — basic transitions');
 test('CE entry → CE becomes open', () => {
