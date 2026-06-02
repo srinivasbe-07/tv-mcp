@@ -236,37 +236,36 @@ export class AlertTools {
             let onceBtnFound = false;
             let onceOptions = [];
             if (${fireOnce}) {
-              // Scroll the dialog down so frequency options are visible
-              const dialogEl = document.querySelector('[class*="dialog-"][class*="popup-"]') ||
-                               document.querySelector('[class*="alertDialog"]') ||
-                               document.querySelector('[role="dialog"]');
-              if (dialogEl) dialogEl.scrollTop = dialogEl.scrollHeight;
-              await new Promise(r => setTimeout(r, 200));
+              // Frequency is a combo/dropdown. Default shows "Once Per Bar".
+              // Step 1: find the combo trigger by its current text and click to open it.
+              const isVis2 = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+              const freqCombo = Array.from(document.querySelectorAll('button, [class*="select-"], [role="combobox"], [role="button"]'))
+                .find(el => isVis2(el) && (el.innerText || el.textContent || '').trim().toLowerCase().includes('once per bar'));
 
-              const candidates = () => Array.from(
-                document.querySelectorAll('button, [role="radio"], [role="option"], label, li, [class*="item-"]')
-              ).filter(el => {
-                const r = el.getBoundingClientRect();
-                return r.width > 0 && r.height > 0;
-              });
+              if (freqCombo) {
+                freqCombo.click();
+                await new Promise(r => setTimeout(r, 400));
 
-              let onceBtn = null;
-              for (let poll = 0; poll < 8; poll++) {
-                await new Promise(r => setTimeout(r, 250));
-                const els = candidates();
-                onceOptions = els.map(el => (el.innerText || el.textContent || '').trim())
-                  .filter(t => t && t.length < 40).slice(0, 30);
-                onceBtn = els.find(el => {
+                // Step 2: find "Only once" in the opened dropdown list
+                const dropItems = Array.from(document.querySelectorAll('[role="option"], [class*="item-"], li'))
+                  .filter(el => isVis2(el));
+                onceOptions = dropItems.map(el => (el.innerText || el.textContent || '').trim()).filter(Boolean).slice(0, 20);
+
+                const onceItem = dropItems.find(el => {
                   const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
                   return txt === 'only once' || txt.includes('only once');
                 });
-                if (onceBtn) break;
-              }
 
-              if (onceBtn) {
-                onceBtn.click();
-                onceBtnFound = true;
-                await new Promise(r => setTimeout(r, 300));
+                if (onceItem) {
+                  onceItem.click();
+                  onceBtnFound = true;
+                  await new Promise(r => setTimeout(r, 300));
+                } else {
+                  // Close dropdown without selecting
+                  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                }
+              } else {
+                onceOptions = ['freq-combo-not-found'];
               }
             }
 
