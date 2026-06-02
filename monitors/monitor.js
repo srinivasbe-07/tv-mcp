@@ -583,6 +583,42 @@ async function main() {
   const cdpAlerts = new AlertTools(cdp);
   const cdpChart = new ChartTools(cdp);
 
+  // ── Wait for Alerts panel to sync from cloud after TV restart ────────────
+  // Polls alert_list every 5s until all 4 supertrend alerts for today's
+  // instrument are visible. Prevents "not found" failures on cold start.
+  await (async function waitForAlertsReady() {
+    const dayOfWeek = nowIST().getUTCDay();
+    const instrName = DAY_INSTRUMENT[dayOfWeek] || 'NIFTY';
+    const names = ALERT_NAMES[instrName];
+    const required = [names.CE.entry, names.CE.exit, names.PE.entry, names.PE.exit];
+    const TIMEOUT_MS = 120_000;
+    const POLL_MS = 5_000;
+    const deadline = Date.now() + TIMEOUT_MS;
+
+    log(`Waiting for Alerts panel to load (${instrName}, up to ${TIMEOUT_MS / 1000}s)...`);
+    while (Date.now() < deadline) {
+      try {
+        const r = await cdpAlerts.handle('alert_list', {});
+        const data = JSON.parse(r?.content?.[0]?.text || '{}');
+        const alertNames = (data.alerts || []).map((a) => a.name);
+        const found = required.filter((n) => alertNames.includes(n));
+        if (found.length === required.length) {
+          log(`Alerts panel ready — all ${required.length} ${instrName} alerts visible ✓`);
+          return;
+        }
+        log(
+          `Alerts loading... ${found.length}/${required.length} visible — retrying in ${POLL_MS / 1000}s`
+        );
+      } catch (_) {
+        /* ignore */
+      }
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+    log(
+      `[WARN] Alerts panel timed out — ${instrName} alerts not all visible. Proceeding anyway (may fail on first update).`
+    );
+  })();
+
   // Keyboard shortcuts
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
