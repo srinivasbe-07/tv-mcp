@@ -330,9 +330,12 @@ export class AlertTools {
                 let nameInput = null;
                 for (let poll = 0; poll < 12; poll++) {
                   await new Promise(r => setTimeout(r, 250));
+                  // After the Message sub-dialog opens, priceInput is hidden by the overlay.
+                  // Don't filter by class — the name input may share the same CSS class as
+                  // the price input. Just exclude the exact priceInput DOM node reference.
                   nameInput =
                     Array.from(document.querySelectorAll('input')).find(i =>
-                      isVisible(i) && i !== priceInput && !i.classList.toString().includes('gr1VjUfr')
+                      isVisible(i) && i !== priceInput
                     ) ||
                     Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
                       isVisible(e)
