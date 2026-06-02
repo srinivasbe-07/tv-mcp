@@ -14,6 +14,9 @@ import { spawn, exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { CDPManager } from '../src/cdp.js';
+import { AlertTools } from '../src/tools/alerts.js';
+import { ChartTools } from '../src/tools/chart.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -34,6 +37,7 @@ app.use(express.json());
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html')));
 app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
+app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -400,10 +404,143 @@ app.post('/api/st/restart', (_req, res) => {
   res.json({ ok: true });
 });
 
+// ── Supertrend Alert Test ─────────────────────────────────────────
+const ALERT_NAMES_TEST = {
+  NIFTY: {
+    CE: { entry: 'niftySupertrendLongEntry', exit: 'niftySupertrendLongExit' },
+    PE: { entry: 'niftySupertrendShortEntry', exit: 'niftySupertrendShortExit' },
+  },
+  SENSEX: {
+    CE: { entry: 'sensexSupertrendLongEntry', exit: 'sensexSupertrendLongExit' },
+    PE: { entry: 'sensexSupertrendShortEntry', exit: 'sensexSupertrendShortExit' },
+  },
+};
+const INSTRUMENTS_TEST = {
+  NIFTY: { spotSymbol: 'NSE:NIFTY', strikeInterval: 50, expiryDay: 2, symbolPrefix: 'NIFTY' },
+  SENSEX: { spotSymbol: 'BSE:SENSEX', strikeInterval: 100, expiryDay: 4, symbolPrefix: 'BSX' },
+};
+const NIFTY_ITM_BY_DAY_TEST = { 1: 2, 2: 2, 5: 1 };
+
+function nowIST() {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+}
+function calcATMTest(spot, step) {
+  return Math.round(spot / step) * step;
+}
+function getExpiryDateTest(expiryDay) {
+  const t = nowIST();
+  const daysUntil = (expiryDay - t.getUTCDay() + 7) % 7;
+  const d = new Date(t);
+  d.setUTCDate(t.getUTCDate() + daysUntil);
+  return d;
+}
+function buildSymbolTest(cfg, strike, type) {
+  const d = getExpiryDateTest(cfg.expiryDay);
+  const yy = String(d.getUTCFullYear()).slice(2);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${cfg.symbolPrefix}${yy}${mm}${dd}${type === 'CE' ? 'C' : 'P'}${strike}`;
+}
+
+app.post('/api/test/supertrend', async (req, res) => {
+  const { instr = 'NIFTY', spot: spotOverride = null, itmOverride = null } = req.body;
+  const instrName = instr.toUpperCase();
+  const cfg = INSTRUMENTS_TEST[instrName];
+  if (!cfg) return res.status(400).json({ error: `Unknown instrument: ${instrName}` });
+
+  const alertDefs = ALERT_NAMES_TEST[instrName];
+  const day = nowIST().getUTCDay();
+  const itmDepth =
+    itmOverride !== null
+      ? itmOverride
+      : instrName === 'SENSEX'
+        ? 2
+        : (NIFTY_ITM_BY_DAY_TEST[day] ?? 2);
+  const exchange = cfg.spotSymbol.split(':')[0];
+
+  let cdp;
+  try {
+    cdp = new CDPManager();
+    await cdp.connect();
+  } catch (e) {
+    return res.status(500).json({ error: `CDP connect failed: ${e.message}` });
+  }
+
+  const cdpAlerts = new AlertTools(cdp);
+  const cdpChart = new ChartTools(cdp);
+
+  try {
+    // Read spot from chart if not provided
+    let spot = spotOverride;
+    if (!spot) {
+      await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+      await new Promise((r) => setTimeout(r, 2000));
+      const r = await cdpChart.handle('quote_get', {});
+      const d = JSON.parse(r?.content?.[0]?.text || '{}');
+      spot = d.close || d.price || d.last;
+    }
+    if (!spot) {
+      return res
+        .status(500)
+        .json({ error: `Could not read ${instrName} spot price. Provide spot manually.` });
+    }
+
+    const atm = calcATMTest(spot, cfg.strikeInterval);
+    const ceStrike = atm - itmDepth * cfg.strikeInterval;
+    const peStrike = atm + itmDepth * cfg.strikeInterval;
+    const ceSymbol = buildSymbolTest(cfg, ceStrike, 'CE');
+    const peSymbol = buildSymbolTest(cfg, peStrike, 'PE');
+
+    const tests = [
+      { name: alertDefs.CE.entry, symbol: ceSymbol, side: 'CE', role: 'entry' },
+      { name: alertDefs.CE.exit, symbol: ceSymbol, side: 'CE', role: 'exit' },
+      { name: alertDefs.PE.entry, symbol: peSymbol, side: 'PE', role: 'entry' },
+      { name: alertDefs.PE.exit, symbol: peSymbol, side: 'PE', role: 'exit' },
+    ];
+
+    const results = [];
+    for (const t of tests) {
+      try {
+        await cdpChart.handle('chart_set_symbol', { symbol: `${exchange}:${t.symbol}` });
+        await new Promise((r) => setTimeout(r, 3000));
+        const r = await cdpAlerts.handle('alert_update_symbol', {
+          alertName: t.name,
+          symbol: t.symbol,
+        });
+        const data = JSON.parse(r?.content?.[0]?.text || '{}');
+        results.push({
+          name: t.name,
+          symbol: t.symbol,
+          side: t.side,
+          role: t.role,
+          success: !r?.isError && !!data.success,
+          message: data.message || r?.content?.[0]?.text || '',
+        });
+      } catch (e) {
+        results.push({
+          name: t.name,
+          symbol: t.symbol,
+          side: t.side,
+          role: t.role,
+          success: false,
+          message: e.message,
+        });
+      }
+      await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    res.json({ results, spot, atm, itmDepth, ceSymbol, peSymbol });
+  } finally {
+    await cdp.disconnect().catch(() => {});
+  }
+});
+
 const server = app.listen(PORT, () => {
   console.log(`UI Server →  http://localhost:${PORT}            (Dashboard)`);
   console.log(`             http://localhost:${PORT}/pattern    (Pattern Monitor)`);
   console.log(`             http://localhost:${PORT}/supertrend (Supertrend Monitor)`);
+  console.log(`             http://localhost:${PORT}/test-alerts (Alert Test)`);
 });
 
 server.on('error', (e) => {

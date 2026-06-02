@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Supertrend Alert Test</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #0f1117;
+        color: #d1d5db;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        background: #1a1d27;
+        border-bottom: 1px solid #2a2d3a;
+        padding: 0 16px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+      .logo {
+        font-size: 14px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .logo span {
+        color: #a78bfa;
+      }
+      .nav-link {
+        font-size: 11px;
+        color: #6b7280;
+        text-decoration: none;
+        padding: 4px 8px;
+        border-radius: 5px;
+        border: 1px solid #2a2d3a;
+      }
+      .nav-link:hover {
+        color: #d1d5db;
+        border-color: #4b5563;
+      }
+      .main {
+        flex: 1;
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        max-width: 900px;
+        margin: 0 auto;
+        width: 100%;
+      }
+      .card {
+        background: #1a1d27;
+        border: 1px solid #2a2d3a;
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .card-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .instr-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        letter-spacing: 0.5px;
+      }
+      .badge-nifty {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .badge-sensex {
+        background: #2e1065;
+        color: #a78bfa;
+      }
+      .day-note {
+        font-size: 10px;
+        color: #6b7280;
+      }
+      label {
+        display: block;
+        font-size: 11px;
+        color: #6b7280;
+        margin-bottom: 3px;
+        font-weight: 500;
+      }
+      input[type='number'],
+      select {
+        width: 100%;
+        background: #0f1117;
+        border: 1px solid #2a2d3a;
+        border-radius: 6px;
+        color: #d1d5db;
+        font-size: 13px;
+        padding: 6px 9px;
+        outline: none;
+      }
+      input:focus,
+      select:focus {
+        border-color: #7c3aed;
+      }
+      .run-btn {
+        width: 100%;
+        padding: 9px;
+        background: #2e1065;
+        color: #a78bfa;
+        border: 1px solid #7c3aed;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: 0.5px;
+        transition: opacity 0.15s;
+      }
+      .run-btn:hover {
+        opacity: 0.85;
+      }
+      .run-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .results {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .result-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        background: #0f1117;
+        border-radius: 7px;
+        font-size: 11px;
+        font-family: 'Consolas', 'Courier New', monospace;
+      }
+      .result-side {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 4px;
+        min-width: 44px;
+        text-align: center;
+      }
+      .side-ce {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .side-pe {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .result-name {
+        flex: 1;
+        color: #9ca3af;
+        font-size: 10px;
+      }
+      .result-symbol {
+        color: #60a5fa;
+        font-size: 10px;
+      }
+      .result-status {
+        font-size: 11px;
+        font-weight: 700;
+        min-width: 24px;
+        text-align: center;
+      }
+      .s-ok {
+        color: #4ade80;
+      }
+      .s-fail {
+        color: #f87171;
+      }
+      .s-wait {
+        color: #6b7280;
+      }
+      .s-running {
+        color: #facc15;
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      .summary {
+        font-size: 12px;
+        text-align: center;
+        padding: 6px;
+        border-radius: 6px;
+        font-weight: 600;
+      }
+      .sum-ok {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .sum-fail {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .sum-idle {
+        background: #1a1d27;
+        color: #4b5563;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">Alert<span>Test</span></div>
+      <a class="nav-link" href="/">← Dashboard</a>
+      <a class="nav-link" href="/supertrend">Supertrend →</a>
+    </header>
+
+    <div class="main">
+      <!-- NIFTY card -->
+      <div class="card" id="card-nifty">
+        <div class="card-title">
+          <span class="instr-badge badge-nifty">NIFTY</span>
+          Supertrend Alerts
+          <span class="day-note" id="nifty-day-note"></span>
+        </div>
+
+        <div>
+          <label>Spot Price (blank = read from chart)</label>
+          <input type="number" id="nifty-spot" placeholder="e.g. 23400" step="50" />
+        </div>
+        <div>
+          <label>ITM Override</label>
+          <select id="nifty-itm">
+            <option value="">Auto (day rule)</option>
+            <option value="0">ATM (ITM-0)</option>
+            <option value="1">ITM-1</option>
+            <option value="2">ITM-2</option>
+          </select>
+        </div>
+
+        <button class="run-btn" id="nifty-btn" onclick="runTest('NIFTY')">
+          ▶ Test NIFTY Alerts
+        </button>
+
+        <div class="results" id="nifty-results">
+          <div class="result-row">
+            <span class="result-side side-ce">CE entry</span>
+            <span class="result-name">niftySupertrendLongEntry</span>
+            <span class="result-symbol" id="nifty-ce-entry-sym">—</span>
+            <span class="result-status s-wait" id="nifty-ce-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-ce">CE exit</span>
+            <span class="result-name">niftySupertrendLongExit</span>
+            <span class="result-symbol" id="nifty-ce-exit-sym">—</span>
+            <span class="result-status s-wait" id="nifty-ce-exit-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">PE entry</span>
+            <span class="result-name">niftySupertrendShortEntry</span>
+            <span class="result-symbol" id="nifty-pe-entry-sym">—</span>
+            <span class="result-status s-wait" id="nifty-pe-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">PE exit</span>
+            <span class="result-name">niftySupertrendShortExit</span>
+            <span class="result-symbol" id="nifty-pe-exit-sym">—</span>
+            <span class="result-status s-wait" id="nifty-pe-exit-st">·</span>
+          </div>
+        </div>
+        <div class="summary sum-idle" id="nifty-summary">Not run yet</div>
+      </div>
+
+      <!-- SENSEX card -->
+      <div class="card" id="card-sensex">
+        <div class="card-title">
+          <span class="instr-badge badge-sensex">SENSEX</span>
+          Supertrend Alerts
+          <span class="day-note" id="sensex-day-note"></span>
+        </div>
+
+        <div>
+          <label>Spot Price (blank = read from chart)</label>
+          <input type="number" id="sensex-spot" placeholder="e.g. 79000" step="100" />
+        </div>
+        <div>
+          <label>ITM Override</label>
+          <select id="sensex-itm">
+            <option value="">Auto (ITM-2)</option>
+            <option value="0">ATM (ITM-0)</option>
+            <option value="1">ITM-1</option>
+            <option value="2">ITM-2</option>
+          </select>
+        </div>
+
+        <button class="run-btn" id="sensex-btn" onclick="runTest('SENSEX')">
+          ▶ Test SENSEX Alerts
+        </button>
+
+        <div class="results" id="sensex-results">
+          <div class="result-row">
+            <span class="result-side side-ce">CE entry</span>
+            <span class="result-name">sensexSupertrendLongEntry</span>
+            <span class="result-symbol" id="sensex-ce-entry-sym">—</span>
+            <span class="result-status s-wait" id="sensex-ce-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-ce">CE exit</span>
+            <span class="result-name">sensexSupertrendLongExit</span>
+            <span class="result-symbol" id="sensex-ce-exit-sym">—</span>
+            <span class="result-status s-wait" id="sensex-ce-exit-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">PE entry</span>
+            <span class="result-name">sensexSupertrendShortEntry</span>
+            <span class="result-symbol" id="sensex-pe-entry-sym">—</span>
+            <span class="result-status s-wait" id="sensex-pe-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">PE exit</span>
+            <span class="result-name">sensexSupertrendShortExit</span>
+            <span class="result-symbol" id="sensex-pe-exit-sym">—</span>
+            <span class="result-status s-wait" id="sensex-pe-exit-st">·</span>
+          </div>
+        </div>
+        <div class="summary sum-idle" id="sensex-summary">Not run yet</div>
+      </div>
+    </div>
+
+    <script>
+      // Mark today's instrument
+      const DAY_INSTR = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
+      const NIFTY_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
+      const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      const todayDay = now.getUTCDay();
+      const todayInstr = DAY_INSTR[todayDay] || 'NIFTY';
+      const itmByDay = NIFTY_ITM_BY_DAY[todayDay] ?? 2;
+
+      document.getElementById('nifty-day-note').textContent =
+        todayInstr === 'NIFTY' ? '← today' : '(not today)';
+      document.getElementById('sensex-day-note').textContent =
+        todayInstr === 'SENSEX' ? '← today' : '(not today)';
+
+      const ROLES = ['ce-entry', 'ce-exit', 'pe-entry', 'pe-exit'];
+
+      function setStatus(instr, role, symbol, status, cls) {
+        const id = `${instr.toLowerCase()}-${role}`;
+        document.getElementById(`${id}-sym`).textContent = symbol || '—';
+        const st = document.getElementById(`${id}-st`);
+        st.textContent = status;
+        st.className = `result-status ${cls}`;
+      }
+
+      function resetCard(instr) {
+        const i = instr.toLowerCase();
+        ROLES.forEach((r) => setStatus(instr, r, '—', '·', 's-wait'));
+        document.getElementById(`${i}-summary`).className = 'summary sum-idle';
+        document.getElementById(`${i}-summary`).textContent = 'Running...';
+      }
+
+      async function runTest(instr) {
+        const i = instr.toLowerCase();
+        const btn = document.getElementById(`${i}-btn`);
+        btn.disabled = true;
+        resetCard(instr);
+
+        // Mark all as running
+        ROLES.forEach((r) => setStatus(instr, r, '', '…', 's-running'));
+
+        const spot = parseFloat(document.getElementById(`${i}-spot`).value) || null;
+        const itmVal = document.getElementById(`${i}-itm`).value;
+        const itmOverride = itmVal !== '' ? parseInt(itmVal) : null;
+
+        try {
+          const res = await fetch('/api/test/supertrend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instr, spot, itmOverride }),
+          });
+          const data = await res.json();
+
+          if (data.error) {
+            ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
+            const sumEl = document.getElementById(`${i}-summary`);
+            sumEl.className = 'summary sum-fail';
+            sumEl.textContent = data.error;
+            return;
+          }
+
+          let passed = 0,
+            failed = 0;
+          for (const result of data.results) {
+            const role = `${result.side.toLowerCase()}-${result.role}`;
+            const ok = result.success;
+            setStatus(instr, role, result.symbol, ok ? '✓' : '✗', ok ? 's-ok' : 's-fail');
+            ok ? passed++ : failed++;
+          }
+
+          const sumEl = document.getElementById(`${i}-summary`);
+          if (failed === 0) {
+            sumEl.className = 'summary sum-ok';
+            sumEl.textContent = `All 4 alerts updated ✓  (spot: ${data.spot}  ATM: ${data.atm}  ITM-${data.itmDepth})`;
+          } else {
+            sumEl.className = 'summary sum-fail';
+            sumEl.textContent = `${passed} passed, ${failed} failed — check alert names in TradingView`;
+          }
+        } catch (e) {
+          ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
+          const sumEl = document.getElementById(`${i}-summary`);
+          sumEl.className = 'summary sum-fail';
+          sumEl.textContent = 'Server error: ' + e.message;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    </script>
+  </body>
+</html>
