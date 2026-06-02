@@ -217,15 +217,11 @@ node scripts/test-supertrend-alerts.js --spot 23400 --itm 1          # overrides
 
 Automatically keeps 4 TradingView alerts pointed at the correct ITM option strike as NIFTY/SENSEX spot price moves during the day. Without it, you'd have to manually edit each alert every time the ATM shifts.
 
-### Instrument Routing
+---
 
-| Day       | Instrument | Strike Step | ITM Depth |
-| --------- | ---------- | ----------- | --------- |
-| Mon / Tue | NIFTY      | 50          | ITM-2     |
-| Wed / Thu | SENSEX     | 100         | ITM-2     |
-| Fri       | NIFTY      | 50          | ITM-1     |
+### Prerequisites
 
-### Alert Names (must exist in TradingView before starting)
+1. **8 alerts must exist in TradingView** with these exact names (case-sensitive):
 
 | Instrument | Side | Role  | Alert Name                   |
 | ---------- | ---- | ----- | ---------------------------- |
@@ -238,51 +234,105 @@ Automatically keeps 4 TradingView alerts pointed at the correct ITM option strik
 | SENSEX     | PE   | Entry | `sensexSupertrendShortEntry` |
 | SENSEX     | PE   | Exit  | `sensexSupertrendShortExit`  |
 
+2. **2 chart tabs open in TradingView** when running both monitors (one tab per monitor).
+
+3. **Start the monitor by 9:12 AM** so alerts are updated before Pine Script fires at 9:15.
+
+---
+
+### Recommended Start Time
+
+| Start time  | Behaviour                                                    |
+| ----------- | ------------------------------------------------------------ |
+| **9:00 AM** | Best — reads pre-open indicative price, updates by 9:01-9:02 |
+| 9:10 AM     | Good — interval ticks pick up pre-open price, done by 9:12   |
+| 9:12 AM     | OK — first force tick updates in ~30s, done before 9:15      |
+| After 9:14  | ⚠️ Risky — may not complete before Pine Script fires         |
+
+The **first tick always runs with `force=true`**, bypassing both market hours and the 2-tick confirmation — so alerts are always updated immediately on startup regardless of whether ATM changed overnight.
+
+---
+
+### Instrument Routing
+
+| Day       | Instrument | Strike Step | ITM Depth |
+| --------- | ---------- | ----------- | --------- |
+| Mon / Tue | NIFTY      | 50          | ITM-2     |
+| Wed / Thu | SENSEX     | 100         | ITM-2     |
+| Fri       | NIFTY      | 50          | ITM-1     |
+
+### Option Symbol Format
+
+```
+NIFTY → NIFTY{YY}{MM}{DD}C{strike}   e.g. NIFTY260603C23300
+SENSEX→ BSX{YY}{MM}{DD}C{strike}     e.g. BSX260605P79000
+```
+
+Expiry: NIFTY = next Tuesday, SENSEX = next Thursday (shifts back if holiday).
+
+---
+
 ### Every 60 Seconds It
 
-1. Reads spot price (NIFTY or SENSEX) from its dedicated chart tab
+1. Reads spot price from its dedicated chart tab
 2. Calculates ATM — rounds spot to nearest strike interval
-3. Confirms ATM shift across 2 consecutive ticks (avoids false updates on noise)
+3. **Requires 2 consecutive ticks to confirm ATM shift** (avoids false updates on noise)
 4. Updates CE alerts → switches chart to CE option → updates entry + exit → switches back
 5. Updates PE alerts → switches chart to PE option → updates entry + exit → switches back
-6. Reads alert history → if entry alert fired → marks CE/PE as `OPEN`; if exit fired → marks as `CLOSED`
-7. Skips updating a side when its position is `OPEN` (don't move the alert mid-trade)
-8. Verifies all 4 alerts are active after update — auto re-activates any that are stopped
+6. Reads alert history → entry fired → marks CE/PE `OPEN` · exit fired → marks `CLOSED`
+7. **Skips a side if that trade is running** — never moves alerts mid-trade
+8. Waits 3s then verifies all 4 alerts are active — **auto re-activates any that are stopped**
 
 ### Alert Update Behaviour by Position State
 
-| State                | CE alerts                        | PE alerts                        |
-| -------------------- | -------------------------------- | -------------------------------- |
-| CE=closed, PE=closed | ✓ Updated to new strike          | ✓ Updated to new strike          |
-| CE=open, PE=closed   | `CE trade is RUNNING — skipping` | ✓ Updated to new strike          |
-| CE=closed, PE=open   | ✓ Updated to new strike          | `PE trade is RUNNING — skipping` |
-| CE=open, PE=open     | `CE trade is RUNNING — skipping` | `PE trade is RUNNING — skipping` |
+| State                | CE alerts                     | PE alerts                     |
+| -------------------- | ----------------------------- | ----------------------------- |
+| CE=closed, PE=closed | ✓ Updated to new strike       | ✓ Updated to new strike       |
+| CE=open, PE=closed   | `CE trade RUNNING — skipping` | ✓ Updated to new strike       |
+| CE=closed, PE=open   | ✓ Updated to new strike       | `PE trade RUNNING — skipping` |
+| CE=open, PE=open     | `CE trade RUNNING — skipping` | `PE trade RUNNING — skipping` |
 
-A running trade's alerts are **never moved** — they stay on the exact strike where the trade was entered.
+A running trade's alerts **never move** — they stay on the exact entry strike.
 
-### Startup — Alerts Panel Sync Wait
+---
 
-On first start after TradingView restart, the monitor polls `alert_list` every 5s (up to 120s) until all 4 alerts for today's instrument are visible. This prevents "not found" failures that happen when alerts haven't synced from the cloud yet.
+### Startup Sequence
+
+```
+1. Connect to dedicated chart tab (logs/supertrend-tab.json)
+2. Poll alert_list every 5s until all 4 today-instrument alerts visible (up to 120s)
+   → prevents "not found" failures when TV just restarted and alerts haven't synced
+3. First force tick → update CE + PE alerts immediately (no 2-tick wait)
+4. Verify status → re-activate any stopped alerts
+5. Enter 60s poll loop
+```
+
+---
 
 ### Position State
 
-Stored in `config/position.json`. Updated automatically by alert history. Can also be overridden manually via the Supertrend page (CE/PE buttons) or CLI flags:
+Stored in `config/position.json`. Updated automatically from alert history each tick.
+
+**Manual override** via Supertrend UI page or CLI:
 
 ```
 node monitors/monitor.js --ce open --pe closed
 node monitors/monitor.js --itm 1    ← force ITM-1 regardless of day rule
+node monitors/monitor.js --itm 2    ← force ITM-2
 ```
+
+---
 
 ### Dedicated Chart Tab
 
-The monitor claims one TradingView chart tab on first start and saves its ID to `logs/supertrend-tab.json`. On restart it reuses the same tab. If TradingView was restarted, it scans live tabs and claims an unclaimed one.
+The monitor claims one TradingView chart tab on first start, saves ID to `logs/supertrend-tab.json`, and reuses it on restart. If the tab is gone (TV restarted), it scans live tabs and claims the first one not already owned by the pattern monitor.
 
-**Requirement**: Have at least 2 chart tabs open in TradingView when running both monitors simultaneously (one per monitor).
+---
 
 ### What It Does NOT Do
 
 - Does not place orders — only manages TradingView alerts
-- Does not create alerts — the 8 alerts above must already exist in TradingView
+- Does not create alerts — the 8 alerts must already exist in TradingView
 - Does not manage the Supertrend indicator itself — that lives on your chart
 
 ---
