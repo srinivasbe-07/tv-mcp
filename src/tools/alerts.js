@@ -236,8 +236,15 @@ export class AlertTools {
             let onceBtnFound = false;
             let onceOptions = [];
             if (${fireOnce}) {
+              // Scroll the dialog down so frequency options are visible
+              const dialogEl = document.querySelector('[class*="dialog-"][class*="popup-"]') ||
+                               document.querySelector('[class*="alertDialog"]') ||
+                               document.querySelector('[role="dialog"]');
+              if (dialogEl) dialogEl.scrollTop = dialogEl.scrollHeight;
+              await new Promise(r => setTimeout(r, 200));
+
               const candidates = () => Array.from(
-                document.querySelectorAll('button, [role="radio"], [role="option"], label, li')
+                document.querySelectorAll('button, [role="radio"], [role="option"], label, li, [class*="item-"]')
               ).filter(el => {
                 const r = el.getBoundingClientRect();
                 return r.width > 0 && r.height > 0;
@@ -247,7 +254,8 @@ export class AlertTools {
               for (let poll = 0; poll < 8; poll++) {
                 await new Promise(r => setTimeout(r, 250));
                 const els = candidates();
-                onceOptions = els.map(el => (el.innerText || el.textContent || '').trim()).filter(Boolean).slice(0, 20);
+                onceOptions = els.map(el => (el.innerText || el.textContent || '').trim())
+                  .filter(t => t && t.length < 40).slice(0, 30);
                 onceBtn = els.find(el => {
                   const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
                   return txt === 'only once' || txt === 'once' || txt.includes('only once');
@@ -336,58 +344,54 @@ export class AlertTools {
               if (msgBtn) {
                 msgBtn.click();
 
-                // Poll up to 3s for the name input to appear — fixed waits are unreliable
-                // Use getBoundingClientRect instead of offsetParent (more reliable in overlays)
-                const isVisible = (el) => {
-                  const r = el.getBoundingClientRect();
-                  return r.width > 0 && r.height > 0;
-                };
-                let nameInput = null;
+                const isVis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+
+                // Poll up to 3s for the sub-dialog fields to appear.
+                // Name field may be a textarea (not input) — search both.
+                let allFields = [];
                 for (let poll = 0; poll < 12; poll++) {
                   await new Promise(r => setTimeout(r, 250));
-                  // After the Message sub-dialog opens, priceInput is hidden by the overlay.
-                  // Don't filter by class — the name input may share the same CSS class as
-                  // the price input. Just exclude the exact priceInput DOM node reference.
-                  nameInput =
-                    Array.from(document.querySelectorAll('input')).find(i =>
-                      isVisible(i) && i !== priceInput
-                    ) ||
-                    Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
-                      isVisible(e)
-                    );
-                  if (nameInput) break;
+                  allFields = Array.from(document.querySelectorAll('input, textarea'))
+                    .filter(el => isVis(el) && el !== priceInput);
+                  if (allFields.length >= 1) break;
                 }
 
-                nameDiag.nameInputFound = !!nameInput;
-                nameDiag.nameInputTag = nameInput?.tagName;
-                nameDiag.nameInputCls = nameInput?.className?.slice(0, 50);
+                nameDiag.subDialogFields = allFields.map(el => ({
+                  tag: el.tagName, type: el.type || '',
+                  placeholder: (el.placeholder || '').slice(0, 30),
+                  rows: el.rows || '', cls: el.className.slice(0, 40),
+                }));
 
-                if (nameInput) {
+                // First field = name, first textarea after that = message
+                const nameField = allFields[0];
+                const msgField  = allFields.find(el => el.tagName === 'TEXTAREA' && el !== nameField);
+
+                nameDiag.nameInputFound = !!nameField;
+                nameDiag.nameInputTag   = nameField?.tagName;
+
+                if (nameField) {
                   await new Promise(r => setTimeout(r, 150));
-                  if (nameInput.tagName === 'INPUT') {
-                    setInputVal(nameInput, '${alertName}');
+                  if (nameField.tagName === 'INPUT') {
+                    setInputVal(nameField, '${alertName}');
                   } else {
-                    nameInput.focus();
-                    document.execCommand('selectAll', false, null);
-                    document.execCommand('insertText', false, '${alertName}');
+                    // textarea — use taSetter so React sees the change
+                    taSetter.call(nameField, '${alertName}');
+                    nameField.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                    nameField.blur();
                   }
-                  await new Promise(r => setTimeout(r, 300));
+                  await new Promise(r => setTimeout(r, 200));
                   nameSetMethod = 'subdialog';
                 } else {
-                  nameDiag.subDialogInputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
-                    .filter(e => e.offsetParent !== null)
-                    .map(e => e.tagName + '/' + (e.type || e.contentEditable) + '/' + (e.placeholder || '').slice(0, 20))
-                    .slice(0, 8);
                   nameSetMethod = 'subdialog-no-input';
                 }
 
-                const msgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
-                if (msgArea && '${alertMessage}') {
-                  taSetter.call(msgArea, '${alertMessage}');
-                  msgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
-                  msgArea.blur();
+                if (msgField && '${alertMessage}') {
+                  taSetter.call(msgField, '${alertMessage}');
+                  msgField.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                  msgField.blur();
                   await new Promise(r => setTimeout(r, 200));
                 }
+
                 const applyBtn = Array.from(document.querySelectorAll('button')).find(b =>
                   b.offsetParent !== null && b.textContent?.trim() === 'Apply'
                 );
