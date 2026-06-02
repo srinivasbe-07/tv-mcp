@@ -247,6 +247,22 @@ Automatically keeps 4 TradingView alerts pointed at the correct ITM option strik
 5. Updates PE alerts → switches chart to PE option → updates entry + exit → switches back
 6. Reads alert history → if entry alert fired → marks CE/PE as `OPEN`; if exit fired → marks as `CLOSED`
 7. Skips updating a side when its position is `OPEN` (don't move the alert mid-trade)
+8. Verifies all 4 alerts are active after update — auto re-activates any that are stopped
+
+### Alert Update Behaviour by Position State
+
+| State                | CE alerts                        | PE alerts                        |
+| -------------------- | -------------------------------- | -------------------------------- |
+| CE=closed, PE=closed | ✓ Updated to new strike          | ✓ Updated to new strike          |
+| CE=open, PE=closed   | `CE trade is RUNNING — skipping` | ✓ Updated to new strike          |
+| CE=closed, PE=open   | ✓ Updated to new strike          | `PE trade is RUNNING — skipping` |
+| CE=open, PE=open     | `CE trade is RUNNING — skipping` | `PE trade is RUNNING — skipping` |
+
+A running trade's alerts are **never moved** — they stay on the exact strike where the trade was entered.
+
+### Startup — Alerts Panel Sync Wait
+
+On first start after TradingView restart, the monitor polls `alert_list` every 5s (up to 120s) until all 4 alerts for today's instrument are visible. This prevents "not found" failures that happen when alerts haven't synced from the cloud yet.
 
 ### Position State
 
