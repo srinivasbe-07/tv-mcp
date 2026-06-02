@@ -751,22 +751,22 @@ async function main() {
       const ceStrike = atm - itmDepth * cfg.strikeInterval;
       const peStrike = atm + itmDepth * cfg.strikeInterval;
 
-      // 4. Update CE alerts — switch tab to CE option, update, switch back to spot
+      // 4. Update CE alerts — skip if CE trade is running (don't move alerts mid-trade)
       if (state.CE === 'closed') {
         log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
         await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg, instrName);
         await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       } else {
-        log(`CE position OPEN — skipping CE symbol update`);
+        log(`CE trade is RUNNING — skipping CE alert update (alerts stay on current strike)`);
       }
 
-      // 5. Update PE alerts — switch tab to PE option, update, switch back to spot
+      // 5. Update PE alerts — skip if PE trade is running (don't move alerts mid-trade)
       if (state.PE === 'closed') {
         log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
         await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
         await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       } else {
-        log(`PE position OPEN — skipping PE symbol update`);
+        log(`PE trade is RUNNING — skipping PE alert update (alerts stay on current strike)`);
       }
 
       // 6. Verify all 4 alerts are active after updates (3s delay lets TV self-recover)
