@@ -38,6 +38,7 @@ app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html'))
 app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
+app.get('/test-pattern-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-pattern-alerts.html')));
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -597,11 +598,149 @@ app.post('/api/test/supertrend', async (req, res) => {
   }
 });
 
+// ── Pattern Alert Test ────────────────────────────────────────────
+const PATTERN_ALERT_NAMES_TEST = {
+  NIFTY:  { entry: 'niftyPatternLongEntry',  sl: 'niftyPatternLongSL',  target: 'niftyPatternLongTarget'  },
+  SENSEX: { entry: 'sensexPatternLongEntry', sl: 'sensexPatternLongSL', target: 'sensexPatternLongTarget' },
+};
+const PATTERN_ITM_BY_DAY_TEST = { 1: 2, 2: 2, 5: 1 };
+
+app.post('/api/test/pattern', async (req, res) => {
+  const { instr = 'NIFTY', spot: spotOverride = null, bias = 'up', itmOverride = null } = req.body;
+  const instrName = instr.toUpperCase();
+  const cfg = INSTRUMENTS_TEST[instrName];
+  if (!cfg) return res.status(400).json({ error: `Unknown instrument: ${instrName}` });
+  const names = PATTERN_ALERT_NAMES_TEST[instrName];
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+
+  const emit = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const log = (msg) => emit('log', { msg });
+
+  let cdp;
+  try {
+    log('Connecting to TradingView CDP...');
+    cdp = new CDPManager();
+    await cdp.connect();
+    log('CDP connected');
+  } catch (e) {
+    emit('done', { error: `CDP connect failed: ${e.message}` });
+    res.end();
+    return;
+  }
+
+  const cdpAlerts = new AlertTools(cdp);
+  const cdpChart = new ChartTools(cdp);
+
+  try {
+    // Read spot price
+    let spot = spotOverride;
+    if (!spot) {
+      log(`Reading ${instrName} spot price from chart...`);
+      await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+      await new Promise((r) => setTimeout(r, 2000));
+      const r = await cdpChart.handle('quote_get', {});
+      const d = JSON.parse(r?.content?.[0]?.text || '{}');
+      spot = d.close || d.price || d.last;
+    }
+    if (!spot) {
+      emit('done', { error: `Could not read ${instrName} spot. Enter it manually.` });
+      res.end();
+      return;
+    }
+
+    // Calculate option symbol
+    const day = nowIST().getUTCDay();
+    const itmDepth =
+      itmOverride !== null ? itmOverride : (instrName === 'SENSEX' ? 2 : (PATTERN_ITM_BY_DAY_TEST[day] ?? 2));
+    const atm = calcATMTest(spot, cfg.strikeInterval);
+    const optType = bias === 'up' ? 'CE' : 'PE';
+    const strike =
+      bias === 'up'
+        ? atm - itmDepth * cfg.strikeInterval
+        : atm + itmDepth * cfg.strikeInterval;
+    const symbol = buildSymbolTest(cfg, strike, optType);
+    const exchange = cfg.spotSymbol.split(':')[0];
+
+    log(`Spot: ${spot}   ATM: ${atm}   ITM-${itmDepth}   ${optType}`);
+    log(`Option: ${symbol}`);
+
+    // Switch chart to option (needed so symbol appears in alert dropdown)
+    log(`Switching chart to ${symbol}...`);
+    await cdpChart.handle('chart_set_symbol', { symbol: `${exchange}:${symbol}` });
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // Derive test levels from last completed bar
+    let entry, sl, target;
+    try {
+      const barsR = await cdpChart.handle('data_get_ohlcv', { symbol, timeframe: '3', bars: 5 });
+      const bars = JSON.parse(barsR?.content?.[0]?.text || '{}').bars || [];
+      const last = bars[bars.length - 2] || bars[bars.length - 1];
+      if (last) {
+        entry = last.high;
+        sl = last.low;
+        target = Math.round((entry + (entry - sl)) * 100) / 100;
+        log(`Levels from last bar — Entry:${entry}  SL:${sl}  Target:${target}`);
+      }
+    } catch (_) {}
+    if (!entry) {
+      entry = strike + 10;
+      sl = Math.max(1, strike - 10);
+      target = strike + 30;
+      log(`Levels (fallback) — Entry:${entry}  SL:${sl}  Target:${target}`);
+    }
+
+    // Update the 3 fixed alerts
+    const tests = [
+      { name: names.entry,  level: entry,  role: 'entry'  },
+      { name: names.sl,     level: sl,     role: 'sl'     },
+      { name: names.target, level: target, role: 'target' },
+    ];
+
+    const results = [];
+    for (const t of tests) {
+      log(`[${t.role}] Updating "${t.name}" @ ${t.level}...`);
+      try {
+        const r = await cdpAlerts.handle('alert_update', {
+          alertName: t.name,
+          symbol,
+          level: t.level,
+        });
+        const rawText = r?.content?.[0]?.text || '{}';
+        let data = {};
+        if (!r?.isError) { try { data = JSON.parse(rawText); } catch (_) {} }
+        const success = !r?.isError && !!data.success;
+        const message = r?.isError ? rawText : (data.message || rawText);
+        log(`[${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
+        const result = { name: t.name, symbol, level: t.level, role: t.role, success, message };
+        results.push(result);
+        emit('result', result);
+      } catch (e) {
+        log(`[${t.role}] ✗ ERROR — ${e.message}`);
+        const result = { name: t.name, symbol, level: t.level, role: t.role, success: false, message: e.message };
+        results.push(result);
+        emit('result', result);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    log('Done — switching back to spot chart');
+    await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+    emit('done', { results, spot, atm, itmDepth, symbol });
+  } finally {
+    await cdp.disconnect().catch(() => {});
+    res.end();
+  }
+});
+
 const server = app.listen(PORT, () => {
   console.log(`UI Server →  http://localhost:${PORT}            (Dashboard)`);
   console.log(`             http://localhost:${PORT}/pattern    (Pattern Monitor)`);
   console.log(`             http://localhost:${PORT}/supertrend (Supertrend Monitor)`);
-  console.log(`             http://localhost:${PORT}/test-alerts (Alert Test)`);
+  console.log(`             http://localhost:${PORT}/test-alerts (Supertrend Alert Test)`);
+  console.log(`             http://localhost:${PORT}/test-pattern-alerts (Pattern Alert Test)`);
 });
 
 server.on('error', (e) => {

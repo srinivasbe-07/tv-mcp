@@ -87,6 +87,28 @@ export class AlertTools {
         },
       },
       {
+        name: 'alert_update',
+        description: 'Update both the symbol and price level on an existing alert',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            alertName: {
+              type: 'string',
+              description: 'Name of the alert to update (as shown in the Alerts panel)',
+            },
+            symbol: {
+              type: 'string',
+              description: 'New symbol to set on the alert (e.g. NIFTY260527C23950)',
+            },
+            level: {
+              type: 'number',
+              description: 'New price level for the alert',
+            },
+          },
+          required: ['alertName', 'symbol', 'level'],
+        },
+      },
+      {
         name: 'alert_get_history',
         description: 'Get recently fired alerts from the alert log/history panel',
         inputSchema: {
@@ -109,6 +131,8 @@ export class AlertTools {
         return await this.activate(args);
       case 'alert_update_symbol':
         return await this.updateSymbol(args);
+      case 'alert_update':
+        return await this.update(args);
       case 'alert_get_history':
         return await this.getHistory(args);
       default:
@@ -350,20 +374,27 @@ export class AlertTools {
               }
               nameSetMethod = 'direct';
             } else {
-              // Strategy B: find "Name and Message" button and click it
-              const EXCL = ['app,', 'toasts', 'webhook', 'sound', 'create', 'save', 'cancel', 'notification'];
-              const isExcluded = (b) => EXCL.some(w => (b.textContent?.toLowerCase() || '').includes(w));
+              // Strategy B: find "Message" / "Name and Message" button and click it
+              const EXCL = ['app,', 'toasts', 'webhook', 'sound', 'create', 'save', 'cancel', 'notification', 'delete'];
+              const isExcluded = (b) => {
+                const txt = b.textContent?.trim() || '';
+                const low = txt.toLowerCase();
+                // Exclude condition preview buttons (e.g. "NIFTY260609P23500 Crossing Up 140.50")
+                if (/crossing|greater than|less than/i.test(txt)) return true;
+                return EXCL.some(w => low.includes(w));
+              };
 
               const msgBtn =
-                // Match by text first — most reliable
-                Array.from(document.querySelectorAll('button')).find(b =>
-                  b.offsetParent !== null && (
+                // Match by text — try both "Message" and "Name and Message" on any clickable element
+                Array.from(document.querySelectorAll('button, [role="button"]')).find(b =>
+                  b.offsetParent !== null && !isExcluded(b) && (
+                    b.textContent?.trim() === 'Message' ||
                     b.textContent?.trim() === 'Name and Message' ||
                     b.textContent?.includes('Name and Message') ||
-                    b.getAttribute('aria-label')?.toLowerCase().includes('name and message')
+                    b.getAttribute('aria-label')?.toLowerCase().includes('message')
                   )
                 ) ||
-                // Match by known class (may change between TV versions)
+                // Match by known class (may change between TV versions) — exclude Delete
                 Array.from(document.querySelectorAll('button[class*="apply-overflow-tooltip--check-children"]'))
                   .find(b => b.offsetParent !== null && !isExcluded(b)) ||
                 // Fallback: any overflow/apply-common button not in exclusion list
@@ -378,10 +409,14 @@ export class AlertTools {
 
                 const isVis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
 
+                // Initial settle wait — gives the previous dialog's DOM time to clear
+                // before polling for the new sub-dialog's fields.
+                await new Promise(r => setTimeout(r, 500));
+
                 // Poll up to 3s for the sub-dialog fields to appear.
                 // Name field may be a textarea (not input) — search both.
                 let allFields = [];
-                for (let poll = 0; poll < 12; poll++) {
+                for (let poll = 0; poll < 16; poll++) {
                   await new Promise(r => setTimeout(r, 250));
                   allFields = Array.from(document.querySelectorAll('input, textarea'))
                     .filter(el => isVis(el) && el !== priceInput);
@@ -427,7 +462,14 @@ export class AlertTools {
                 const applyBtn = Array.from(document.querySelectorAll('button')).find(b =>
                   b.offsetParent !== null && b.textContent?.trim() === 'Apply'
                 );
-                if (applyBtn) { applyBtn.click(); await new Promise(r => setTimeout(r, 800)); }
+                if (applyBtn) {
+                  applyBtn.click();
+                  // Poll for sub-dialog to close (price input reappears when back to main dialog)
+                  for (let i = 0; i < 8; i++) {
+                    await new Promise(r => setTimeout(r, 150));
+                    if (isVis(priceInput)) break;
+                  }
+                }
               } else {
                 nameSetMethod = 'not-found';
               }
@@ -478,7 +520,16 @@ export class AlertTools {
             if (!submitBtn) return { success: false, message: 'Create button not found in dialog footer' };
 
             submitBtn.click();
-            await new Promise(r => setTimeout(r, 2000));
+            // Poll for dialog to close — same 2-of-3 threshold as the success check below
+            for (let i = 0; i < 20; i++) {
+              await new Promise(r => setTimeout(r, 200));
+              const goneCount = [
+                !document.querySelector('[class*="submitBtn-"]'),
+                !document.querySelector('input.input-gr1VjUfr'),
+                !document.querySelector('.form-h6NNXQD2'),
+              ].filter(Boolean).length;
+              if (goneCount >= 2) break;
+            }
 
             // Step 10: Success = dialog closed (check multiple indicators)
             const priceInputGone   = !document.querySelector('input.input-gr1VjUfr');
@@ -637,7 +688,7 @@ export class AlertTools {
               node = node.parentElement;
             }
 
-            const tryDelete = () => {
+            const tryDelete = async () => {
               const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
               const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
               if (!target) return false;
@@ -649,11 +700,19 @@ export class AlertTools {
               const deleteBtn = container?.querySelector('[data-name="alert-delete-button"]');
               if (!deleteBtn) return false;
               deleteBtn.click();
+              // Wait for confirmation dialog and click Yes/Delete/OK
+              await new Promise(r => setTimeout(r, 400));
+              const confirmBtn = Array.from(document.querySelectorAll('button')).find(b => {
+                const txt = (b.textContent || '').trim().toLowerCase();
+                return txt === 'yes' || txt === 'delete' || txt === 'ok';
+              });
+              if (confirmBtn) confirmBtn.click();
+              await new Promise(r => setTimeout(r, 300));
               return true;
             };
 
             // Try at current position first
-            if (tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+            if (await tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
 
             // Scroll through list to find and delete the alert
             if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
@@ -662,12 +721,12 @@ export class AlertTools {
               for (let pos = step; pos <= maxScroll; pos += step) {
                 scroller.scrollTop = pos;
                 await new Promise(r => setTimeout(r, 600));
-                if (tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+                if (await tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
               }
               // Try exact bottom too
               scroller.scrollTop = maxScroll;
               await new Promise(r => setTimeout(r, 600));
-              if (tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
+              if (await tryDelete()) return { success: true, alertId: '${alertId}', message: 'Alert deleted' };
               scroller.scrollTop = 0;
             }
 
@@ -1008,6 +1067,221 @@ export class AlertTools {
       });
     } catch (error) {
       return this.error(`Failed to update alert symbol: ${error.message}`);
+    }
+  }
+
+  async update(args) {
+    try {
+      const { alertName, symbol, level } = args;
+      if (!alertName || !symbol || level === undefined)
+        return this.error('alertName, symbol, and level are required');
+
+      // Step 0: Ensure Alerts panel is showing items
+      const step0Diag = await this.cdp.executeScript(`
+        (async function() {
+          const btn = document.querySelector('[data-name="alerts"]');
+          if (!btn) return { skipped: 'no alerts button' };
+          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
+          const diag = { hasItems: hasItems(), clicked: null };
+          if (!hasItems()) {
+            const logItem = document.querySelector('[data-name="alert-log-item"]');
+            if (logItem) {
+              let container = logItem.parentElement;
+              for (let depth = 0; depth < 15; depth++) {
+                if (!container || container === document.body) break;
+                const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+                if (tabs.length >= 1) {
+                  const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
+                  target.click();
+                  diag.clicked = target.textContent?.trim().slice(0, 40);
+                  await new Promise(r => setTimeout(r, 600));
+                  break;
+                }
+                container = container.parentElement;
+              }
+            }
+            if (!hasItems()) {
+              const classes = btn.classList.toString();
+              const isActive = classes.includes('active') || classes.includes('isA') ||
+                               btn.getAttribute('aria-selected') === 'true' ||
+                               !!document.querySelector('[data-name="set-alert-button"]');
+              if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
+              btn.click();
+              for (let i = 0; i < 16; i++) {
+                await new Promise(r => setTimeout(r, 250));
+                if (hasItems()) break;
+              }
+            }
+          }
+          diag.hasItemsAfter = hasItems();
+          return diag;
+        })()
+      `);
+      if (step0Diag) console.log('[alert_update] Step0 diag:', JSON.stringify(step0Diag));
+
+      // Step 1: Find and JS-click the edit button for the target alert
+      const clickResult = await this.cdp.executeScript(`
+        (async function() {
+          const findScroller = () => {
+            const seed = document.querySelector('[data-name="alert-item-name"]');
+            let node = seed?.parentElement;
+            while (node && node !== document.body) {
+              if (node.scrollHeight > node.clientHeight + 10) return node;
+              node = node.parentElement;
+            }
+            return null;
+          };
+          const clickEdit = () => {
+            const editBtns = Array.from(document.querySelectorAll('[data-name="alert-edit-button"]'));
+            for (const btn of editBtns) {
+              let node = btn.parentElement;
+              let depth = 0;
+              while (node && depth < 10) {
+                const nameEl = node.querySelector('[data-name="alert-item-name"]');
+                if (nameEl) {
+                  if (nameEl.innerText?.trim() === '${alertName}') { btn.click(); return true; }
+                  break;
+                }
+                node = node.parentElement;
+                depth++;
+              }
+            }
+            return false;
+          };
+          const scroller = findScroller();
+          if (scroller) { scroller.scrollTop = 0; await new Promise(r => setTimeout(r, 300)); }
+          if (clickEdit()) return { clicked: true };
+          if (scroller) {
+            const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+            const step = Math.max(80, Math.floor(scroller.clientHeight * 0.6));
+            for (let pos = step; pos <= maxScroll; pos += step) {
+              scroller.scrollTop = pos;
+              await new Promise(r => setTimeout(r, 400));
+              if (clickEdit()) return { clicked: true };
+            }
+            scroller.scrollTop = maxScroll;
+            await new Promise(r => setTimeout(r, 400));
+            if (clickEdit()) return { clicked: true };
+          }
+          return { clicked: false };
+        })()
+      `);
+      if (!clickResult?.clicked) {
+        return this.error(`Alert "${alertName}" not found in Alerts panel`);
+      }
+
+      // Step 2: Wait for edit dialog to open
+      await this.cdp.delay(1500);
+
+      // Step 3: Select symbol in dropdown
+      const selectResult = await this.cdp.executeScript(`
+        (async function() {
+          const nl = String.fromCharCode(10);
+          const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+          if (!dialog) return { found: false, error: 'no dialog' };
+          const headerBtn = [...dialog.querySelectorAll('[class*="activeArea-"]')].find(e => e.clientHeight > 0);
+          if (!headerBtn) return { found: false, error: 'no header button' };
+          const currentSymbol = headerBtn.textContent?.trim() || '';
+          if (currentSymbol.toUpperCase() === '${symbol}'.toUpperCase()) {
+            return { found: true, alreadyCorrect: true, currentSymbol };
+          }
+          headerBtn.click();
+          await new Promise(r => setTimeout(r, 600));
+          const items = [...document.querySelectorAll('[class*="button-fOp9u5tE"]')]
+            .filter(e => e.offsetWidth > 0 && e.offsetHeight > 0);
+          const available = items.map(e => {
+            const t = e.querySelector('[class*="symbolsDropdownItemTitle-"]');
+            return (t?.textContent?.trim() || e.textContent?.trim())?.split(nl)[0] || '';
+          });
+          const match = items.find((e, i) => available[i]?.toUpperCase() === '${symbol}'.toUpperCase());
+          if (!match) {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return { found: false, available, currentSymbol };
+          }
+          match.click();
+          await new Promise(r => setTimeout(r, 600));
+          return { found: true, available, currentSymbol };
+        })()
+      `);
+
+      if (!selectResult?.found) {
+        await this.cdp.executeScript(`
+          (function() {
+            const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+            const cancel = [...(dialog?.querySelectorAll('button') || [])].find(b => b.textContent?.trim() === 'Cancel');
+            if (cancel) cancel.click();
+          })()
+        `);
+        return this.error(
+          `Symbol "${symbol}" not in alert dropdown. Available: [${selectResult?.available?.filter(Boolean).join(', ')}]. ` +
+            `Switch the chart tab to "${symbol}" first, then retry.`
+        );
+      }
+
+      // Step 4: Update price level
+      await this.cdp.delay(300);
+      const levelResult = await this.cdp.executeScript(`
+        (async function() {
+          try {
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            let priceInput = document.querySelector('input.input-gr1VjUfr');
+            if (!priceInput) {
+              priceInput = Array.from(document.querySelectorAll('input')).find(i =>
+                i.offsetParent !== null && !['checkbox', 'radio', 'hidden'].includes(i.type)
+              );
+            }
+            if (!priceInput) return { found: false };
+            priceInput.focus();
+            await new Promise(r => setTimeout(r, 100));
+            nativeSetter.call(priceInput, '');
+            priceInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 100));
+            nativeSetter.call(priceInput, String(${level}));
+            priceInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+            priceInput.dispatchEvent(new Event('change', { bubbles: true }));
+            priceInput.blur();
+            await new Promise(r => setTimeout(r, 300));
+            return { found: true, verified: priceInput.value === String(${level}) };
+          } catch(e) {
+            return { error: e.message };
+          }
+        })()
+      `);
+
+      // Step 5: Click Save
+      await this.cdp.delay(300);
+      const saveResult = await this.cdp.executeScript(`
+        (async function() {
+          const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+          if (!dialog) return { success: true, msg: 'Dialog already closed' };
+          const symBtn = [...dialog.querySelectorAll('[class*="activeArea-"]')].find(e => e.clientHeight > 0);
+          const shownSymbol = symBtn?.textContent?.trim() || '';
+          const saveBtn = dialog.querySelector('[class*="submitBtn-"]') ||
+                          [...dialog.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Save');
+          if (!saveBtn) return { success: false, msg: 'Save button not found', shownSymbol };
+          saveBtn.click();
+          for (var i = 0; i < 16; i++) {
+            await new Promise(r => setTimeout(r, 250));
+            if (!document.querySelector('[class*="submitBtn-"]')) {
+              return { success: true, shownSymbol, msg: 'Saved' };
+            }
+          }
+          return { success: false, shownSymbol, msg: 'Dialog still open after Save' };
+        })()
+      `);
+
+      return this.success({
+        success: saveResult?.success || false,
+        alertName,
+        previousSymbol: selectResult?.currentSymbol,
+        newSymbol: symbol,
+        level,
+        levelSet: levelResult?.found && levelResult?.verified,
+        shownInDialog: saveResult?.shownSymbol,
+        message: saveResult?.msg || 'Unknown',
+      });
+    } catch (error) {
+      return this.error(`Failed to update alert: ${error.message}`);
     }
   }
 

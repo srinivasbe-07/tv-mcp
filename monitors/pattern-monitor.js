@@ -10,8 +10,7 @@
  * Key levels = last 3 days H/L (auto-fetched) + importantLevels (configured).
  * Tolerance = 50pts NIFTY / 100pts SENSEX.
  *
- * Config: config/trade-config.json (re-read every tick)
- *         config/algotest-config.json (loaded once at startup)
+ * Config: config/pattern-monitor-config.json (re-read every tick)
  *
  * Usage:  node monitors/pattern-monitor.js
  * Keys:   [a] toggle active  [f] manual flip bias  [q] quit
@@ -56,7 +55,6 @@ async function switchTabTo(cdp, symbol) {
 }
 
 const CONFIG_FILE = './config/pattern-monitor-config.json';
-const ALGOTEST_FILE = './config/algotest-config.json';
 const LOG_FILE = './logs/pattern-monitor.log';
 const DRAWN_IDS_FILE = './logs/drawn-ids.json';
 // ms until the next candle boundary (e.g. 09:03:00, 09:06:00 for 3-min)
@@ -87,6 +85,12 @@ const OPTION_INSTR = {
 };
 // ITM depth for pattern monitor: Fri=ITM-1, Mon/Tue=ITM-2, SENSEX=ITM-2
 const PATTERN_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
+
+// Fixed alert names — pre-created once manually in TradingView, updated each signal
+const PATTERN_ALERT_NAMES = {
+  NIFTY:  { entry: 'niftyPatternLongEntry',  sl: 'niftyPatternLongSL',  target: 'niftyPatternLongTarget'  },
+  SENSEX: { entry: 'sensexPatternLongEntry', sl: 'sensexPatternLongSL', target: 'sensexPatternLongTarget' },
+};
 
 // ---------------------------------------------------------------------------
 // IST helpers
@@ -151,13 +155,6 @@ function validateConfig(cfg) {
   return errors;
 }
 
-function loadAlgotest() {
-  try {
-    return JSON.parse(fs.readFileSync(ALGOTEST_FILE, 'utf8'));
-  } catch (_e) {
-    return {};
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Candle pattern detection
@@ -333,167 +330,150 @@ function calcSwingHigh(bars) {
 }
 
 // ---------------------------------------------------------------------------
-// Create trade alerts (Entry + SL + Target)
+// Trade state
 // ---------------------------------------------------------------------------
 let lastAlertCandleTime = null;
-let alertsCreatedAt = null; // wall-clock ms when last set of trade alerts was created
-let tradeEntryLevel = null; // saved on alert creation — used for trail SL to breakeven
+let alertsCreatedAt = null;
+let tradeEntryLevel = null;
 let slTrailedToBreakeven = false;
-let activeTradeSymbol = null; // option symbol when in options mode
+let activeTradeSymbol = null;
 
-const ALERT_MAX_RETRIES = 2;
-const ALERT_RETRY_DELAY_MS = 2000;
+// ---------------------------------------------------------------------------
+// Trade state persistence
+// ---------------------------------------------------------------------------
+const TRADE_STATE_FILE = './logs/trade-state.json';
 
-async function createAlertWithRetry(cdpAlerts, args, retries = ALERT_MAX_RETRIES) {
-  const parseResult = (r) => {
-    try {
-      return JSON.parse(r?.content?.[0]?.text || '{}');
-    } catch (_) {
-      return {};
-    }
-  };
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    if (attempt > 0) {
-      log(`  [RETRY ${attempt}/${retries}] ${args.name}...`);
-      await new Promise((r) => setTimeout(r, ALERT_RETRY_DELAY_MS));
-    }
-    const r = await cdpAlerts.handle('alert_create', args);
-    const d = parseResult(r);
-    log(
-      `  [CREATE diag] ${args.name}: success=${d.success} priceOk=${d.priceVerified} priceBy=${d.priceInputSrc} nameBy=${d.nameSetMethod} nameSet=${d.nameSet} msg=${d.message || d.error || ''}`
-    );
-    if (d.nameDiag) log(`  [NAME diag] ${JSON.stringify(d.nameDiag).slice(0, 200)}`);
-    if (d.success) return d;
-    log(`  [FAIL attempt ${attempt + 1}] ${args.name}: ${d.message || 'unknown error'}`);
-  }
-  return null;
-}
-
-async function deleteAlerts(cdpAlerts, names) {
-  for (const name of names) {
-    try {
-      await cdpAlerts.handle('alert_delete', { alertId: name });
-      await new Promise((r) => setTimeout(r, 400));
-    } catch (_e) {
-      /* ignore */
-    }
+function loadTradeState() {
+  try {
+    return JSON.parse(fs.readFileSync(TRADE_STATE_FILE, 'utf8'));
+  } catch (_) {
+    return { status: 'idle' };
   }
 }
 
-async function createTradeAlerts(
-  cdpAlerts,
-  bias,
-  candle,
-  target,
-  sl,
-  symbol,
-  algotest,
-  _delayMs = 1000
-) {
-  if (lastAlertCandleTime === candle.time) {
-    log('  Alerts already created for this candle — skipping duplicate');
+function saveTradeState(state) {
+  try {
+    fs.writeFileSync(TRADE_STATE_FILE, JSON.stringify(state, null, 2));
+  } catch (e) {
+    log(`[WARN] Could not save trade state: ${e.message}`);
+  }
+}
+
+async function ensureAlertsPanelReady(cdp) {
+  await cdp
+    .executeScript(
+      `
+    (async function() {
+      const btn = document.querySelector('[data-name="alerts"]');
+      if (!btn) return;
+      const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
+      if (!hasItems()) {
+        const logItem = document.querySelector('[data-name="alert-log-item"]');
+        if (logItem) {
+          let container = logItem.parentElement;
+          for (let depth = 0; depth < 15; depth++) {
+            if (!container || container === document.body) break;
+            const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+            if (tabs.length >= 1) {
+              const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
+              target.click();
+              await new Promise(r => setTimeout(r, 600));
+              break;
+            }
+            container = container.parentElement;
+          }
+        }
+        if (!hasItems()) {
+          const classes = btn.classList.toString();
+          const isActive = classes.includes('active') || classes.includes('isA') ||
+                           !!document.querySelector('[data-name="set-alert-button"]');
+          if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
+          btn.click();
+          for (let i = 0; i < 16; i++) {
+            await new Promise(r => setTimeout(r, 250));
+            if (hasItems()) break;
+          }
+        }
+      }
+    })()
+  `
+    )
+    .catch(() => {});
+}
+
+async function updateTradeAlerts(cdpAlerts, cdp, instrName, bias, candle, target, sl, symbol) {
+  const names = PATTERN_ALERT_NAMES[instrName];
+  if (!names) {
+    log(`[ERROR] No alert names configured for instrument: ${instrName}`);
     return;
   }
+
+  // Protection: skip if live trade is already running
+  const existingState = loadTradeState();
+  if (existingState.status !== 'idle') {
+    await ensureAlertsPanelReady(cdp);
+    const listResult = await cdpAlerts.handle('alert_list', {});
+    const allAlerts = JSON.parse(listResult?.content?.[0]?.text || '{}').alerts || [];
+    const liveSL = allAlerts.find((a) => a.name === names.sl && a.active);
+    const liveTarget = allAlerts.find((a) => a.name === names.target && a.active);
+    if (liveSL || liveTarget) {
+      log(`[BLOCKED] Live trade detected (${names.sl} / ${names.target}) — skipping update`);
+      return;
+    }
+    saveTradeState({ status: 'idle' });
+  }
+
+  if (lastAlertCandleTime === candle.time) {
+    log('  Alerts already updated for this candle — skipping duplicate');
+    return;
+  }
+
+  const parseResult = (r) => {
+    try { return JSON.parse(r?.content?.[0]?.text || '{}'); } catch (_) { return {}; }
+  };
 
   const tradeType = bias === 'up' ? 'CE LONG' : 'PE LONG';
   const entryLevel = candle.high;
   const slLevel = sl || candle.low;
 
   log(`  [${tradeType}] Entry:${entryLevel}  SL:${slLevel}  Target:${target}`);
+  log(`  Updating: ${names.entry} / ${names.sl} / ${names.target}`);
 
-  const webhook = algotest?.webhookUrl || '';
-  const token = algotest?.accessToken || '';
-  const entryMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Entry' }) : '';
-  const exitMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Exit' }) : '';
+  const r1 = await cdpAlerts.handle('alert_update', { alertName: names.entry, symbol, level: entryLevel });
+  const d1 = parseResult(r1);
+  log(`  [Entry] ${d1.success ? 'OK' : 'FAIL'} — ${d1.message || d1.error || ''}`);
+  if (!d1.success) { log('  [FAIL] Entry update failed — aborting'); return; }
+  await new Promise((r) => setTimeout(r, 500));
 
-  // Clean up any stale alerts before creating
-  await deleteAlerts(cdpAlerts, ['TradeEntry', 'TradeSL', 'TradeTarget']);
+  const r2 = await cdpAlerts.handle('alert_update', { alertName: names.sl, symbol, level: slLevel });
+  const d2 = parseResult(r2);
+  log(`  [SL] ${d2.success ? 'OK' : 'FAIL'} — ${d2.message || d2.error || ''}`);
+  if (!d2.success) { log('  [FAIL] SL update failed — aborting'); return; }
+  await new Promise((r) => setTimeout(r, 500));
 
-  // ── TradeEntry — gate: if this fails, signal is gone, nothing to do ──────
-  const d1 = await createAlertWithRetry(cdpAlerts, {
-    symbol,
-    condition: 'crosses_up',
-    level: entryLevel,
-    name: 'TradeEntry',
-    message: entryMsg,
-    webhook,
-    once: true,
-  });
-  if (!d1) {
-    log('  [FAIL] TradeEntry failed after all retries — aborting trade setup');
-    return;
-  }
-  log(
-    `  [OK] TradeEntry at ${entryLevel}${d1.nameSet === false ? ` [WARN: name not set — method:${d1.nameSetMethod}]` : ''}`
-  );
-  await new Promise((r) => setTimeout(r, _delayMs));
-
-  // ── TradeSL — must succeed; if not, clean up Entry (no unprotected trade) ─
-  const d2 = await createAlertWithRetry(cdpAlerts, {
-    symbol,
-    condition: 'crosses_down',
-    level: slLevel,
-    name: 'TradeSL',
-    message: exitMsg,
-    webhook,
-    once: false,
-  });
-  if (!d2) {
-    log('  [FAIL] TradeSL failed after all retries — deleting TradeEntry, no trade');
-    await deleteAlerts(cdpAlerts, ['TradeEntry']);
-    return;
-  }
-  log(`  [OK] TradeSL at ${slLevel}${d2.nameSet === false ? ' [WARN: name not set]' : ''}`);
-  await new Promise((r) => setTimeout(r, _delayMs));
-
-  // ── TradeTarget — must succeed; if not, clean up Entry+SL ────────────────
-  const d3 = await createAlertWithRetry(cdpAlerts, {
-    symbol,
-    condition: 'crosses_up',
-    level: target,
-    name: 'TradeTarget',
-    message: exitMsg,
-    webhook,
-    once: false,
-  });
-  if (!d3) {
-    log('  [FAIL] TradeTarget failed after all retries — deleting TradeEntry + TradeSL, no trade');
-    await deleteAlerts(cdpAlerts, ['TradeEntry', 'TradeSL']);
-    return;
-  }
-  log(`  [OK] TradeTarget at ${target}${d3.nameSet === false ? ' [WARN: name not set]' : ''}`);
+  const r3 = await cdpAlerts.handle('alert_update', { alertName: names.target, symbol, level: target });
+  const d3 = parseResult(r3);
+  log(`  [Target] ${d3.success ? 'OK' : 'FAIL'} — ${d3.message || d3.error || ''}`);
+  if (!d3.success) { log('  [FAIL] Target update failed — aborting'); return; }
 
   lastAlertCandleTime = candle.time;
   alertsCreatedAt = Date.now();
   tradeEntryLevel = entryLevel;
   slTrailedToBreakeven = false;
-  log(`  All 3 alerts created ✓${webhook ? ' (Algotest webhook set)' : ''}`);
+
+  saveTradeState({ status: 'alerts_set', instrName, entryLevel, symbol, createdAt: Date.now() });
+  log(`  All 3 alerts updated ✓`);
   return true;
 }
 
 // ---------------------------------------------------------------------------
-// Cleanup: delete remaining trade alerts once an exit alert fires
+// Check if SL or Target fired — reset state (alerts stay, no deletion)
 // ---------------------------------------------------------------------------
-const TRADE_ALERT_NAMES = ['TradeEntry', 'TradeSL', 'TradeTarget'];
 
-async function cleanupFiredAlerts(cdp, cdpAlerts) {
+async function cleanupFiredAlerts(cdp, cdpAlerts, instrName) {
   try {
-    const result = await cdpAlerts.handle('alert_list', {});
-    const data = JSON.parse(result.content[0].text);
-    const alerts = data.alerts || [];
-
-    const tradeAlerts = alerts.filter((a) => TRADE_ALERT_NAMES.includes(a.name));
-    if (tradeAlerts.length === 0) {
-      // If alerts were created recently (< 45 min), name may not have been set in TV dialog.
-      // Keep trade state alive rather than resetting — prevents re-creating alerts every tick.
-      const recentMs = 45 * 60 * 1000;
-      if (alertsCreatedAt && Date.now() - alertsCreatedAt < recentMs) {
-        log(
-          '[WARN] Named trade alerts not found but created recently — preserving trade state (check TV alert names)'
-        );
-        return;
-      }
-      log('[RESET] No trade alerts found on TradingView — clearing trade state');
+    const state = loadTradeState();
+    if (state.status === 'idle') {
       lastAlertCandleTime = null;
       alertsCreatedAt = null;
       tradeEntryLevel = null;
@@ -502,41 +482,39 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
       return;
     }
 
-    const targetFired = tradeAlerts.some((a) => a.name === 'TradeTarget' && !a.active);
-    const slFired = tradeAlerts.some((a) => a.name === 'TradeSL' && !a.active);
+    const names = PATTERN_ALERT_NAMES[instrName];
+    if (!names) return;
+
+    await ensureAlertsPanelReady(cdp);
+    const result = await cdpAlerts.handle('alert_list', {});
+    const data = JSON.parse(result.content[0].text);
+    const alerts = data.alerts || [];
+
+    const targetFired = alerts.some((a) => a.name === names.target && !a.active);
+    const slFired = alerts.some((a) => a.name === names.sl && !a.active);
     if (!targetFired && !slFired) return;
 
     if (targetFired) {
-      log('[TARGET HIT] Trade closed at target');
-      log('[TARGET HIT] Set new levels then set active: true to resume');
+      log('[TARGET HIT] Trade closed at target — set new levels then set active: true to resume');
     } else {
-      log('[SL HIT] Stop loss triggered — cleaning up trade alerts');
+      log('[SL HIT] Stop loss triggered');
     }
 
-    for (const name of TRADE_ALERT_NAMES) {
-      try {
-        await cdpAlerts.handle('alert_delete', { alertId: name });
-        await new Promise((r) => setTimeout(r, 300));
-      } catch (_e) {
-        /* ignore */
-      }
-    }
     lastAlertCandleTime = null;
     alertsCreatedAt = null;
     tradeEntryLevel = null;
     slTrailedToBreakeven = false;
     activeTradeSymbol = null;
+    saveTradeState({ status: 'idle' });
 
-    // Clear chart then re-apply current config
     log('[CLEANUP] Clearing chart and re-applying config...');
     await clearAllDrawings(cdp);
     await new Promise((r) => setTimeout(r, 1000));
     const c = loadConfig();
     if (c) {
-      const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
       const sym = c.symbol || INSTRUMENTS[instrName];
-      lastDayLevelDate = ''; // force re-fetch
-      lastDrawnNearestKey = ''; // force redraw
+      lastDayLevelDate = '';
+      lastDrawnNearestKey = '';
       await refreshDayBars(cdp, sym);
       if (c.active) {
         const _za = c.zone || [];
@@ -562,7 +540,7 @@ async function cleanupFiredAlerts(cdp, cdpAlerts) {
 // ---------------------------------------------------------------------------
 // Trail SL to breakeven once price reaches trailToCostAt
 // ---------------------------------------------------------------------------
-async function trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints) {
+async function trailSLToBreakeven(cdp, cdpAlerts, cfg, instrName, symbol, trailPoints) {
   if (!trailPoints || !tradeEntryLevel || slTrailedToBreakeven) return;
 
   const trailTrigger = tradeEntryLevel + trailPoints;
@@ -572,31 +550,27 @@ async function trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints) {
   if (!live || live.close < trailTrigger) return;
 
   log(
-    `[TRAIL SL] Price ${live.close} reached ${trailTrigger} (entry ${tradeEntryLevel} + ${trailPoints}pts) — moving TradeSL to breakeven`
+    `[TRAIL SL] Price ${live.close} reached ${trailTrigger} (entry ${tradeEntryLevel} + ${trailPoints}pts) — moving SL to breakeven`
   );
+
+  const names = PATTERN_ALERT_NAMES[instrName];
+  if (!names) return;
+
+  const state = loadTradeState();
+  const tradeSymbol = state.symbol || symbol;
+
   try {
-    await cdpAlerts.handle('alert_delete', { alertId: 'TradeSL' });
-    await new Promise((r) => setTimeout(r, 500));
-
-    const algotest = loadAlgotest();
-    const token = algotest?.accessToken || '';
-    const exitMsg = token ? JSON.stringify({ access_token: token, alert_name: 'square_off' }) : '';
-    const webhook = algotest?.webhookUrl || '';
-
-    const r = await cdpAlerts.handle('alert_create', {
-      symbol,
-      condition: 'crosses_down',
+    const r = await cdpAlerts.handle('alert_update', {
+      alertName: names.sl,
+      symbol: tradeSymbol,
       level: tradeEntryLevel,
-      name: 'TradeSL',
-      message: exitMsg,
-      webhook,
     });
     const d = JSON.parse(r?.content?.[0]?.text || '{}');
     if (d.success) {
-      log(`[TRAIL SL] TradeSL moved to ${tradeEntryLevel} (breakeven) — trade now risk-free`);
+      log(`[TRAIL SL] ${names.sl} moved to ${tradeEntryLevel} (breakeven) — trade now risk-free`);
       slTrailedToBreakeven = true;
     } else {
-      log(`[TRAIL SL] Failed to move SL: ${d.message || 'unknown error'}`);
+      log(`[TRAIL SL] Failed: ${d.message || 'unknown error'}`);
     }
   } catch (e) {
     log(`[TRAIL SL] Error: ${e.message}`);
@@ -1073,25 +1047,54 @@ async function tick(cdp, cdpAlerts) {
     const instrName = DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY';
     const symbol = cfg.symbol || INSTRUMENTS[instrName];
 
-    // On restart: if trade alerts already exist in TradingView, resume tracking them
+    // On first tick: verify stored trade state against live alerts
     if (!lastAlertCandleTime) {
-      try {
-        const listResult = await cdpAlerts.handle('alert_list', {});
-        const listData = JSON.parse(listResult.content[0].text);
-        const existing = (listData.alerts || []).filter(
-          (a) => TRADE_ALERT_NAMES.includes(a.name) && a.active
-        );
-        if (existing.length > 0) {
-          log(`[RESUME] Found ${existing.length} active trade alert(s) — skipping new creation`);
-          lastAlertCandleTime = -1; // sentinel: trade in progress, candle time unknown
+      const state = loadTradeState();
+
+      if (state.status !== 'idle') {
+        const names = PATTERN_ALERT_NAMES[instrName];
+        if (names) {
+          try {
+            await ensureAlertsPanelReady(cdp);
+            const listResult = await cdpAlerts.handle('alert_list', {});
+            const listData = JSON.parse(listResult.content[0].text);
+            const allAlerts = listData.alerts || [];
+            const liveSL = allAlerts.find((a) => a.name === names.sl && a.active);
+            const liveTarget = allAlerts.find((a) => a.name === names.target && a.active);
+            const slFired = allAlerts.find((a) => a.name === names.sl && !a.active);
+            const targetFired = allAlerts.find((a) => a.name === names.target && !a.active);
+
+            if (slFired || targetFired) {
+              log('[RESUME] Trade closed while monitor was down — clearing state');
+              saveTradeState({ status: 'idle' });
+            } else if (liveSL || liveTarget) {
+              log(`[RESUME] Active trade found: ${names.sl} / ${names.target} — resuming`);
+              lastAlertCandleTime = -1;
+              alertsCreatedAt = state.createdAt || Date.now();
+              tradeEntryLevel = state.entryLevel || null;
+              activeTradeSymbol = state.symbol || null;
+            } else {
+              const ageMs = Date.now() - (state.createdAt || 0);
+              if (ageMs < 2 * 60 * 60 * 1000) {
+                log('[RESUME] Trade alerts not found but state is recent — preserving');
+                lastAlertCandleTime = -1;
+                alertsCreatedAt = state.createdAt || Date.now();
+                tradeEntryLevel = state.entryLevel || null;
+                activeTradeSymbol = state.symbol || null;
+              } else {
+                log('[RESUME] Trade state is stale — clearing');
+                saveTradeState({ status: 'idle' });
+              }
+            }
+          } catch (_) {
+            /* ignore */
+          }
         }
-      } catch (_) {
-        /* ignore */
       }
     }
 
-    // Clean up if SL/Target fired — resets lastAlertCandleTime to null on exit
-    if (lastAlertCandleTime) await cleanupFiredAlerts(cdp, cdpAlerts);
+    // Check if SL/Target fired — resets lastAlertCandleTime to null on exit
+    if (lastAlertCandleTime) await cleanupFiredAlerts(cdp, cdpAlerts, instrName);
 
     // Trade still active — check trail SL, then skip pattern detection
     if (lastAlertCandleTime) {
@@ -1102,7 +1105,7 @@ async function tick(cdp, cdpAlerts) {
           : cfg.symbol
             ? 0
             : TRAIL_POINTS[instrName] || 0;
-      await trailSLToBreakeven(cdp, cdpAlerts, cfg, symbol, trailPoints);
+      await trailSLToBreakeven(cdp, cdpAlerts, cfg, instrName, symbol, trailPoints);
       log('Trade active — waiting for SL or Target to hit, no new setups');
       return;
     }
@@ -1115,7 +1118,6 @@ async function tick(cdp, cdpAlerts) {
         : null;
     const target = cfg.target;
     const sl = cfg.sl || 0;
-    const algotest = loadAlgotest();
 
     if (!zone) {
       log(`Zone not configured — edit trade-config.json`);
@@ -1237,17 +1239,16 @@ async function tick(cdp, cdpAlerts) {
           log(
             `[SIGNAL] ${pattern} in zone! O:${patternCandle.open} H:${patternCandle.high} L:${patternCandle.low} C:${patternCandle.close}`
           );
-          // Multi-tab: create alerts on the option tab (CE or PE).
-          // Single-tab: falls back to cdpAlerts (same as before).
           const cdpAlertsOpt = cdpAlerts;
-          const created = await createTradeAlerts(
+          const created = await updateTradeAlerts(
             cdpAlertsOpt,
+            cdp,
+            instrName,
             cfg.bias,
             patternCandle,
             effectiveTarget,
             sl,
-            tradeSymbol,
-            algotest
+            tradeSymbol
           );
           if (created) {
             activeTradeSymbol = tradeSymbol;
@@ -1398,10 +1399,7 @@ async function main() {
   console.log(
     `Trail SL   : ${effectiveTrailPts ? `move to breakeven after +${effectiveTrailPts}pts from entry${cfg.trailToCostPoints != null ? ' (config)' : ' (default)'}` : 'disabled'}`
   );
-  const at = loadAlgotest();
-  console.log(
-    `Algotest   : ${at.webhookUrl ? 'configured' : 'not configured (edit config/algotest-config.json)'}`
-  );
+
   console.log(`Active     : ${cfg.active}`);
   if (!cfg.active) console.log('  ⚠  Monitor is PAUSED — configure zones then set active: true');
   console.log('\nKeys: [a] toggle active  [f] flip bias  [r] apply config now  [q] quit\n');
@@ -1674,7 +1672,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   });
 }
 
-export { createTradeAlerts };
+export { updateTradeAlerts };
 export function _resetLastAlertCandleTime() {
   lastAlertCandleTime = null;
   tradeEntryLevel = null;
