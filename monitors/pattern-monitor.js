@@ -341,6 +341,41 @@ let tradeEntryLevel = null; // saved on alert creation — used for trail SL to 
 let slTrailedToBreakeven = false;
 let activeTradeSymbol = null; // option symbol when in options mode
 
+const ALERT_MAX_RETRIES = 2;
+const ALERT_RETRY_DELAY_MS = 2000;
+
+async function createAlertWithRetry(cdpAlerts, args, retries = ALERT_MAX_RETRIES) {
+  const parseResult = (r) => {
+    try {
+      return JSON.parse(r?.content?.[0]?.text || '{}');
+    } catch (_) {
+      return {};
+    }
+  };
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      log(`  [RETRY ${attempt}/${retries}] ${args.name}...`);
+      await new Promise((r) => setTimeout(r, ALERT_RETRY_DELAY_MS));
+    }
+    const r = await cdpAlerts.handle('alert_create', args);
+    const d = parseResult(r);
+    if (d.success) return d;
+    log(`  [FAIL attempt ${attempt + 1}] ${args.name}: ${d.message || 'unknown error'}`);
+  }
+  return null;
+}
+
+async function deleteAlerts(cdpAlerts, names) {
+  for (const name of names) {
+    try {
+      await cdpAlerts.handle('alert_delete', { alertId: name });
+      await new Promise((r) => setTimeout(r, 400));
+    } catch (_e) {
+      /* ignore */
+    }
+  }
+}
+
 async function createTradeAlerts(
   cdpAlerts,
   bias,
@@ -356,8 +391,6 @@ async function createTradeAlerts(
     return;
   }
 
-  // Always long on the option chart: CE for bias=up, PE for bias=down.
-  // Entry above candle HIGH, SL below candle LOW, target crosses up.
   const tradeType = bias === 'up' ? 'CE LONG' : 'PE LONG';
   const entryLevel = candle.high;
   const slLevel = sl || candle.low;
@@ -369,24 +402,11 @@ async function createTradeAlerts(
   const entryMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Entry' }) : '';
   const exitMsg = token ? JSON.stringify({ access_token: token, alert_name: 'Exit' }) : '';
 
-  for (const name of ['TradeEntry', 'TradeSL', 'TradeTarget']) {
-    try {
-      await cdpAlerts.handle('alert_delete', { alertId: name });
-      await new Promise((r) => setTimeout(r, 500));
-    } catch (_e) {
-      /* ignore */
-    }
-  }
+  // Clean up any stale alerts before creating
+  await deleteAlerts(cdpAlerts, ['TradeEntry', 'TradeSL', 'TradeTarget']);
 
-  const parseAlertResult = (r) => {
-    try {
-      return JSON.parse(r?.content?.[0]?.text || '{}');
-    } catch (_) {
-      return {};
-    }
-  };
-
-  const r1 = await cdpAlerts.handle('alert_create', {
+  // ── TradeEntry — gate: if this fails, signal is gone, nothing to do ──────
+  const d1 = await createAlertWithRetry(cdpAlerts, {
     symbol,
     condition: 'crosses_up',
     level: entryLevel,
@@ -395,18 +415,17 @@ async function createTradeAlerts(
     webhook,
     once: true,
   });
-  const d1 = parseAlertResult(r1);
-  if (!d1.success) {
-    log(`  [FAIL] TradeEntry: ${d1.message || 'unknown error'}`);
+  if (!d1) {
+    log('  [FAIL] TradeEntry failed after all retries — aborting trade setup');
     return;
   }
   log(
     `  [OK] TradeEntry at ${entryLevel}${d1.nameSet === false ? ` [WARN: name not set — method:${d1.nameSetMethod}]` : ''}`
   );
-
   await new Promise((r) => setTimeout(r, _delayMs));
 
-  const r2 = await cdpAlerts.handle('alert_create', {
+  // ── TradeSL — must succeed; if not, clean up Entry (no unprotected trade) ─
+  const d2 = await createAlertWithRetry(cdpAlerts, {
     symbol,
     condition: 'crosses_down',
     level: slLevel,
@@ -415,16 +434,16 @@ async function createTradeAlerts(
     webhook,
     once: true,
   });
-  const d2 = parseAlertResult(r2);
-  if (!d2.success) {
-    log(`  [FAIL] TradeSL: ${d2.message || 'unknown error'}`);
+  if (!d2) {
+    log('  [FAIL] TradeSL failed after all retries — deleting TradeEntry, no trade');
+    await deleteAlerts(cdpAlerts, ['TradeEntry']);
     return;
   }
   log(`  [OK] TradeSL at ${slLevel}${d2.nameSet === false ? ' [WARN: name not set]' : ''}`);
-
   await new Promise((r) => setTimeout(r, _delayMs));
 
-  const r3 = await cdpAlerts.handle('alert_create', {
+  // ── TradeTarget — must succeed; if not, clean up Entry+SL ────────────────
+  const d3 = await createAlertWithRetry(cdpAlerts, {
     symbol,
     condition: 'crosses_up',
     level: target,
@@ -433,9 +452,9 @@ async function createTradeAlerts(
     webhook,
     once: true,
   });
-  const d3 = parseAlertResult(r3);
-  if (!d3.success) {
-    log(`  [FAIL] TradeTarget: ${d3.message || 'unknown error'}`);
+  if (!d3) {
+    log('  [FAIL] TradeTarget failed after all retries — deleting TradeEntry + TradeSL, no trade');
+    await deleteAlerts(cdpAlerts, ['TradeEntry', 'TradeSL']);
     return;
   }
   log(`  [OK] TradeTarget at ${target}${d3.nameSet === false ? ' [WARN: name not set]' : ''}`);
@@ -444,7 +463,7 @@ async function createTradeAlerts(
   alertsCreatedAt = Date.now();
   tradeEntryLevel = entryLevel;
   slTrailedToBreakeven = false;
-  log(`  All 3 alerts created${webhook ? ' (Algotest webhook set)' : ''}`);
+  log(`  All 3 alerts created ✓${webhook ? ' (Algotest webhook set)' : ''}`);
   return true;
 }
 
