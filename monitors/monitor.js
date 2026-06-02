@@ -431,6 +431,36 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
   return results;
 }
 
+// ---------------------------------------------------------------------------
+// After updating CE+PE alerts, wait 3s then verify all 4 are active
+// ---------------------------------------------------------------------------
+async function verifyAlertStatus(cdpAlerts, instrName) {
+  await new Promise((r) => setTimeout(r, 3000));
+  try {
+    const r = await cdpAlerts.handle('alert_list', {});
+    const data = JSON.parse(r?.content?.[0]?.text || '{}');
+    const alerts = data.alerts || [];
+    const names = ALERT_NAMES[instrName];
+    const toCheck = [names.CE.entry, names.CE.exit, names.PE.entry, names.PE.exit];
+    let allOk = true;
+    for (const name of toCheck) {
+      const found = alerts.find((a) => a.name === name);
+      if (!found) {
+        log(`  [STATUS] "${name}" — not found in panel`);
+        allOk = false;
+      } else if (!found.active) {
+        log(`  [STATUS] "${name}" — STOPPED (status: ${found.status}) ← self-recovers`);
+        allOk = false;
+      } else {
+        log(`  [STATUS] "${name}" — active ✓`);
+      }
+    }
+    if (allOk) log('  [STATUS] All 4 alerts active ✓');
+  } catch (e) {
+    log(`  [STATUS] Could not verify alert status: ${e.message}`);
+  }
+}
+
 export function processHistoryForPositionChanges(historyItems, stateObj) {
   const seenSet = new Set(stateObj.seenHistoryKeys);
   let changed = false;
@@ -702,6 +732,9 @@ async function main() {
       } else {
         log(`PE position OPEN — skipping PE symbol update`);
       }
+
+      // 6. Verify all 4 alerts are active after updates (3s delay lets TV self-recover)
+      await verifyAlertStatus(cdpAlerts, instrName);
 
       state.lastATM = atm;
       state.lastInstrument = instrName;
