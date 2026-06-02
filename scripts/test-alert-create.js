@@ -213,8 +213,14 @@ try {
       console.log(`  price selector : ${d.priceInputSrc}`);
       console.log(`  name set       : ${d.nameSet ? '✓' : '✗  WARN: name not visible in panel after creation'}`);
       console.log(`  name method    : ${d.nameSetMethod}`);
-      if (d.nameDiag?.strategyB_btnFound === false) {
-        console.log(`  name btn       : NOT FOUND — visible buttons: ${(d.nameDiag.visibleBtns || []).map(b => b.text || b.label).filter(Boolean).join(' | ')}`);
+      if (!d.nameSet && d.nameDiag) {
+        const nd = d.nameDiag;
+        console.log(`  name btn found : ${nd.strategyB_btnFound} (${nd.strategyB_btnText || 'n/a'})`);
+        console.log(`  name input     : found=${nd.nameInputFound} tag=${nd.nameInputTag || 'n/a'} cls=${nd.nameInputCls || 'n/a'}`);
+        if (nd.subDialogInputs) console.log(`  sub inputs     : ${nd.subDialogInputs.join(' | ')}`);
+        if (!nd.strategyB_btnFound) {
+          console.log(`  visible btns   : ${(nd.visibleBtns || []).map(b => b.text || b.label).filter(Boolean).join(' | ')}`);
+        }
       }
     } else {
       allOk = false;

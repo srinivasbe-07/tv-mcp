@@ -320,16 +320,25 @@ export class AlertTools {
 
               if (msgBtn) {
                 msgBtn.click();
-                await new Promise(r => setTimeout(r, 1500));
 
-                // After sub-dialog opens, find name input (input or contenteditable)
-                const nameInput =
-                  Array.from(document.querySelectorAll('input')).find(i =>
-                    i.offsetParent !== null && i !== priceInput && !i.classList.toString().includes('gr1VjUfr')
-                  ) ||
-                  Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
-                    e.offsetParent !== null
-                  );
+                // Poll up to 3s for the name input to appear — fixed waits are unreliable
+                // Use getBoundingClientRect instead of offsetParent (more reliable in overlays)
+                const isVisible = (el) => {
+                  const r = el.getBoundingClientRect();
+                  return r.width > 0 && r.height > 0;
+                };
+                let nameInput = null;
+                for (let poll = 0; poll < 12; poll++) {
+                  await new Promise(r => setTimeout(r, 250));
+                  nameInput =
+                    Array.from(document.querySelectorAll('input')).find(i =>
+                      isVisible(i) && i !== priceInput && !i.classList.toString().includes('gr1VjUfr')
+                    ) ||
+                    Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
+                      isVisible(e)
+                    );
+                  if (nameInput) break;
+                }
 
                 nameDiag.nameInputFound = !!nameInput;
                 nameDiag.nameInputTag = nameInput?.tagName;
