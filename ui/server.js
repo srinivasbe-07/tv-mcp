@@ -524,9 +524,17 @@ app.post('/api/test/supertrend', async (req, res) => {
           alertName: t.name,
           symbol: t.symbol,
         });
-        const data = JSON.parse(r?.content?.[0]?.text || '{}');
+        const rawText = r?.content?.[0]?.text || '{}';
+        let data = {};
+        if (!r?.isError) {
+          try {
+            data = JSON.parse(rawText);
+          } catch (_) {
+            /* ignore */
+          }
+        }
         const success = !r?.isError && !!data.success;
-        const message = data.message || r?.content?.[0]?.text || '';
+        const message = r?.isError ? rawText : data.message || rawText;
         log(`[${t.side}:${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
         const result = {
           name: t.name,
