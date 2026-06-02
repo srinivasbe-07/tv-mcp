@@ -448,6 +448,14 @@ app.post('/api/test/supertrend', async (req, res) => {
   const cfg = INSTRUMENTS_TEST[instrName];
   if (!cfg) return res.status(400).json({ error: `Unknown instrument: ${instrName}` });
 
+  // Stream logs + results via SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+
+  const emit = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const log = (msg) => emit('log', { msg });
+
   const alertDefs = ALERT_NAMES_TEST[instrName];
   const day = nowIST().getUTCDay();
   const itmDepth =
@@ -460,19 +468,23 @@ app.post('/api/test/supertrend', async (req, res) => {
 
   let cdp;
   try {
+    log('Connecting to TradingView CDP...');
     cdp = new CDPManager();
     await cdp.connect();
+    log('CDP connected');
   } catch (e) {
-    return res.status(500).json({ error: `CDP connect failed: ${e.message}` });
+    emit('done', { error: `CDP connect failed: ${e.message}` });
+    res.end();
+    return;
   }
 
   const cdpAlerts = new AlertTools(cdp);
   const cdpChart = new ChartTools(cdp);
 
   try {
-    // Read spot from chart if not provided
     let spot = spotOverride;
     if (!spot) {
+      log(`Reading ${instrName} spot price from chart...`);
       await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       await new Promise((r) => setTimeout(r, 2000));
       const r = await cdpChart.handle('quote_get', {});
@@ -480,9 +492,9 @@ app.post('/api/test/supertrend', async (req, res) => {
       spot = d.close || d.price || d.last;
     }
     if (!spot) {
-      return res
-        .status(500)
-        .json({ error: `Could not read ${instrName} spot price. Provide spot manually.` });
+      emit('done', { error: `Could not read ${instrName} spot price. Enter it manually.` });
+      res.end();
+      return;
     }
 
     const atm = calcATMTest(spot, cfg.strikeInterval);
@@ -490,6 +502,9 @@ app.post('/api/test/supertrend', async (req, res) => {
     const peStrike = atm + itmDepth * cfg.strikeInterval;
     const ceSymbol = buildSymbolTest(cfg, ceStrike, 'CE');
     const peSymbol = buildSymbolTest(cfg, peStrike, 'PE');
+
+    log(`Spot: ${spot}   ATM: ${atm}   ITM-${itmDepth}`);
+    log(`CE → ${ceSymbol}   PE → ${peSymbol}`);
 
     const tests = [
       { name: alertDefs.CE.entry, symbol: ceSymbol, side: 'CE', role: 'entry' },
@@ -500,39 +515,51 @@ app.post('/api/test/supertrend', async (req, res) => {
 
     const results = [];
     for (const t of tests) {
+      log(`[${t.side}:${t.role}] Switching chart to ${t.symbol}...`);
       try {
         await cdpChart.handle('chart_set_symbol', { symbol: `${exchange}:${t.symbol}` });
         await new Promise((r) => setTimeout(r, 3000));
+        log(`[${t.side}:${t.role}] Updating "${t.name}"...`);
         const r = await cdpAlerts.handle('alert_update_symbol', {
           alertName: t.name,
           symbol: t.symbol,
         });
         const data = JSON.parse(r?.content?.[0]?.text || '{}');
-        results.push({
+        const success = !r?.isError && !!data.success;
+        const message = data.message || r?.content?.[0]?.text || '';
+        log(`[${t.side}:${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
+        const result = {
           name: t.name,
           symbol: t.symbol,
           side: t.side,
           role: t.role,
-          success: !r?.isError && !!data.success,
-          message: data.message || r?.content?.[0]?.text || '',
-        });
+          success,
+          message,
+        };
+        results.push(result);
+        emit('result', result);
       } catch (e) {
-        results.push({
+        log(`[${t.side}:${t.role}] ✗ ERROR — ${e.message}`);
+        const result = {
           name: t.name,
           symbol: t.symbol,
           side: t.side,
           role: t.role,
           success: false,
           message: e.message,
-        });
+        };
+        results.push(result);
+        emit('result', result);
       }
       await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
       await new Promise((r) => setTimeout(r, 1500));
     }
 
-    res.json({ results, spot, atm, itmDepth, ceSymbol, peSymbol });
+    log('Test complete — switching back to spot chart');
+    emit('done', { results, spot, atm, itmDepth, ceSymbol, peSymbol });
   } finally {
     await cdp.disconnect().catch(() => {});
+    res.end();
   }
 });
 

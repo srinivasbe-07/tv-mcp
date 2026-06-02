@@ -223,6 +223,35 @@
         background: #1a1d27;
         color: #4b5563;
       }
+      .log-panel {
+        background: #0a0c12;
+        border: 1px solid #1e2130;
+        border-radius: 7px;
+        padding: 8px 10px;
+        max-height: 140px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .log-panel.hidden {
+        display: none;
+      }
+      .log-line {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 10px;
+        color: #6b7280;
+        line-height: 1.5;
+      }
+      .log-line.ok {
+        color: #4ade80;
+      }
+      .log-line.err {
+        color: #f87171;
+      }
+      .log-line.inf {
+        color: #93c5fd;
+      }
     </style>
   </head>
   <body>
@@ -285,6 +314,7 @@
             <span class="result-status s-wait" id="nifty-pe-exit-st">·</span>
           </div>
         </div>
+        <div class="log-panel hidden" id="nifty-log"></div>
         <div class="summary sum-idle" id="nifty-summary">Not run yet</div>
       </div>
 
@@ -340,19 +370,15 @@
             <span class="result-status s-wait" id="sensex-pe-exit-st">·</span>
           </div>
         </div>
+        <div class="log-panel hidden" id="sensex-log"></div>
         <div class="summary sum-idle" id="sensex-summary">Not run yet</div>
       </div>
     </div>
 
     <script>
-      // Mark today's instrument
       const DAY_INSTR = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
-      const NIFTY_ITM_BY_DAY = { 1: 2, 2: 2, 5: 1 };
       const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-      const todayDay = now.getUTCDay();
-      const todayInstr = DAY_INSTR[todayDay] || 'NIFTY';
-      const itmByDay = NIFTY_ITM_BY_DAY[todayDay] ?? 2;
-
+      const todayInstr = DAY_INSTR[now.getUTCDay()] || 'NIFTY';
       document.getElementById('nifty-day-note').textContent =
         todayInstr === 'NIFTY' ? '← today' : '(not today)';
       document.getElementById('sensex-day-note').textContent =
@@ -368,11 +394,33 @@
         st.className = `result-status ${cls}`;
       }
 
+      function appendLog(instr, msg) {
+        const panel = document.getElementById(`${instr.toLowerCase()}-log`);
+        panel.classList.remove('hidden');
+        const line = document.createElement('div');
+        line.className =
+          'log-line' +
+          (msg.includes('✓')
+            ? ' ok'
+            : msg.includes('✗') || msg.includes('ERROR') || msg.includes('failed')
+              ? ' err'
+              : msg.includes('Spot:') || msg.includes('CE →')
+                ? ' inf'
+                : '');
+        line.textContent = msg;
+        panel.appendChild(line);
+        panel.scrollTop = panel.scrollHeight;
+      }
+
       function resetCard(instr) {
         const i = instr.toLowerCase();
         ROLES.forEach((r) => setStatus(instr, r, '—', '·', 's-wait'));
-        document.getElementById(`${i}-summary`).className = 'summary sum-idle';
-        document.getElementById(`${i}-summary`).textContent = 'Running...';
+        const logEl = document.getElementById(`${i}-log`);
+        logEl.innerHTML = '';
+        logEl.classList.add('hidden');
+        const sumEl = document.getElementById(`${i}-summary`);
+        sumEl.className = 'summary sum-idle';
+        sumEl.textContent = 'Running...';
       }
 
       async function runTest(instr) {
@@ -380,8 +428,6 @@
         const btn = document.getElementById(`${i}-btn`);
         btn.disabled = true;
         resetCard(instr);
-
-        // Mark all as running
         ROLES.forEach((r) => setStatus(instr, r, '', '…', 's-running'));
 
         const spot = parseFloat(document.getElementById(`${i}-spot`).value) || null;
@@ -389,43 +435,66 @@
         const itmOverride = itmVal !== '' ? parseInt(itmVal) : null;
 
         try {
-          const res = await fetch('/api/test/supertrend', {
+          const response = await fetch('/api/test/supertrend', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ instr, spot, itmOverride }),
           });
-          const data = await res.json();
 
-          if (data.error) {
-            ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
-            const sumEl = document.getElementById(`${i}-summary`);
-            sumEl.className = 'summary sum-fail';
-            sumEl.textContent = data.error;
-            return;
-          }
-
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
           let passed = 0,
             failed = 0;
-          for (const result of data.results) {
-            const role = `${result.side.toLowerCase()}-${result.role}`;
-            const ok = result.success;
-            setStatus(instr, role, result.symbol, ok ? '✓' : '✗', ok ? 's-ok' : 's-fail');
-            ok ? passed++ : failed++;
-          }
 
-          const sumEl = document.getElementById(`${i}-summary`);
-          if (failed === 0) {
-            sumEl.className = 'summary sum-ok';
-            sumEl.textContent = `All 4 alerts updated ✓  (spot: ${data.spot}  ATM: ${data.atm}  ITM-${data.itmDepth})`;
-          } else {
-            sumEl.className = 'summary sum-fail';
-            sumEl.textContent = `${passed} passed, ${failed} failed — check alert names in TradingView`;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // Parse complete SSE events (separated by \n\n)
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop(); // keep incomplete trailing chunk
+
+            for (const part of parts) {
+              const eventMatch = part.match(/^event:\s*(.+)/m);
+              const dataMatch = part.match(/^data:\s*(.+)/m);
+              if (!dataMatch) continue;
+              const eventType = eventMatch?.[1]?.trim() || 'message';
+              let parsed;
+              try {
+                parsed = JSON.parse(dataMatch[1]);
+              } catch (_) {
+                continue;
+              }
+
+              if (eventType === 'log') {
+                appendLog(instr, parsed.msg);
+              } else if (eventType === 'result') {
+                const role = `${parsed.side.toLowerCase()}-${parsed.role}`;
+                const ok = parsed.success;
+                setStatus(instr, role, parsed.symbol, ok ? '✓' : '✗', ok ? 's-ok' : 's-fail');
+                ok ? passed++ : failed++;
+              } else if (eventType === 'done') {
+                const sumEl = document.getElementById(`${i}-summary`);
+                if (parsed.error) {
+                  ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
+                  sumEl.className = 'summary sum-fail';
+                  sumEl.textContent = parsed.error;
+                } else if (failed === 0) {
+                  sumEl.className = 'summary sum-ok';
+                  sumEl.textContent = `All 4 alerts updated ✓  (spot: ${parsed.spot}  ATM: ${parsed.atm}  ITM-${parsed.itmDepth})`;
+                } else {
+                  sumEl.className = 'summary sum-fail';
+                  sumEl.textContent = `${passed} passed, ${failed} failed — check alert names in TradingView`;
+                }
+              }
+            }
           }
         } catch (e) {
           ROLES.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
-          const sumEl = document.getElementById(`${i}-summary`);
-          sumEl.className = 'summary sum-fail';
-          sumEl.textContent = 'Server error: ' + e.message;
+          document.getElementById(`${i}-summary`).className = 'summary sum-fail';
+          document.getElementById(`${i}-summary`).textContent = 'Server error: ' + e.message;
         } finally {
           btn.disabled = false;
         }
