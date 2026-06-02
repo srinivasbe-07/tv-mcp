@@ -359,6 +359,8 @@ async function createAlertWithRetry(cdpAlerts, args, retries = ALERT_MAX_RETRIES
     }
     const r = await cdpAlerts.handle('alert_create', args);
     const d = parseResult(r);
+    log(`  [CREATE diag] ${args.name}: success=${d.success} priceOk=${d.priceVerified} priceBy=${d.priceInputSrc} nameBy=${d.nameSetMethod} nameSet=${d.nameSet} msg=${d.message || d.error || ''}`);
+    if (d.nameDiag) log(`  [NAME diag] ${JSON.stringify(d.nameDiag).slice(0, 200)}`);
     if (d.success) return d;
     log(`  [FAIL attempt ${attempt + 1}] ${args.name}: ${d.message || 'unknown error'}`);
   }

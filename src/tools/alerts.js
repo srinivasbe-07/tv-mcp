@@ -194,19 +194,42 @@ export class AlertTools {
 
             const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
 
-            // Step 4: Set price level — clear first so React sees the change
-            const priceInput = document.querySelector('input.input-gr1VjUfr');
-            if (!priceInput) return { success: false, message: 'Conditions form did not open after symbol selection' };
+            // Step 4: Set price level.
+            // input.input-gr1VjUfr is TV's minified class — falls back to first visible
+            // non-checkbox input if the class has changed in a newer TV build.
+            let priceInputSrc = 'not-found';
+            let priceInput = document.querySelector('input.input-gr1VjUfr');
+            if (priceInput) {
+              priceInputSrc = 'class:input-gr1VjUfr';
+            } else {
+              priceInput = Array.from(document.querySelectorAll('input')).find(i =>
+                i.offsetParent !== null && !['checkbox', 'radio', 'hidden'].includes(i.type)
+              );
+              priceInputSrc = priceInput ? 'fallback:first-visible-input' : 'not-found';
+            }
+            if (!priceInput) return {
+              success: false,
+              message: 'Price input not found — TV dialog may have changed',
+              diag: {
+                priceInputSrc,
+                visibleInputs: Array.from(document.querySelectorAll('input'))
+                  .filter(i => i.offsetParent !== null)
+                  .map(i => i.className.slice(0, 50) + '/' + i.type + '/' + i.placeholder)
+                  .slice(0, 8),
+              },
+            };
 
             priceInput.focus();
             await new Promise(r => setTimeout(r, 100));
             nativeSetter.call(priceInput, '');
             priceInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 100));
             nativeSetter.call(priceInput, String(${level}));
             priceInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
             priceInput.dispatchEvent(new Event('change', { bubbles: true }));
+            priceInput.blur();
             await new Promise(r => setTimeout(r, 400));
+            const priceVerified = priceInput.value === String(${level});
 
             // Step 5: Set "Only Once" frequency if requested
             // Wait for frequency buttons to render, then find by text
@@ -225,105 +248,125 @@ export class AlertTools {
             }
 
             // Step 6+7: Set alert name + message.
-            // Strategy A — direct: some TV versions expose name input in the main form.
-            // Strategy B — sub-dialog: current TV opens a separate dialog via a button.
+            // Strategy A — direct input visible in the main form (some TV versions).
+            // Strategy B — "Name and Message" button opens a sub-dialog (current TV).
             const taSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
             let nameSetMethod = 'none';
-            {
-              const setInput = (inp, val) => {
-                inp.focus();
-                nativeSetter.call(inp, '');
-                inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
-                nativeSetter.call(inp, val);
-                inp.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-                inp.dispatchEvent(new Event('change', { bubbles: true }));
-              };
+            let nameDiag = {};
 
-              // Strategy A: look for any visible text input that is NOT the price input
-              const directNameInput = Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).find(i =>
-                i.offsetParent !== null &&
-                i !== priceInput &&
-                !i.classList.toString().includes('gr1VjUfr')
-              );
-              if (directNameInput) {
-                await new Promise(r => setTimeout(r, 100));
-                setInput(directNameInput, '${alertName}');
-                await new Promise(r => setTimeout(r, 300));
-                const directMsgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
-                if (directMsgArea && '${alertMessage}') {
-                  taSetter.call(directMsgArea, '${alertMessage}');
-                  directMsgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            const setInputVal = (inp, val) => {
+              inp.focus();
+              nativeSetter.call(inp, '');
+              inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+              nativeSetter.call(inp, val);
+              inp.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+              inp.dispatchEvent(new Event('change', { bubbles: true }));
+              inp.blur();
+            };
+
+            // Snapshot of visible buttons for diagnostics (captured before clicking anything)
+            const visibleBtns = Array.from(document.querySelectorAll('button'))
+              .filter(b => b.offsetParent !== null)
+              .map(b => ({
+                text: b.textContent?.trim().slice(0, 50),
+                cls: b.className.slice(0, 60),
+                label: b.getAttribute('aria-label'),
+              }))
+              .filter(b => b.text || b.label)
+              .slice(0, 15);
+            nameDiag.visibleBtns = visibleBtns;
+
+            // Strategy A: name input directly visible in main form
+            const directNameInput = Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).find(i =>
+              i.offsetParent !== null && i !== priceInput && !i.classList.toString().includes('gr1VjUfr')
+            );
+            nameDiag.strategyA = !!directNameInput;
+
+            if (directNameInput) {
+              await new Promise(r => setTimeout(r, 100));
+              setInputVal(directNameInput, '${alertName}');
+              await new Promise(r => setTimeout(r, 300));
+              const directMsgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
+              if (directMsgArea && '${alertMessage}') {
+                taSetter.call(directMsgArea, '${alertMessage}');
+                directMsgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                directMsgArea.blur();
+                await new Promise(r => setTimeout(r, 200));
+              }
+              nameSetMethod = 'direct';
+            } else {
+              // Strategy B: find "Name and Message" button and click it
+              const EXCL = ['app,', 'toasts', 'webhook', 'sound', 'create', 'save', 'cancel', 'notification'];
+              const isExcluded = (b) => EXCL.some(w => (b.textContent?.toLowerCase() || '').includes(w));
+
+              const msgBtn =
+                // Match by text first — most reliable
+                Array.from(document.querySelectorAll('button')).find(b =>
+                  b.offsetParent !== null && (
+                    b.textContent?.trim() === 'Name and Message' ||
+                    b.textContent?.includes('Name and Message') ||
+                    b.getAttribute('aria-label')?.toLowerCase().includes('name and message')
+                  )
+                ) ||
+                // Match by known class (may change between TV versions)
+                Array.from(document.querySelectorAll('button[class*="apply-overflow-tooltip--check-children"]'))
+                  .find(b => b.offsetParent !== null && !isExcluded(b)) ||
+                // Fallback: any overflow/apply-common button not in exclusion list
+                Array.from(document.querySelectorAll('button[class*="overflow"], button[class*="apply-common"]'))
+                  .find(b => b.offsetParent !== null && !isExcluded(b));
+
+              nameDiag.strategyB_btnFound = !!msgBtn;
+              nameDiag.strategyB_btnText = msgBtn?.textContent?.trim().slice(0, 50);
+
+              if (msgBtn) {
+                msgBtn.click();
+                await new Promise(r => setTimeout(r, 1500));
+
+                // After sub-dialog opens, find name input (input or contenteditable)
+                const nameInput =
+                  Array.from(document.querySelectorAll('input')).find(i =>
+                    i.offsetParent !== null && i !== priceInput && !i.classList.toString().includes('gr1VjUfr')
+                  ) ||
+                  Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
+                    e.offsetParent !== null
+                  );
+
+                nameDiag.nameInputFound = !!nameInput;
+                nameDiag.nameInputTag = nameInput?.tagName;
+                nameDiag.nameInputCls = nameInput?.className?.slice(0, 50);
+
+                if (nameInput) {
+                  await new Promise(r => setTimeout(r, 150));
+                  if (nameInput.tagName === 'INPUT') {
+                    setInputVal(nameInput, '${alertName}');
+                  } else {
+                    nameInput.focus();
+                    document.execCommand('selectAll', false, null);
+                    document.execCommand('insertText', false, '${alertName}');
+                  }
+                  await new Promise(r => setTimeout(r, 300));
+                  nameSetMethod = 'subdialog';
+                } else {
+                  nameDiag.subDialogInputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
+                    .filter(e => e.offsetParent !== null)
+                    .map(e => e.tagName + '/' + (e.type || e.contentEditable) + '/' + (e.placeholder || '').slice(0, 20))
+                    .slice(0, 8);
+                  nameSetMethod = 'subdialog-no-input';
+                }
+
+                const msgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
+                if (msgArea && '${alertMessage}') {
+                  taSetter.call(msgArea, '${alertMessage}');
+                  msgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                  msgArea.blur();
                   await new Promise(r => setTimeout(r, 200));
                 }
-                nameSetMethod = 'direct';
+                const applyBtn = Array.from(document.querySelectorAll('button')).find(b =>
+                  b.offsetParent !== null && b.textContent?.trim() === 'Apply'
+                );
+                if (applyBtn) { applyBtn.click(); await new Promise(r => setTimeout(r, 800)); }
               } else {
-                // Strategy B: click "Name and Message" button to open sub-dialog
-                const EXCL = ['app,', 'toasts', 'webhook', 'sound', 'create', 'save', 'cancel'];
-                const isExcluded = (b) => EXCL.some(w => (b.textContent?.toLowerCase() || '').includes(w));
-                const msgBtn =
-                  Array.from(document.querySelectorAll('button[class*="apply-overflow-tooltip--check-children"]'))
-                    .find(b => b.offsetParent !== null && !isExcluded(b)) ||
-                  Array.from(document.querySelectorAll('button')).find(b =>
-                    b.offsetParent !== null &&
-                    (b.textContent?.trim() === 'Name and Message' ||
-                     b.textContent?.includes('Name and Message') ||
-                     b.getAttribute('aria-label')?.toLowerCase().includes('name'))
-                  ) ||
-                  Array.from(document.querySelectorAll('button[class*="overflow"], button[class*="apply-"]'))
-                    .find(b => b.offsetParent !== null && !isExcluded(b));
-
-                if (msgBtn) {
-                  msgBtn.click();
-                  await new Promise(r => setTimeout(r, 1500));
-
-                  // Find name input — try every input variant TV might use
-                  const nameInput =
-                    Array.from(document.querySelectorAll('input')).find(i =>
-                      i.offsetParent !== null && i !== priceInput &&
-                      !i.classList.toString().includes('gr1VjUfr')
-                    ) ||
-                    Array.from(document.querySelectorAll('[contenteditable="true"]')).find(e =>
-                      e.offsetParent !== null
-                    );
-
-                  if (nameInput) {
-                    await new Promise(r => setTimeout(r, 150));
-                    if (nameInput.tagName === 'INPUT') {
-                      setInput(nameInput, '${alertName}');
-                    } else {
-                      // contenteditable
-                      nameInput.focus();
-                      document.execCommand('selectAll', false, null);
-                      document.execCommand('insertText', false, '${alertName}');
-                    }
-                    await new Promise(r => setTimeout(r, 300));
-                    nameSetMethod = 'subdialog';
-                  } else {
-                    const domInfo = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
-                      .filter(e => e.offsetParent !== null)
-                      .map(e => e.tagName + '[' + (e.type || e.contentEditable || '') + ']' + (e.placeholder ? '=' + e.placeholder.slice(0,20) : ''))
-                      .slice(0, 8).join('|');
-                    nameSetMethod = 'subdialog-no-input:' + domInfo;
-                  }
-
-                  const msgArea = Array.from(document.querySelectorAll('textarea')).find(t => t.offsetParent !== null);
-                  if (msgArea && '${alertMessage}') {
-                    taSetter.call(msgArea, '${alertMessage}');
-                    msgArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
-                    await new Promise(r => setTimeout(r, 200));
-                  }
-                  const applyBtn = Array.from(document.querySelectorAll('button')).find(b =>
-                    b.offsetParent !== null && b.textContent?.trim() === 'Apply'
-                  );
-                  if (applyBtn) { applyBtn.click(); await new Promise(r => setTimeout(r, 800)); }
-                }
-                if (!msgBtn) {
-                  const visibleBtns = Array.from(document.querySelectorAll('button'))
-                    .filter(b => b.offsetParent !== null)
-                    .map(b => b.textContent?.trim().slice(0, 40))
-                    .filter(Boolean).slice(0, 10);
-                  nameSetMethod = 'not-found:' + visibleBtns.join('|');
-                }
+                nameSetMethod = 'not-found';
               }
             }
 
@@ -390,6 +433,9 @@ export class AlertTools {
               success,
               nameSet: nameFound,
               nameSetMethod,
+              priceInputSrc,
+              priceVerified,
+              nameDiag,
               alertId: '${alertId}',
               symbol: '${symbol}',
               condition: '${condition}',
