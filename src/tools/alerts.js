@@ -146,19 +146,45 @@ export class AlertTools {
               }
             }
 
-            // Step 2: Ensure Alerts panel is open, then open Create Alert dialog
-            let createBtn = document.querySelector('[data-name="set-alert-button"]');
-            if (!createBtn) {
-              // Try to open the Alerts panel via sidebar button
-              const alertsTab = document.querySelector(
-                '[data-name="alerts"], [data-id="alerts"], [aria-label="Alerts"], button[id*="alert"]'
-              );
-              if (alertsTab) {
-                alertsTab.click();
-                await new Promise(r => setTimeout(r, 800));
+            // Step 2: Ensure Alerts panel is open on the Alerts list tab.
+            // Handles: (a) panel closed, (b) log tab active, (c) panel collapsed.
+            {
+              const btn = document.querySelector('[data-name="alerts"]');
+              if (btn) {
+                const hasCreateBtn = () => !!document.querySelector('[data-name="set-alert-button"]');
+                if (!hasCreateBtn()) {
+                  // Log tab active — walk up from a log item to find and click the Alerts tab
+                  const logItem = document.querySelector('[data-name="alert-log-item"]');
+                  if (logItem) {
+                    let container = logItem.parentElement;
+                    for (let depth = 0; depth < 15; depth++) {
+                      if (!container || container === document.body) break;
+                      const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+                      if (tabs.length >= 1) {
+                        const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
+                        target.click();
+                        await new Promise(r => setTimeout(r, 600));
+                        break;
+                      }
+                      container = container.parentElement;
+                    }
+                  }
+                  if (!hasCreateBtn()) {
+                    // Panel closed or collapsed — isA is TV's minified active class
+                    const classes = btn.classList.toString();
+                    const isActive = classes.includes('active') || classes.includes('isA') ||
+                                     !!document.querySelector('[data-name="set-alert-button"]');
+                    if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
+                    btn.click();
+                    for (let i = 0; i < 16; i++) {
+                      await new Promise(r => setTimeout(r, 250));
+                      if (hasCreateBtn()) break;
+                    }
+                  }
+                }
               }
-              createBtn = document.querySelector('[data-name="set-alert-button"]');
             }
+            let createBtn = document.querySelector('[data-name="set-alert-button"]');
             if (!createBtn) return { success: false, message: 'Create Alert button not found — open the Alerts panel in TradingView' };
 
             createBtn.click();
