@@ -160,8 +160,8 @@ try {
       const last = bars[bars.length - 2] || bars[bars.length - 1]; // last CLOSED candle
       if (last) {
         entry  = entry  ?? last.high;
-        sl     = sl     ?? last.low;
-        target = target ?? Math.round(last.high * 1.005); // +0.5% as a placeholder
+        sl     = sl     ?? Math.round((last.high - 5) * 100) / 100;   // entry - 5
+        target = target ?? Math.round((last.high + 10) * 100) / 100;  // entry + 10
         console.log(`  Default from candle — Entry:${entry}  SL:${sl}  Target:${target}`);
       }
     } catch (_) { /* ignore */ }
