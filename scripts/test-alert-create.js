@@ -210,6 +210,7 @@ try {
     if (d.success) {
       console.log(`✓`);
       console.log(`  price verified : ${d.priceVerified ? '✓' : '✗  WARN: price may not have been set correctly'}`);
+      if (a.once) console.log(`  once btn       : ${d.onceBtnFound ? '✓' : `✗ NOT FOUND — options seen: [${(d.onceOptions||[]).join(' | ')}]`}`);
       console.log(`  price selector : ${d.priceInputSrc}`);
       console.log(`  name set       : ${d.nameSet ? '✓' : '✗  WARN: name not visible in panel after creation'}`);
       console.log(`  name method    : ${d.nameSetMethod}`);

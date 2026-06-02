@@ -231,18 +231,33 @@ export class AlertTools {
             await new Promise(r => setTimeout(r, 400));
             const priceVerified = priceInput.value === String(${level});
 
-            // Step 5: Set "Only Once" frequency if requested
-            // Wait for frequency buttons to render, then find by text
+            // Step 5: Set "Only Once" frequency if requested.
+            // Poll up to 2s for the frequency buttons to render.
+            let onceBtnFound = false;
+            let onceOptions = [];
             if (${fireOnce}) {
-              await new Promise(r => setTimeout(r, 300));
-              const onceBtn = Array.from(
-                document.querySelectorAll('button, [role="radio"], label, [class*="item-"], [class*="button-"]')
-              ).find(el => {
-                const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
-                return txt === 'only once' || txt === 'once';
+              const candidates = () => Array.from(
+                document.querySelectorAll('button, [role="radio"], [role="option"], label, li')
+              ).filter(el => {
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
               });
+
+              let onceBtn = null;
+              for (let poll = 0; poll < 8; poll++) {
+                await new Promise(r => setTimeout(r, 250));
+                const els = candidates();
+                onceOptions = els.map(el => (el.innerText || el.textContent || '').trim()).filter(Boolean).slice(0, 20);
+                onceBtn = els.find(el => {
+                  const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                  return txt === 'only once' || txt === 'once' || txt.includes('only once');
+                });
+                if (onceBtn) break;
+              }
+
               if (onceBtn) {
                 onceBtn.click();
+                onceBtnFound = true;
                 await new Promise(r => setTimeout(r, 300));
               }
             }
@@ -447,6 +462,8 @@ export class AlertTools {
               nameSetMethod,
               priceInputSrc,
               priceVerified,
+              onceBtnFound,
+              onceOptions,
               nameDiag,
               alertId: '${alertId}',
               symbol: '${symbol}',
