@@ -685,15 +685,17 @@ export class AlertTools {
           };
 
           if (!hasItems()) {
-            const logList = document.querySelector('[data-name="alert-log-list"]');
-            diag.logListFound = !!logList;
+            // Detect log tab by its items (data-name="alert-log-item"), not the container
+            // which has no matching data-name.
+            const logItem = document.querySelector('[data-name="alert-log-item"]');
+            diag.logListFound = !!logItem;
 
-            if (logList) {
-              // Walk up from log list to find the closest ancestor that has [role="tab"] buttons,
-              // then click the one that isn't the log tab (first tab = Alerts list).
-              let container = logList.parentElement;
+            if (logItem) {
+              // Walk up from a log item to find the closest ancestor with [role="tab"] buttons,
+              // then click the unselected one (the Alerts list tab).
+              let container = logItem.parentElement;
               let clicked = false;
-              for (let depth = 0; depth < 12 && !clicked; depth++) {
+              for (let depth = 0; depth < 15 && !clicked; depth++) {
                 if (!container || container === document.body) break;
                 const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
                 diag.tabsFound = tabs.map(t => ({
@@ -703,7 +705,6 @@ export class AlertTools {
                   depth,
                 }));
                 if (tabs.length >= 1) {
-                  // Click the tab that is not currently selected (or the first tab)
                   const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
                   target.click();
                   diag.clicked = target.textContent?.trim().slice(0, 40);
@@ -716,8 +717,9 @@ export class AlertTools {
             }
 
             if (!hasItems()) {
-              // Panel is closed or collapsed — check active state then toggle
-              const isActive = btn.classList.toString().includes('active') ||
+              // Panel is closed or collapsed — isA is TV's minified active class
+              const classes = btn.classList.toString();
+              const isActive = classes.includes('active') || classes.includes('isA') ||
                                btn.getAttribute('aria-selected') === 'true' ||
                                btn.getAttribute('aria-pressed') === 'true' ||
                                !!document.querySelector('[data-name="set-alert-button"]');
