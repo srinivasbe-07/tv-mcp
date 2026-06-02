@@ -24,11 +24,12 @@ Then open **http://localhost:3000** in the browser.
 
 ### Pages
 
-| URL                                | Purpose                                           |
-| ---------------------------------- | ------------------------------------------------- |
-| `http://localhost:3000`            | Dashboard — overview + start/stop all processes   |
-| `http://localhost:3000/pattern`    | Pattern Monitor — full config, log, candle feed   |
-| `http://localhost:3000/supertrend` | Supertrend Monitor — ITM override, CE/PE position |
+| URL                                 | Purpose                                                  |
+| ----------------------------------- | -------------------------------------------------------- |
+| `http://localhost:3000`             | Dashboard — overview + start/stop all processes          |
+| `http://localhost:3000/pattern`     | Pattern Monitor — full config, log, candle feed          |
+| `http://localhost:3000/supertrend`  | Supertrend Monitor — ITM override, CE/PE position        |
+| `http://localhost:3000/test-alerts` | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts |
 
 ### Keys (still work when running from terminal directly)
 
@@ -150,6 +151,63 @@ Config changes apply on the next candle close — no restart needed.
 - Does not manage Supertrend alerts — that is the Supertrend Monitor's job
 - Does not place orders — only creates TradingView alerts
 - Does not detect bearish patterns (Shooting Star, Bearish Engulfing) for entries — bias determines direction
+
+---
+
+## Supertrend Alert Test (`/test-alerts`)
+
+A dedicated UI page for verifying that all 8 supertrend alerts exist in TradingView and can be updated correctly. Use this after TradingView restarts, after renaming alerts, or when debugging alert update failures.
+
+### How to access
+
+```
+npm run ui   ← start the UI server first
+```
+
+Then open **http://localhost:3000/test-alerts**
+
+### What it does
+
+- Two cards side by side — **NIFTY** and **SENSEX**
+- Each card shows the 4 alert names for that instrument (CE entry/exit, PE entry/exit)
+- Click **▶ Test NIFTY Alerts** or **▶ Test SENSEX Alerts** to run
+- Real-time log panel streams each step as it happens
+- Each alert row updates to ✓ or ✗ as soon as its result arrives
+- Summary bar shows spot / ATM / ITM-depth used
+
+### Inputs
+
+| Field        | Notes                                                                                |
+| ------------ | ------------------------------------------------------------------------------------ |
+| Spot Price   | Leave blank to auto-read from TradingView chart. Enter manually if market is closed. |
+| ITM Override | Auto = use day rule. Override to ATM/ITM-1/ITM-2 if needed.                          |
+
+### What the test actually does
+
+For each of the 4 alerts it:
+
+1. Switches the chart tab to the calculated option symbol
+2. Calls `alert_update_symbol` to update the alert to that symbol
+3. Reports ✓ OK / ✗ FAIL with the message from TradingView
+
+### Terminal alternative
+
+```
+node scripts/test-supertrend-alerts.js                    # today's instrument
+node scripts/test-supertrend-alerts.js --instr NIFTY      # force NIFTY
+node scripts/test-supertrend-alerts.js --instr SENSEX     # force SENSEX
+node scripts/test-supertrend-alerts.js --instr NIFTY --instr SENSEX  # both
+node scripts/test-supertrend-alerts.js --spot 23400 --itm 1          # overrides
+```
+
+### Common failure causes
+
+| Error                           | Fix                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| Alert not found in Alerts panel | Alert name in TradingView doesn't exactly match — check spelling and case            |
+| CDP connect failed              | TradingView not running or CDP not on port 9222                                      |
+| Could not read spot price       | Market closed — enter spot price manually in the input field                         |
+| Symbol not in alert dropdown    | Option symbol not available on this chart tab — try force-updating or switching tabs |
 
 ---
 
