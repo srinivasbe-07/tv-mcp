@@ -655,25 +655,43 @@ export class AlertTools {
       //   (b) Panel collapsed — click to expand
       //   (c) Log/Trade History tab selected — click alerts button to switch back
       // Always activate the Alerts button rather than only when items are missing.
-      await this.cdp.executeScript(`
+      const step0Diag = await this.cdp.executeScript(`
         (async function() {
           const btn = document.querySelector('[data-name="alerts"]');
-          if (!btn) return;
+          if (!btn) return { skipped: 'no alerts button' };
 
           const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
+          const diag = { hasItems: hasItems(), logListFound: false, tabsFound: [], clicked: null };
 
           if (!hasItems()) {
-            // If the Alert Log/History sub-tab is active, switch to the Alerts list tab directly.
-            // TV remembers the last sub-tab, so close+reopen would still land on the log tab.
-            if (document.querySelector('[data-name="alert-log-list"]')) {
-              const allTabs = Array.from(document.querySelectorAll('[role="tab"]'));
-              const alertsSubTab = allTabs.find(e =>
-                e.textContent?.trim().toLowerCase() === 'alerts'
-              );
-              if (alertsSubTab) {
-                alertsSubTab.click();
-                await new Promise(r => setTimeout(r, 600));
+            const logList = document.querySelector('[data-name="alert-log-list"]');
+            diag.logListFound = !!logList;
+
+            if (logList) {
+              // Walk up from log list to find the closest ancestor that has [role="tab"] buttons,
+              // then click the one that isn't the log tab (first tab = Alerts list).
+              let container = logList.parentElement;
+              let clicked = false;
+              for (let depth = 0; depth < 12 && !clicked; depth++) {
+                if (!container || container === document.body) break;
+                const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+                diag.tabsFound = tabs.map(t => ({
+                  text: t.textContent?.trim().slice(0, 40),
+                  label: t.getAttribute('aria-label'),
+                  selected: t.getAttribute('aria-selected'),
+                  depth,
+                }));
+                if (tabs.length >= 1) {
+                  // Click the tab that is not currently selected (or the first tab)
+                  const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
+                  target.click();
+                  diag.clicked = target.textContent?.trim().slice(0, 40);
+                  clicked = true;
+                  break;
+                }
+                container = container.parentElement;
               }
+              if (clicked) await new Promise(r => setTimeout(r, 600));
             }
 
             if (!hasItems()) {
@@ -694,8 +712,12 @@ export class AlertTools {
               }
             }
           }
+
+          diag.hasItemsAfter = hasItems();
+          return diag;
         })()
       `);
+      if (step0Diag) console.log('[alert_update_symbol] Step0 diag:', JSON.stringify(step0Diag));
 
       // Step 1: Find and JS-click the edit button for the target alert.
       // TradingView's edit buttons have visibility:hidden until hover, so CDP physical click
