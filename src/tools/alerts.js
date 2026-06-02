@@ -131,11 +131,17 @@ export class AlertTools {
       const script = `
         (async function() {
           try {
-            // Step 1: Switch chart to target symbol so the dialog inherits it
+            // Step 1: Switch chart to target symbol only if not already there.
+            // Switching to the same symbol causes a brief chart reload that
+            // collapses the Alerts panel — skipping avoids "Create Alert button not found".
             const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
             if (widget && typeof widget.setSymbol === 'function') {
-              widget.setSymbol('${symbol}');
-              await new Promise(r => setTimeout(r, 900));
+              const currentSymbol = widget.symbol?.() || '';
+              const needsSwitch = currentSymbol.replace(/^[A-Z]+:/, '') !== '${symbol}'.replace(/^[A-Z]+:/, '');
+              if (needsSwitch) {
+                widget.setSymbol('${symbol}');
+                await new Promise(r => setTimeout(r, 900));
+              }
             }
 
             // Step 2: Ensure Alerts panel is open, then open Create Alert dialog
