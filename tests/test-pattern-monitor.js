@@ -41,7 +41,7 @@ function resetState() {
   try {
     fs.mkdirSync('./logs', { recursive: true });
     fs.writeFileSync('./logs/trade-state.json', '{"status":"idle"}');
-  } catch (_) {}
+  } catch { /* ignore */ }
 }
 
 function makeMock({ entryOk = true, slOk = true, targetOk = true } = {}) {

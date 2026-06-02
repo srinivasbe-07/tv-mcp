@@ -684,7 +684,7 @@ app.post('/api/test/pattern', async (req, res) => {
         target = Math.round((entry + (entry - sl)) * 100) / 100;
         log(`Levels from last bar — Entry:${entry}  SL:${sl}  Target:${target}`);
       }
-    } catch (_) {}
+    } catch { /* ignore */ }
     if (!entry) {
       entry = strike + 10;
       sl = Math.max(1, strike - 10);
@@ -710,7 +710,7 @@ app.post('/api/test/pattern', async (req, res) => {
         });
         const rawText = r?.content?.[0]?.text || '{}';
         let data = {};
-        if (!r?.isError) { try { data = JSON.parse(rawText); } catch (_) {} }
+        if (!r?.isError) { try { data = JSON.parse(rawText); } catch { /* ignore */ } }
         const success = !r?.isError && !!data.success;
         const message = r?.isError ? rawText : (data.message || rawText);
         log(`[${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
