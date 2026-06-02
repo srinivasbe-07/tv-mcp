@@ -449,7 +449,14 @@ async function verifyAlertStatus(cdpAlerts, instrName) {
         log(`  [STATUS] "${name}" — not found in panel`);
         allOk = false;
       } else if (!found.active) {
-        log(`  [STATUS] "${name}" — STOPPED (status: ${found.status}) ← self-recovers`);
+        log(`  [STATUS] "${name}" — STOPPED (${found.status}) — attempting to re-activate...`);
+        const ar = await cdpAlerts.handle('alert_activate', { alertId: name });
+        const ad = JSON.parse(ar?.content?.[0]?.text || '{}');
+        if (ad.success) {
+          log(`  [STATUS] "${name}" — re-activated ✓`);
+        } else {
+          log(`  [STATUS] "${name}" — re-activate failed: ${ad.message || 'unknown'}`);
+        }
         allOk = false;
       } else {
         log(`  [STATUS] "${name}" — active ✓`);

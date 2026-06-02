@@ -105,6 +105,8 @@ export class AlertTools {
         return await this.list(args);
       case 'alert_delete':
         return await this.delete(args);
+      case 'alert_activate':
+        return await this.activate(args);
       case 'alert_update_symbol':
         return await this.updateSymbol(args);
       case 'alert_get_history':
@@ -569,6 +571,76 @@ export class AlertTools {
       return this.success(result);
     } catch (error) {
       return this.error(`Failed to delete alert: ${error.message}`);
+    }
+  }
+
+  async activate(args) {
+    try {
+      const { alertId } = args;
+      if (!alertId) return this.error('alertId is required');
+
+      const script = `
+        (async function() {
+          try {
+            const seedEl = document.querySelector('[data-name="alert-item-name"]');
+            let scroller = null;
+            let node = seedEl?.parentElement;
+            while (node && node !== document.body) {
+              if (node.scrollHeight > node.clientHeight + 10) { scroller = node; break; }
+              node = node.parentElement;
+            }
+
+            const tryActivate = () => {
+              const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
+              const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
+              if (!target) return false;
+              let container = target.parentElement;
+              for (let i = 0; i < 6 && container; i++) {
+                if (container.querySelector('[data-name="alert-delete-button"]')) break;
+                container = container.parentElement;
+              }
+              // Restart button: TV uses data-name="alert-toggle-button" or a play-icon button.
+              // Exclude edit and delete buttons — pick the remaining action button.
+              const restartBtn =
+                container?.querySelector('[data-name="alert-toggle-button"]') ||
+                container?.querySelector('[data-name="alert-play-button"]') ||
+                Array.from(container?.querySelectorAll('button') || []).find(b =>
+                  b !== container.querySelector('[data-name="alert-edit-button"]') &&
+                  b !== container.querySelector('[data-name="alert-delete-button"]') &&
+                  b.offsetParent !== null
+                );
+              if (!restartBtn) return false;
+              restartBtn.click();
+              return true;
+            };
+
+            if (tryActivate()) return { success: true, alertId: '${alertId}' };
+
+            if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
+              const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
+              for (let pos = step; pos <= maxScroll; pos += step) {
+                scroller.scrollTop = pos;
+                await new Promise(r => setTimeout(r, 600));
+                if (tryActivate()) return { success: true, alertId: '${alertId}' };
+              }
+              scroller.scrollTop = maxScroll;
+              await new Promise(r => setTimeout(r, 600));
+              if (tryActivate()) return { success: true, alertId: '${alertId}' };
+              scroller.scrollTop = 0;
+            }
+
+            return { success: false, alertId: '${alertId}', message: 'Alert not found or no restart button' };
+          } catch (e) {
+            return { error: e.message };
+          }
+        })()
+      `;
+
+      const result = await this.cdp.executeScript(script);
+      return this.success(result);
+    } catch (error) {
+      return this.error(`Failed to activate alert: ${error.message}`);
     }
   }
 
