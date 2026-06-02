@@ -54,6 +54,66 @@ Edit and save — changes apply instantly (no restart needed).
 
 ---
 
+## Supertrend Monitor
+
+### What It Does
+
+Automatically keeps 4 TradingView alerts pointed at the correct ITM option strike as NIFTY/SENSEX spot price moves during the day. Without it, you'd have to manually edit each alert every time the ATM shifts.
+
+### Instrument Routing
+
+| Day       | Instrument | Strike Step | ITM Depth |
+| --------- | ---------- | ----------- | --------- |
+| Mon / Tue | NIFTY      | 50          | ITM-2     |
+| Wed / Thu | SENSEX     | 100         | ITM-2     |
+| Fri       | NIFTY      | 50          | ITM-1     |
+
+### Alert Names (must exist in TradingView before starting)
+
+| Instrument | Side | Role  | Alert Name                   |
+| ---------- | ---- | ----- | ---------------------------- |
+| NIFTY      | CE   | Entry | `niftySupertrendLongEntry`   |
+| NIFTY      | CE   | Exit  | `niftySupertrendLongExit`    |
+| NIFTY      | PE   | Entry | `niftySupertrendShortEntry`  |
+| NIFTY      | PE   | Exit  | `niftySupertrendShortExit`   |
+| SENSEX     | CE   | Entry | `sensexSupertrendLongEntry`  |
+| SENSEX     | CE   | Exit  | `sensexSupertrendLongExit`   |
+| SENSEX     | PE   | Entry | `sensexSupertrendShortEntry` |
+| SENSEX     | PE   | Exit  | `sensexSupertrendShortExit`  |
+
+### Every 60 Seconds It
+
+1. Reads spot price (NIFTY or SENSEX) from its dedicated chart tab
+2. Calculates ATM — rounds spot to nearest strike interval
+3. Confirms ATM shift across 2 consecutive ticks (avoids false updates on noise)
+4. Updates CE alerts → switches chart to CE option → updates entry + exit → switches back
+5. Updates PE alerts → switches chart to PE option → updates entry + exit → switches back
+6. Reads alert history → if entry alert fired → marks CE/PE as `OPEN`; if exit fired → marks as `CLOSED`
+7. Skips updating a side when its position is `OPEN` (don't move the alert mid-trade)
+
+### Position State
+
+Stored in `config/position.json`. Updated automatically by alert history. Can also be overridden manually via the Supertrend page (CE/PE buttons) or CLI flags:
+
+```
+node monitors/monitor.js --ce open --pe closed
+node monitors/monitor.js --itm 1    ← force ITM-1 regardless of day rule
+```
+
+### Dedicated Chart Tab
+
+The monitor claims one TradingView chart tab on first start and saves its ID to `logs/supertrend-tab.json`. On restart it reuses the same tab. If TradingView was restarted, it scans live tabs and claims an unclaimed one.
+
+**Requirement**: Have at least 2 chart tabs open in TradingView when running both monitors simultaneously (one per monitor).
+
+### What It Does NOT Do
+
+- Does not place orders — only manages TradingView alerts
+- Does not create alerts — the 8 alerts above must already exist in TradingView
+- Does not manage the Supertrend indicator itself — that lives on your chart
+
+---
+
 ## Tool Routing — Natural Language → Tool
 
 ### Price & Chart State
