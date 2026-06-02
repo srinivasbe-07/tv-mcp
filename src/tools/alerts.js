@@ -660,29 +660,38 @@ export class AlertTools {
           const btn = document.querySelector('[data-name="alerts"]');
           if (!btn) return;
 
-          // Check if alerts panel is already active and showing items
           const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
 
           if (!hasItems()) {
-            // Panel not showing items — could be closed, collapsed, or another tab is active.
-            // Check if button appears inactive (panel is closed/different tab).
-            const isActive = btn.classList.toString().includes('active') ||
-                             btn.getAttribute('aria-selected') === 'true' ||
-                             btn.getAttribute('aria-pressed') === 'true' ||
-                             !!document.querySelector('[data-name="set-alert-button"]');
-
-            if (isActive) {
-              // Panel appears open but no items — collapsed or filtered empty.
-              // Close and reopen to reset state.
-              btn.click();
-              await new Promise(r => setTimeout(r, 400));
+            // If the Alert Log/History sub-tab is active, switch to the Alerts list tab directly.
+            // TV remembers the last sub-tab, so close+reopen would still land on the log tab.
+            if (document.querySelector('[data-name="alert-log-list"]')) {
+              const allTabs = Array.from(document.querySelectorAll('[role="tab"]'));
+              const alertsSubTab = allTabs.find(e =>
+                e.textContent?.trim().toLowerCase() === 'alerts'
+              );
+              if (alertsSubTab) {
+                alertsSubTab.click();
+                await new Promise(r => setTimeout(r, 600));
+              }
             }
-            // Open / switch to Alerts panel
-            btn.click();
-            // Poll up to 4 seconds for items to render
-            for (let i = 0; i < 16; i++) {
-              await new Promise(r => setTimeout(r, 250));
-              if (hasItems()) break;
+
+            if (!hasItems()) {
+              // Panel is closed or collapsed — check active state then toggle
+              const isActive = btn.classList.toString().includes('active') ||
+                               btn.getAttribute('aria-selected') === 'true' ||
+                               btn.getAttribute('aria-pressed') === 'true' ||
+                               !!document.querySelector('[data-name="set-alert-button"]');
+
+              if (isActive) {
+                btn.click();
+                await new Promise(r => setTimeout(r, 400));
+              }
+              btn.click();
+              for (let i = 0; i < 16; i++) {
+                await new Promise(r => setTimeout(r, 250));
+                if (hasItems()) break;
+              }
             }
           }
         })()
