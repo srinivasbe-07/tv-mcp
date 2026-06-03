@@ -1644,13 +1644,14 @@ async function main() {
     // Re-read timeframe from config so changes take effect without restart
     const nextCfg = loadConfig();
     const nextTf = parseInt(nextCfg?.candleTimeframe || 3, 10);
-    const delay = msUntilNextCandleClose(nextTf);
+    // +2s: TV needs time to finalize the just-closed candle in the bar store
+    const delay = msUntilNextCandleClose(nextTf) + 2000;
     log(`Next tick in ${Math.round(delay / 1000)}s (at next ${nextTf}-min candle close)`);
     setTimeout(runTick, delay);
   }
 
   const initTf = parseInt(loadConfig()?.candleTimeframe || 3, 10);
-  const firstDelay = msUntilNextCandleClose(initTf);
+  const firstDelay = msUntilNextCandleClose(initTf) + 2000;
   log(
     `Aligned — first tick in ${Math.round(firstDelay / 1000)}s (at next ${initTf}-min candle close)`
   );
