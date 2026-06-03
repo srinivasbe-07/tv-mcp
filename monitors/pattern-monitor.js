@@ -366,47 +366,6 @@ function saveTradeState(state) {
   }
 }
 
-async function ensureAlertsPanelReady(cdp) {
-  await cdp
-    .executeScript(
-      `
-    (async function() {
-      const btn = document.querySelector('[data-name="alerts"]');
-      if (!btn) return;
-      const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-      if (!hasItems()) {
-        const logItem = document.querySelector('[data-name="alert-log-item"]');
-        if (logItem) {
-          let container = logItem.parentElement;
-          for (let depth = 0; depth < 15; depth++) {
-            if (!container || container === document.body) break;
-            const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
-            if (tabs.length >= 1) {
-              const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
-              target.click();
-              await new Promise(r => setTimeout(r, 600));
-              break;
-            }
-            container = container.parentElement;
-          }
-        }
-        if (!hasItems()) {
-          const classes = btn.classList.toString();
-          const isActive = classes.includes('active') || classes.includes('isA') ||
-                           !!document.querySelector('[data-name="set-alert-button"]');
-          if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
-          btn.click();
-          for (let i = 0; i < 16; i++) {
-            await new Promise(r => setTimeout(r, 250));
-            if (hasItems()) break;
-          }
-        }
-      }
-    })()
-  `
-    )
-    .catch(() => {});
-}
 
 async function updateTradeAlerts(cdpAlerts, cdp, instrName, bias, candle, target, sl, symbol) {
   const names = PATTERN_ALERT_NAMES[instrName];
@@ -418,7 +377,7 @@ async function updateTradeAlerts(cdpAlerts, cdp, instrName, bias, candle, target
   // Protection: skip if live trade is already running
   const existingState = loadTradeState();
   if (existingState.status !== 'idle') {
-    await ensureAlertsPanelReady(cdp);
+    await cdpAlerts.normalizeAlertsPanel();
     const listResult = await cdpAlerts.handle('alert_list', {});
     const allAlerts = JSON.parse(listResult?.content?.[0]?.text || '{}').alerts || [];
     const liveSL = allAlerts.find((a) => a.name === names.sl && a.active);
@@ -517,7 +476,7 @@ async function cleanupFiredAlerts(cdp, cdpAlerts, instrName) {
     const names = PATTERN_ALERT_NAMES[instrName];
     if (!names) return;
 
-    await ensureAlertsPanelReady(cdp);
+    await cdpAlerts.normalizeAlertsPanel();
     const result = await cdpAlerts.handle('alert_list', {});
     const data = JSON.parse(result.content[0].text);
     const alerts = data.alerts || [];
@@ -1087,7 +1046,7 @@ async function tick(cdp, cdpAlerts) {
         const names = PATTERN_ALERT_NAMES[instrName];
         if (names) {
           try {
-            await ensureAlertsPanelReady(cdp);
+            await cdpAlerts.normalizeAlertsPanel();
             const listResult = await cdpAlerts.handle('alert_list', {});
             const listData = JSON.parse(listResult.content[0].text);
             const allAlerts = listData.alerts || [];
@@ -1232,6 +1191,8 @@ async function tick(cdp, cdpAlerts) {
           const spotPrice = bars[bars.length - 1]?.close || curr.close;
           const optSym = buildOptionSymbol(instrName, spotPrice, itmDepth, cfg.bias);
           if (optSym) {
+            // Normalize panel BEFORE chart switch — keeps all alerts visible after switch
+            await cdpAlerts.normalizeAlertsPanel();
             // Switch spot tab to option so user can watch option price action
             await switchTabTo(cdp, optSym);
             // Multi-tab: use dedicated option CDPManager (no switching on data tab).

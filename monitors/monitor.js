@@ -392,26 +392,7 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
     // TradingView re-filters the panel to the current chart's symbol on each switch.
     // If the panel is already open and showing all alerts when the switch happens,
     // the existing alert rows stay visible — preventing "not found" after the switch.
-    await cdpChart.cdp
-      .executeScript(
-        `(async function() {
-          const btn = document.querySelector('[data-name="alerts"]');
-          if (!btn) return;
-          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-          if (!hasItems()) {
-            const isActive = btn.classList.toString().includes('active') ||
-                             btn.getAttribute('aria-selected') === 'true' ||
-                             !!document.querySelector('[data-name="set-alert-button"]');
-            if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
-            btn.click();
-            for (let i = 0; i < 12; i++) {
-              await new Promise(r => setTimeout(r, 250));
-              if (hasItems()) break;
-            }
-          }
-        })()`
-      )
-      .catch(() => {});
+    await cdpAlerts.normalizeAlertsPanel();
 
     log(`  Loading ${qualifiedSymbol} on chart tab...`);
     await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });

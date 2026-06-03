@@ -519,30 +519,7 @@ app.post('/api/test/supertrend', async (req, res) => {
 
     const results = [];
     for (const t of tests) {
-      // Ensure Alerts panel is open and showing items BEFORE the chart switch.
-      // If the panel is closed or another panel is active when the chart switches,
-      // TradingView re-filters it to the new symbol — hiding the supertrend alerts.
-      await cdp
-        .executeScript(
-          `
-        (async function() {
-          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-          if (!hasItems()) {
-            const btn = document.querySelector('[data-name="alerts"]');
-            if (!btn) return;
-            const isActive = btn.classList.toString().includes('active') ||
-                             !!document.querySelector('[data-name="set-alert-button"]');
-            if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
-            btn.click();
-            for (let i = 0; i < 12; i++) {
-              await new Promise(r => setTimeout(r, 250));
-              if (hasItems()) break;
-            }
-          }
-        })()
-      `
-        )
-        .catch(() => {});
+      await cdpAlerts.normalizeAlertsPanel();
 
       log(`[${t.side}:${t.role}] Switching chart to ${t.symbol}...`);
       try {
@@ -678,6 +655,9 @@ app.post('/api/test/pattern', async (req, res) => {
 
     log(`Spot: ${spot}   ATM: ${atm}   ITM-${itmDepth}   ${optType}`);
     log(`Option: ${symbol}`);
+
+    // Normalize panel BEFORE chart switch — keeps all alerts visible after switch
+    await cdpAlerts.normalizeAlertsPanel();
 
     // Switch chart to option (needed so symbol appears in alert dropdown)
     log(`Switching chart to ${symbol}...`);

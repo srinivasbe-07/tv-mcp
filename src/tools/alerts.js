@@ -119,6 +119,47 @@ export class AlertTools {
     ];
   }
 
+  async normalizeAlertsPanel() {
+    await this.cdp
+      .executeScript(
+        `(async function() {
+          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
+          if (hasItems()) return;
+
+          const btn = document.querySelector('[data-name="alerts"]');
+          if (!btn) return;
+
+          const visibleTabs = () => Array.from(document.querySelectorAll('[role="tab"]'))
+            .filter(t => !!t.offsetParent);
+
+          // Step 1: If no tabs visible, panel is hidden — click button to open/expand
+          if (visibleTabs().length === 0) {
+            btn.click();
+            for (let i = 0; i < 16; i++) {
+              await new Promise(r => setTimeout(r, 250));
+              if (hasItems() || visibleTabs().length > 0) break;
+            }
+          }
+
+          // Step 2: Click the Alerts tab (always — harmless if already active)
+          if (!hasItems()) {
+            const alertsTab = visibleTabs().find(t => {
+              const txt = (t.textContent || t.innerText || '').trim().toLowerCase();
+              return txt === 'alerts' || txt.startsWith('alert');
+            });
+            if (alertsTab) {
+              alertsTab.click();
+              for (let i = 0; i < 12; i++) {
+                await new Promise(r => setTimeout(r, 250));
+                if (hasItems()) break;
+              }
+            }
+          }
+        })()`
+      )
+      .catch(() => {});
+  }
+
   async handle(toolName, args) {
     switch (toolName) {
       case 'alert_create':
@@ -825,92 +866,7 @@ export class AlertTools {
       //   (b) Panel collapsed — click to expand
       //   (c) Log/Trade History tab selected — click alerts button to switch back
       // Always activate the Alerts button rather than only when items are missing.
-      const step0Diag = await this.cdp.executeScript(`
-        (async function() {
-          const btn = document.querySelector('[data-name="alerts"]');
-
-          // Capture context info regardless of btn state
-          const visibleAlertNames = Array.from(document.querySelectorAll('[data-name]'))
-            .filter(el => el.offsetParent !== null)
-            .map(el => el.getAttribute('data-name'))
-            .filter(n => n && n.toLowerCase().includes('alert'))
-            .slice(0, 20);
-
-          if (!btn) return {
-            skipped: 'no alerts button',
-            url: window.location.href.slice(0, 80),
-            visibleAlertNames,
-          };
-
-          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-          const diag = {
-            url: window.location.href.slice(0, 80),
-            hasItems: hasItems(),
-            btnClasses: btn.className.slice(0, 80),
-            setAlertBtn: !!document.querySelector('[data-name="set-alert-button"]'),
-            visibleAlertNames,
-            logListFound: false,
-            tabsFound: [],
-            clicked: null,
-          };
-
-          if (!hasItems()) {
-            // Detect log tab by its items (data-name="alert-log-item"), not the container
-            // which has no matching data-name.
-            const logItem = document.querySelector('[data-name="alert-log-item"]');
-            diag.logListFound = !!logItem;
-
-            if (logItem) {
-              // Walk up from a log item to find the closest ancestor with [role="tab"] buttons,
-              // then click the unselected one (the Alerts list tab).
-              let container = logItem.parentElement;
-              let clicked = false;
-              for (let depth = 0; depth < 15 && !clicked; depth++) {
-                if (!container || container === document.body) break;
-                const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
-                diag.tabsFound = tabs.map(t => ({
-                  text: t.textContent?.trim().slice(0, 40),
-                  label: t.getAttribute('aria-label'),
-                  selected: t.getAttribute('aria-selected'),
-                  depth,
-                }));
-                if (tabs.length >= 1) {
-                  const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
-                  target.click();
-                  diag.clicked = target.textContent?.trim().slice(0, 40);
-                  clicked = true;
-                  break;
-                }
-                container = container.parentElement;
-              }
-              if (clicked) await new Promise(r => setTimeout(r, 600));
-            }
-
-            if (!hasItems()) {
-              // Panel is closed or collapsed — isA is TV's minified active class
-              const classes = btn.classList.toString();
-              const isActive = classes.includes('active') || classes.includes('isA') ||
-                               btn.getAttribute('aria-selected') === 'true' ||
-                               btn.getAttribute('aria-pressed') === 'true' ||
-                               !!document.querySelector('[data-name="set-alert-button"]');
-
-              if (isActive) {
-                btn.click();
-                await new Promise(r => setTimeout(r, 400));
-              }
-              btn.click();
-              for (let i = 0; i < 16; i++) {
-                await new Promise(r => setTimeout(r, 250));
-                if (hasItems()) break;
-              }
-            }
-          }
-
-          diag.hasItemsAfter = hasItems();
-          return diag;
-        })()
-      `);
-      if (step0Diag) console.log('[alert_update_symbol] Step0 diag:', JSON.stringify(step0Diag));
+      await this.normalizeAlertsPanel();
 
       // Step 1: Find and JS-click the edit button for the target alert.
       // TradingView's edit buttons have visibility:hidden until hover, so CDP physical click
@@ -1077,47 +1033,7 @@ export class AlertTools {
         return this.error('alertName, symbol, and level are required');
 
       // Step 0: Ensure Alerts panel is showing items
-      const step0Diag = await this.cdp.executeScript(`
-        (async function() {
-          const btn = document.querySelector('[data-name="alerts"]');
-          if (!btn) return { skipped: 'no alerts button' };
-          const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-          const diag = { hasItems: hasItems(), clicked: null };
-          if (!hasItems()) {
-            const logItem = document.querySelector('[data-name="alert-log-item"]');
-            if (logItem) {
-              let container = logItem.parentElement;
-              for (let depth = 0; depth < 15; depth++) {
-                if (!container || container === document.body) break;
-                const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
-                if (tabs.length >= 1) {
-                  const target = tabs.find(t => t.getAttribute('aria-selected') !== 'true') || tabs[0];
-                  target.click();
-                  diag.clicked = target.textContent?.trim().slice(0, 40);
-                  await new Promise(r => setTimeout(r, 600));
-                  break;
-                }
-                container = container.parentElement;
-              }
-            }
-            if (!hasItems()) {
-              const classes = btn.classList.toString();
-              const isActive = classes.includes('active') || classes.includes('isA') ||
-                               btn.getAttribute('aria-selected') === 'true' ||
-                               !!document.querySelector('[data-name="set-alert-button"]');
-              if (isActive) { btn.click(); await new Promise(r => setTimeout(r, 400)); }
-              btn.click();
-              for (let i = 0; i < 16; i++) {
-                await new Promise(r => setTimeout(r, 250));
-                if (hasItems()) break;
-              }
-            }
-          }
-          diag.hasItemsAfter = hasItems();
-          return diag;
-        })()
-      `);
-      if (step0Diag) console.log('[alert_update] Step0 diag:', JSON.stringify(step0Diag));
+      await this.normalizeAlertsPanel();
 
       // Step 1: Find and JS-click the edit button for the target alert
       const clickResult = await this.cdp.executeScript(`

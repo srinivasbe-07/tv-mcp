@@ -13,3 +13,6 @@ config/monitor-config.json
 config/pattern-monitor-config.json
 config/algotest-config.json
 logs/drawn-ids.json
+logs/pattern-tab.json
+logs/supertrend-tab.json
+logs/trade-state.json

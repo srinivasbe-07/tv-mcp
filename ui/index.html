@@ -989,6 +989,13 @@
       }
 
       async function saveConfig() {
+        // Auto-add any pending level in the input field before saving
+        const pendingLevel = parseFloat(document.getElementById('new-level').value);
+        if (pendingLevel && !importantLevels.includes(pendingLevel)) {
+          importantLevels.push(pendingLevel);
+          document.getElementById('new-level').value = '';
+          renderLevels();
+        }
         const top = parseFloat(document.getElementById('zone-top').value);
         const bot = parseFloat(document.getElementById('zone-bot').value);
         const payload = {
