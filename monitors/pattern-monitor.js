@@ -253,16 +253,14 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
           for (const m of ['setSymbol','changeSymbol','setTicker']) {
             if (typeof widget[m] === 'function') { widget[m]('${symbol}'); break; }
           }
-          await new Promise(r => setTimeout(r, 2500));
+          await new Promise(r => setTimeout(r, 1800));
         }
         if (needTf) {
           for (const m of ['setResolution','setInterval','changeResolution']) {
             if (typeof widget[m] === 'function') { widget[m]('${timeframe}'); break; }
           }
-          await new Promise(r => setTimeout(r, 2500));
+          await new Promise(r => setTimeout(r, 1800));
         }
-        // Small grace when no switch needed — ensures bar store has current data
-        if (!needSymbol && !needTf) await new Promise(r => setTimeout(r, 300));
 
         let bars = [];
         const model = widget?._chartWidget?._modelWV?._value;
@@ -293,7 +291,7 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
           await new Promise(r => setTimeout(r, 500));
         }
 
-        return { bars, switched: needSymbol || needTf, prevSymbol };
+        return { bars, switched: needSymbol || needTf };
       } catch (e) {
         return { bars: [], error: e.message };
       }
@@ -1163,15 +1161,6 @@ async function tick(cdp, cdpAlerts) {
 
     // ── Pattern check (configurable timeframe, default 3-min) ────────────────
     const tf = String(cfg.candleTimeframe || '3');
-    const barsResult = await cdp
-      .executeScript(
-        `(async function() {
-        const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
-        return widget?.symbol?.() || '';
-      })()`
-      )
-      .catch(() => '');
-    if (barsResult) log(`[DEBUG] TV symbol: ${barsResult}`);
     const bars = await fetchBars(cdp, symbol, tf, 5);
 
     if (bars.length < 3) {
@@ -1655,8 +1644,7 @@ async function main() {
     // Re-read timeframe from config so changes take effect without restart
     const nextCfg = loadConfig();
     const nextTf = parseInt(nextCfg?.candleTimeframe || 3, 10);
-    // +2s grace: gives TV time to finalize the just-closed candle in the bar store
-    const delay = msUntilNextCandleClose(nextTf) + 2000;
+    const delay = msUntilNextCandleClose(nextTf);
     log(`Next tick in ${Math.round(delay / 1000)}s (at next ${nextTf}-min candle close)`);
     setTimeout(runTick, delay);
   }
