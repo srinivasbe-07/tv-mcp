@@ -57,7 +57,7 @@ function broadcast(clients, event, data) {
       try {
         r.write(msg);
         return true;
-      } catch (_) {
+      } catch (_e) {
         return false;
       }
     })
@@ -92,7 +92,7 @@ fs.watch(POSITION_FILE, () => {
   try {
     const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
     broadcastPosition(pos);
-  } catch (_) {
+  } catch (_e) {
     /* ignore */
   }
 });
@@ -156,7 +156,7 @@ app.get('/api/st/events', (req, res) => {
   try {
     const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
     res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
-  } catch (_) {
+  } catch (_e) {
     /* ignore */
   }
   stClients.push(res);
@@ -393,7 +393,7 @@ app.post('/api/test/supertrend', async (req, res) => {
         if (!r?.isError) {
           try {
             data = JSON.parse(rawText);
-          } catch (_) {
+          } catch (_e) {
             /* ignore */
           }
         }
@@ -439,7 +439,7 @@ app.post('/api/test/supertrend', async (req, res) => {
 const PM_CONFIG_FILE = path.join(ROOT, 'config', 'pattern-monitor-config.json');
 
 function loadPmConfig() {
-  try { return JSON.parse(fs.readFileSync(PM_CONFIG_FILE, 'utf8')); } catch (_) { return { bias: null, importantLevels: [] }; }
+  try { return JSON.parse(fs.readFileSync(PM_CONFIG_FILE, 'utf8')); } catch (_e) { return { bias: null, importantLevels: [] }; }
 }
 function savePmConfig(cfg) {
   fs.writeFileSync(PM_CONFIG_FILE + '.tmp', JSON.stringify(cfg, null, 2));

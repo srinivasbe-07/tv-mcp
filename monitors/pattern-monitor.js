@@ -17,7 +17,6 @@
 
 import { CDPManager } from '../src/cdp.js';
 import { AlertTools } from '../src/tools/alerts.js';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
 import readline from 'readline';
 
@@ -88,7 +87,7 @@ function log(msg) {
 function loadConfig() {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch (_) {
+  } catch (_e) {
     return null;
   }
 }
@@ -96,7 +95,7 @@ function loadConfig() {
 function saveConfig(cfg) {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-  } catch (_) {}
+  } catch (_e) { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +287,7 @@ async function clearDrawings(cdp) {
 // ---------------------------------------------------------------------------
 async function updateAlerts(cdpAlerts, names, symbol, entry, sl, target) {
   const parse = r => {
-    try { return JSON.parse(r?.content?.[0]?.text || '{}'); } catch (_) { return {}; }
+    try { return JSON.parse(r?.content?.[0]?.text || '{}'); } catch (_e) { return {}; }
   };
 
   await cdpAlerts.normalizeAlertsPanel();
@@ -496,7 +495,7 @@ async function main() {
           try {
             await cdp.connect();
             log('CDP reconnected');
-          } catch (_) {
+          } catch (_e) {
             log('Reconnect failed — will retry next tick');
           }
         }
