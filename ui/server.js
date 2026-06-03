@@ -439,7 +439,11 @@ app.post('/api/test/supertrend', async (req, res) => {
 const PM_CONFIG_FILE = path.join(ROOT, 'config', 'pattern-monitor-config.json');
 
 function loadPmConfig() {
-  try { return JSON.parse(fs.readFileSync(PM_CONFIG_FILE, 'utf8')); } catch (_e) { return { bias: null, importantLevels: [] }; }
+  try {
+    return JSON.parse(fs.readFileSync(PM_CONFIG_FILE, 'utf8'));
+  } catch (_e) {
+    return { bias: null, importantLevels: [] };
+  }
 }
 function savePmConfig(cfg) {
   fs.writeFileSync(PM_CONFIG_FILE + '.tmp', JSON.stringify(cfg, null, 2));
@@ -461,13 +465,13 @@ app.post('/api/pm/levels', (req, res) => {
   const { importantLevels } = req.body;
   if (!Array.isArray(importantLevels)) return res.json({ ok: false, error: 'Invalid levels' });
   const cfg = loadPmConfig();
-  cfg.importantLevels = importantLevels.map(Number).filter(n => n > 0);
+  cfg.importantLevels = importantLevels.map(Number).filter((n) => n > 0);
   savePmConfig(cfg);
   res.json({ ok: true });
 });
 
-app.post('/api/pm/start',   (_req, res) => res.json({ ok: true }));
-app.post('/api/pm/stop',    (_req, res) => res.json({ ok: true }));
+app.post('/api/pm/start', (_req, res) => res.json({ ok: true }));
+app.post('/api/pm/stop', (_req, res) => res.json({ ok: true }));
 app.post('/api/pm/restart', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/pm/events', (req, res) => {

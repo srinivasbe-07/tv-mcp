@@ -5,6 +5,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 1. Project Cleanup
+
 - [x] 1.1 Rewrote `pattern-monitor.js` from scratch
 - [x] 1.2 Removed 23 unnecessary files
 - [x] 1.3 Committed to git
@@ -12,6 +13,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 2. Pine Script
+
 - [x] 2.1 Created `scripts/pine/pattern-candles.pine`
 - [x] 2.2 Fixed `range` reserved keyword error
 - [x] 2.3 Removed labels/markers — body color only
@@ -20,6 +22,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 3. Design & Documentation
+
 - [x] 3.1 Created `docs/pattern-monitor-design.md`
 - [x] 3.2 Documented reversal vs continuation logic
 - [x] 3.3 Defined Section 1 (Setup on Load) and Section 2 (15-min Logic)
@@ -34,6 +37,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 4. Browser UI — pattern.html
+
 - [x] 4.1 Page created at `localhost:3000/pattern`
 - [x] 4.2 Header — TV status, Pattern start/stop/restart, bias chip
 - [x] 4.3 Left panel — Bias toggle (▲ BUY/CALL | ▼ SELL/PUT)
@@ -46,6 +50,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 5. Dashboard
+
 - [x] 5.1 Restored old dashboard from git (two-panel layout)
 - [x] 5.2 Supertrend restart button — always visible, disabled when stopped
 - [ ] 5.3 Pattern Monitor panel — replace old fields (Zone/Target/SL) with new fields (Bias/Resistance/Support/Last Event)
@@ -54,6 +59,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 6. Server — API & Process Management
+
 - [ ] 6.1 Add `pmProc` variable for process tracking
 - [ ] 6.2 Add `pmClients` + `pmLog` for SSE
 - [ ] 6.3 Update `getStatus()` to include `pm` state
@@ -69,6 +75,7 @@ Mark each item `[x]` when completed.
 ---
 
 ## 7. Pattern Monitor Logic
+
 - [ ] 7.1 Config — remove `zone`, `active`, `candleTimeframe` — keep only `bias` + `importantLevels`
 - [ ] 7.2 Always 15-min — hardcoded, no config option
 - [ ] 7.3 On load — clear all chart drawings
@@ -86,4 +93,5 @@ Mark each item `[x]` when completed.
 ---
 
 ## 8. TBD — Not Yet Discussed
+
 - [ ] 8.1 Pattern detection for trade alerts — decide trigger and which alerts to update

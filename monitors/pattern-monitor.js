@@ -24,27 +24,27 @@ import readline from 'readline';
 // Constants
 // ---------------------------------------------------------------------------
 const CONFIG_FILE = './config/pattern-monitor-config.json';
-const LOG_FILE    = './logs/pattern-monitor.log';
+const LOG_FILE = './logs/pattern-monitor.log';
 
 const INSTRUMENTS = {
-  NIFTY:  'NSE:NIFTY',
+  NIFTY: 'NSE:NIFTY',
   SENSEX: 'BSE:SENSEX',
 };
 
 const ALERT_NAMES = {
   NIFTY: {
-    entry:  'niftyPatternLongEntry',
-    sl:     'niftyPatternLongSL',
+    entry: 'niftyPatternLongEntry',
+    sl: 'niftyPatternLongSL',
     target: 'niftyPatternLongTarget',
   },
   SENSEX: {
-    entry:  'sensexPatternLongEntry',
-    sl:     'sensexPatternLongSL',
+    entry: 'sensexPatternLongEntry',
+    sl: 'sensexPatternLongSL',
     target: 'sensexPatternLongTarget',
   },
 };
 
-const MARKET_OPEN_MIN  = 9 * 60 + 15;
+const MARKET_OPEN_MIN = 9 * 60 + 15;
 const MARKET_CLOSE_MIN = 15 * 60 + 30;
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ function nowIST() {
 }
 
 function isMarketHours() {
-  const t   = nowIST();
+  const t = nowIST();
   const day = t.getUTCDay();
   if (day === 0 || day === 6) return false;
   const min = t.getUTCHours() * 60 + t.getUTCMinutes();
@@ -65,7 +65,7 @@ function isMarketHours() {
 function timeStr() {
   const t = nowIST();
   return [t.getUTCHours(), t.getUTCMinutes(), t.getUTCSeconds()]
-    .map(n => String(n).padStart(2, '0'))
+    .map((n) => String(n).padStart(2, '0'))
     .join(':');
 }
 
@@ -95,7 +95,9 @@ function loadConfig() {
 function saveConfig(cfg) {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +112,7 @@ function msUntilNextCandle(tfMinutes) {
 // Pattern detection
 // ---------------------------------------------------------------------------
 function isHammer(c) {
-  const body  = Math.abs(c.close - c.open);
+  const body = Math.abs(c.close - c.open);
   const range = c.high - c.low;
   if (!range || !body) return false;
   const lower = Math.min(c.open, c.close) - c.low;
@@ -119,7 +121,7 @@ function isHammer(c) {
 }
 
 function isShootingStar(c) {
-  const body  = Math.abs(c.close - c.open);
+  const body = Math.abs(c.close - c.open);
   const range = c.high - c.low;
   if (!range || !body) return false;
   const upper = c.high - Math.max(c.open, c.close);
@@ -128,7 +130,7 @@ function isShootingStar(c) {
 }
 
 function isDoji(c) {
-  const body  = Math.abs(c.close - c.open);
+  const body = Math.abs(c.close - c.open);
   const range = c.high - c.low;
   return range > 0 && body <= range * 0.1;
 }
@@ -137,19 +139,19 @@ function isBullishEngulfing(curr, prev) {
   return (
     curr.close > curr.open &&
     prev.close < prev.open &&
-    curr.open  <= prev.close &&
+    curr.open <= prev.close &&
     curr.close >= prev.open
   );
 }
 
 function detectPattern(bias, curr, prev) {
   if (bias === 'up') {
-    if (isHammer(curr))                      return 'Hammer';
-    if (isDoji(curr))                        return 'Doji';
+    if (isHammer(curr)) return 'Hammer';
+    if (isDoji(curr)) return 'Doji';
     if (prev && isBullishEngulfing(curr, prev)) return 'BullishEngulfing';
   } else {
     if (isShootingStar(curr)) return 'ShootingStar';
-    if (isDoji(curr))         return 'Doji';
+    if (isDoji(curr)) return 'Doji';
   }
   return null;
 }
@@ -221,18 +223,20 @@ async function fetchBars(cdp, symbol, timeframe, limit) {
 // Zone drawing
 // ---------------------------------------------------------------------------
 let drawnZoneIds = [];
-let lastZoneKey  = '';
+let lastZoneKey = '';
 
 async function drawZone(cdp, zone, bias) {
   if (drawnZoneIds.length) {
     const ids = JSON.stringify(drawnZoneIds);
-    await cdp.executeScript(
-      `(function(){try{const c=window.TradingViewApi?.activeChart?.();${ids}.forEach(id=>{try{c.removeEntity(id)}catch(_){}});}catch(_){}})() `
-    ).catch(() => {});
+    await cdp
+      .executeScript(
+        `(function(){try{const c=window.TradingViewApi?.activeChart?.();${ids}.forEach(id=>{try{c.removeEntity(id)}catch(_){}});}catch(_){}})() `
+      )
+      .catch(() => {});
     drawnZoneIds = [];
   }
 
-  const color  = bias === 'up' ? '#FFD700' : '#FF6B6B';
+  const color = bias === 'up' ? '#FFD700' : '#FF6B6B';
   const script = `
     (async function() {
       try {
@@ -278,7 +282,7 @@ async function clearDrawings(cdp) {
   `;
   const ok = await cdp.executeScript(script).catch(() => false);
   drawnZoneIds = [];
-  lastZoneKey  = '';
+  lastZoneKey = '';
   if (ok) log('Chart cleared');
 }
 
@@ -286,25 +290,43 @@ async function clearDrawings(cdp) {
 // Alert update
 // ---------------------------------------------------------------------------
 async function updateAlerts(cdpAlerts, names, symbol, entry, sl, target) {
-  const parse = r => {
-    try { return JSON.parse(r?.content?.[0]?.text || '{}'); } catch (_e) { return {}; }
+  const parse = (r) => {
+    try {
+      return JSON.parse(r?.content?.[0]?.text || '{}');
+    } catch (_e) {
+      return {};
+    }
   };
 
   await cdpAlerts.normalizeAlertsPanel();
 
-  const r1 = await cdpAlerts.handle('alert_update', { alertName: names.entry,  symbol, level: entry  });
+  const r1 = await cdpAlerts.handle('alert_update', {
+    alertName: names.entry,
+    symbol,
+    level: entry,
+  });
   const d1 = parse(r1);
   log(`  [Entry]  ${d1.success ? 'OK' : 'FAIL'} @ ${entry}  — ${d1.message || d1.error || ''}`);
-  if (!d1.success) { log('  Aborting — entry update failed'); return false; }
-  await new Promise(r => setTimeout(r, 500));
+  if (!d1.success) {
+    log('  Aborting — entry update failed');
+    return false;
+  }
+  await new Promise((r) => setTimeout(r, 500));
 
-  const r2 = await cdpAlerts.handle('alert_update', { alertName: names.sl,     symbol, level: sl     });
+  const r2 = await cdpAlerts.handle('alert_update', { alertName: names.sl, symbol, level: sl });
   const d2 = parse(r2);
   log(`  [SL]     ${d2.success ? 'OK' : 'FAIL'} @ ${sl}     — ${d2.message || d2.error || ''}`);
-  if (!d2.success) { log('  Aborting — SL update failed'); return false; }
-  await new Promise(r => setTimeout(r, 500));
+  if (!d2.success) {
+    log('  Aborting — SL update failed');
+    return false;
+  }
+  await new Promise((r) => setTimeout(r, 500));
 
-  const r3 = await cdpAlerts.handle('alert_update', { alertName: names.target, symbol, level: target });
+  const r3 = await cdpAlerts.handle('alert_update', {
+    alertName: names.target,
+    symbol,
+    level: target,
+  });
   const d3 = parse(r3);
   log(`  [Target] ${d3.success ? 'OK' : 'FAIL'} @ ${target} — ${d3.message || d3.error || ''}`);
 
@@ -320,7 +342,10 @@ async function tick(cdp, cdpAlerts) {
   if (!cdp.isConnected()) throw new Error('CDP not connected');
 
   const cfg = loadConfig();
-  if (!cfg) { log('Config missing'); return; }
+  if (!cfg) {
+    log('Config missing');
+    return;
+  }
 
   if (!cfg.ignoreMarketHours && !isMarketHours()) {
     log('Outside market hours — waiting');
@@ -332,13 +357,16 @@ async function tick(cdp, cdpAlerts) {
     return;
   }
 
-  const instr  = (cfg.instrument || 'NIFTY').toUpperCase();
+  const instr = (cfg.instrument || 'NIFTY').toUpperCase();
   const symbol = INSTRUMENTS[instr] || INSTRUMENTS.NIFTY;
-  const names  = ALERT_NAMES[instr]  || ALERT_NAMES.NIFTY;
-  const tf     = String(cfg.candleTimeframe || 3);
+  const names = ALERT_NAMES[instr] || ALERT_NAMES.NIFTY;
+  const tf = String(cfg.candleTimeframe || 3);
 
   const zoneArr = cfg.zone || [];
-  if (zoneArr.length < 2) { log('zone not set in config'); return; }
+  if (zoneArr.length < 2) {
+    log('zone not set in config');
+    return;
+  }
   const zone = { top: Math.max(...zoneArr), bottom: Math.min(...zoneArr) };
 
   // Redraw zone lines if zone or bias changed
@@ -350,12 +378,17 @@ async function tick(cdp, cdpAlerts) {
 
   // Fetch last 5 candles (need at least 3: prev, curr completed, live)
   const bars = await fetchBars(cdp, symbol, tf, 5);
-  if (bars.length < 3) { log(`Not enough ${tf}-min bars (got ${bars.length})`); return; }
+  if (bars.length < 3) {
+    log(`Not enough ${tf}-min bars (got ${bars.length})`);
+    return;
+  }
 
   const curr = bars[bars.length - 2]; // last completed candle
   const prev = bars[bars.length - 3];
 
-  log(`${instr} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`);
+  log(
+    `${instr} | bias:${cfg.bias.toUpperCase()} | zone:${zone.bottom}-${zone.top} | O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close}`
+  );
 
   if (!isInZone(curr, zone)) {
     log('Candle outside zone — no action');
@@ -369,20 +402,22 @@ async function tick(cdp, cdpAlerts) {
 
   const pattern = detectPattern(cfg.bias, curr, prev);
   if (!pattern) {
-    log(`Candle in zone — no pattern (curr O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`);
+    log(
+      `Candle in zone — no pattern (curr O:${curr.open} H:${curr.high} L:${curr.low} C:${curr.close})`
+    );
     return;
   }
 
   // Entry / SL from candle extremes
   const entry = cfg.bias === 'up' ? curr.high : curr.low;
-  const sl    = cfg.bias === 'up' ? curr.low  : curr.high;
+  const sl = cfg.bias === 'up' ? curr.low : curr.high;
 
   // Target: use config value if set, otherwise auto swing high from completed bars
   const completedBars = bars.slice(0, -1); // exclude live candle
-  const swingHigh     = Math.max(...completedBars.map(b => b.high));
-  const swingLow      = Math.min(...completedBars.map(b => b.low));
-  const autoTarget    = cfg.bias === 'up' ? swingHigh : swingLow;
-  const target        = cfg.target || autoTarget;
+  const swingHigh = Math.max(...completedBars.map((b) => b.high));
+  const swingLow = Math.min(...completedBars.map((b) => b.low));
+  const autoTarget = cfg.bias === 'up' ? swingHigh : swingLow;
+  const target = cfg.target || autoTarget;
 
   log(`[SIGNAL] ${pattern} in zone | Entry:${entry}  SL:${sl}  Target:${target}`);
 
@@ -405,7 +440,9 @@ async function main() {
 
   log('='.repeat(50));
   log('=== Pattern Monitor started ===');
-  log(`Instrument: ${cfg.instrument || 'NIFTY'} | Bias: ${cfg.bias} | Zone: ${cfg.zone} | TF: ${cfg.candleTimeframe || 3}min | Active: ${cfg.active}`);
+  log(
+    `Instrument: ${cfg.instrument || 'NIFTY'} | Bias: ${cfg.bias} | Zone: ${cfg.zone} | TF: ${cfg.candleTimeframe || 3}min | Active: ${cfg.active}`
+  );
 
   // Connect to a dedicated chart tab (avoids stomping on supertrend's tab)
   let cdp;
@@ -425,12 +462,17 @@ async function main() {
 
   // Clear all chart drawings on startup (retry until chart is ready)
   for (let i = 1; i <= 12; i++) {
-    const ok = await cdp.executeScript(
-      `(function(){try{const c=window.TradingViewApi?.activeChart?.();if(!c)return false;if(typeof c.removeAllShapes==='function'){c.removeAllShapes();return true;}return false;}catch(_){return false;}})() `
-    ).catch(() => false);
-    if (ok) { log('Chart cleared'); break; }
+    const ok = await cdp
+      .executeScript(
+        `(function(){try{const c=window.TradingViewApi?.activeChart?.();if(!c)return false;if(typeof c.removeAllShapes==='function'){c.removeAllShapes();return true;}return false;}catch(_){return false;}})() `
+      )
+      .catch(() => false);
+    if (ok) {
+      log('Chart cleared');
+      break;
+    }
     log(`Chart not ready — retrying (${i}/12)...`);
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 5000));
   }
 
   // Watch config file — redraw zone when it changes
@@ -445,7 +487,7 @@ async function main() {
       if (c.active) {
         const za = c.zone || [];
         if (za.length >= 2) {
-          const z  = { top: Math.max(...za), bottom: Math.min(...za) };
+          const z = { top: Math.max(...za), bottom: Math.min(...za) };
           const ok = await drawZone(cdp, z, c.bias);
           if (ok) lastZoneKey = `${z.bottom}-${z.top}-${c.bias}`;
         }
@@ -476,8 +518,8 @@ async function main() {
     });
   }
 
-  process.on('uncaughtException',  e => log(`[CRASH] ${e.message}`));
-  process.on('unhandledRejection', e => log(`[CRASH] ${e?.message || e}`));
+  process.on('uncaughtException', (e) => log(`[CRASH] ${e.message}`));
+  process.on('unhandledRejection', (e) => log(`[CRASH] ${e?.message || e}`));
 
   // Tick loop
   let tickRunning = false;
@@ -491,7 +533,7 @@ async function main() {
         log(`[ERROR] ${e.message}`);
         if (!cdp.isConnected()) {
           log('CDP disconnected — reconnecting in 5s...');
-          await new Promise(r => setTimeout(r, 5000));
+          await new Promise((r) => setTimeout(r, 5000));
           try {
             await cdp.connect();
             log('CDP reconnected');
@@ -505,16 +547,19 @@ async function main() {
     }
 
     const nextCfg = loadConfig();
-    const nextTf  = parseInt(nextCfg?.candleTimeframe || 3, 10);
-    const delay   = msUntilNextCandle(nextTf) + 2000;
+    const nextTf = parseInt(nextCfg?.candleTimeframe || 3, 10);
+    const delay = msUntilNextCandle(nextTf) + 2000;
     log(`Next tick in ${Math.round(delay / 1000)}s`);
     setTimeout(runTick, delay);
   }
 
-  const initTf     = parseInt(cfg.candleTimeframe || 3, 10);
+  const initTf = parseInt(cfg.candleTimeframe || 3, 10);
   const firstDelay = msUntilNextCandle(initTf) + 2000;
   log(`First tick in ${Math.round(firstDelay / 1000)}s (at next ${initTf}-min candle close)`);
   setTimeout(runTick, firstDelay);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
