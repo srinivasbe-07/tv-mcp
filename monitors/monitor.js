@@ -378,7 +378,9 @@ async function deactivateAlerts(cdpAlerts, names) {
       if (d.success)
         log(`  [PAUSED] "${name}" deactivated — will re-activate after successful update`);
       else log(`  [WARN] Could not deactivate "${name}": ${d.message || 'unknown'}`);
-    } catch (_) {}
+    } catch (_e) {
+      /* ignore */
+    }
   }
 }
 
