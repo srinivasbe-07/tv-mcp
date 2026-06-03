@@ -178,6 +178,8 @@ export class AlertTools {
         return await this.delete(args);
       case 'alert_activate':
         return await this.activate(args);
+      case 'alert_deactivate':
+        return await this.deactivate(args);
       case 'alert_update_symbol':
         return await this.updateSymbol(args);
       case 'alert_update':
@@ -860,6 +862,86 @@ export class AlertTools {
       return this.success(result);
     } catch (error) {
       return this.error(`Failed to activate alert: ${error.message}`);
+    }
+  }
+
+  async deactivate(args) {
+    try {
+      const { alertId } = args;
+      if (!alertId) return this.error('alertId is required');
+
+      const script = `
+        (async function() {
+          try {
+            const seedEl = document.querySelector('[data-name="alert-item-name"]');
+            let scroller = null;
+            let node = seedEl?.parentElement;
+            while (node && node !== document.body) {
+              if (node.scrollHeight > node.clientHeight + 10) { scroller = node; break; }
+              node = node.parentElement;
+            }
+
+            const tryDeactivate = () => {
+              const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
+              const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
+              if (!target) return false;
+              let container = target.parentElement;
+              for (let i = 0; i < 6 && container; i++) {
+                if (container.querySelector('[data-name="alert-delete-button"]')) break;
+                container = container.parentElement;
+              }
+              // Check current state — skip if already stopped/paused
+              const statusEl = container?.querySelector('[data-name="alert-item-status"]');
+              const status = (statusEl?.innerText || '').trim().toLowerCase();
+              if (status.includes('stop') || status.includes('pause')) {
+                return 'already_stopped';
+              }
+              // Stop button uses the same toggle selector as the restart button
+              const stopBtn =
+                container?.querySelector('[data-name="alert-toggle-button"]') ||
+                Array.from(container?.querySelectorAll('button') || []).find(b =>
+                  b !== container.querySelector('[data-name="alert-edit-button"]') &&
+                  b !== container.querySelector('[data-name="alert-delete-button"]') &&
+                  b.offsetParent !== null
+                );
+              if (!stopBtn) return false;
+              stopBtn.click();
+              return true;
+            };
+
+            const r = tryDeactivate();
+            if (r === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
+            if (r) return { success: true, alertId: '${alertId}' };
+
+            if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
+              const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
+              for (let pos = step; pos <= maxScroll; pos += step) {
+                scroller.scrollTop = pos;
+                await new Promise(r => setTimeout(r, 600));
+                const r2 = tryDeactivate();
+                if (r2 === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
+                if (r2) return { success: true, alertId: '${alertId}' };
+              }
+              scroller.scrollTop = maxScroll;
+              await new Promise(r => setTimeout(r, 600));
+              const r3 = tryDeactivate();
+              if (r3 === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
+              if (r3) return { success: true, alertId: '${alertId}' };
+              scroller.scrollTop = 0;
+            }
+
+            return { success: false, alertId: '${alertId}', message: 'Alert not found or no stop button' };
+          } catch (e) {
+            return { error: e.message };
+          }
+        })()
+      `;
+
+      const result = await this.cdp.executeScript(script);
+      return this.success(result);
+    } catch (error) {
+      return this.error(`Failed to deactivate alert: ${error.message}`);
     }
   }
 
