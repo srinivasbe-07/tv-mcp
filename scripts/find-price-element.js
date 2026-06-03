@@ -77,7 +77,6 @@ try {
 
   console.log('\n=== Quote API ===');
   console.log(JSON.stringify(result?.quotePrice, null, 2));
-
 } catch (e) {
   console.error('Error:', e.message);
 } finally {

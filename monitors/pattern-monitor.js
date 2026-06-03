@@ -366,7 +366,6 @@ function saveTradeState(state) {
   }
 }
 
-
 async function updateTradeAlerts(cdpAlerts, cdp, instrName, bias, candle, target, sl, symbol) {
   const names = PATTERN_ALERT_NAMES[instrName];
   if (!names) {
