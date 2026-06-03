@@ -34,6 +34,7 @@ app.use(express.json());
 // ── Pages (must be before express.static so routes take priority) ─
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html')));
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
+app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'pattern.html')));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
 
 app.use(express.static(__dirname, { index: false }));
@@ -434,9 +435,73 @@ app.post('/api/test/supertrend', async (req, res) => {
   }
 });
 
+// ── Pattern Monitor API (stub — replace with real implementation) ──
+const PM_CONFIG_FILE = path.join(ROOT, 'config', 'pattern-monitor-config.json');
+
+function loadPmConfig() {
+  try { return JSON.parse(fs.readFileSync(PM_CONFIG_FILE, 'utf8')); } catch (_) { return { bias: null, importantLevels: [] }; }
+}
+function savePmConfig(cfg) {
+  fs.writeFileSync(PM_CONFIG_FILE + '.tmp', JSON.stringify(cfg, null, 2));
+  fs.renameSync(PM_CONFIG_FILE + '.tmp', PM_CONFIG_FILE);
+}
+
+app.get('/api/pm/config', (_req, res) => res.json(loadPmConfig()));
+
+app.post('/api/pm/bias', (req, res) => {
+  const { bias } = req.body;
+  if (!['up', 'down'].includes(bias)) return res.json({ ok: false, error: 'Invalid bias' });
+  const cfg = loadPmConfig();
+  cfg.bias = bias;
+  savePmConfig(cfg);
+  res.json({ ok: true });
+});
+
+app.post('/api/pm/levels', (req, res) => {
+  const { importantLevels } = req.body;
+  if (!Array.isArray(importantLevels)) return res.json({ ok: false, error: 'Invalid levels' });
+  const cfg = loadPmConfig();
+  cfg.importantLevels = importantLevels.map(Number).filter(n => n > 0);
+  savePmConfig(cfg);
+  res.json({ ok: true });
+});
+
+app.post('/api/pm/start',   (_req, res) => res.json({ ok: true }));
+app.post('/api/pm/stop',    (_req, res) => res.json({ ok: true }));
+app.post('/api/pm/restart', (_req, res) => res.json({ ok: true }));
+
+app.get('/api/pm/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  // Send dummy log lines for preview
+  const lines = [
+    '[09:15:02] === Pattern Monitor started ===',
+    '[09:15:03] Fetched Day H/L: D-1 to D-10',
+    '[09:15:03] Day levels: R=24500  S=24100',
+    '[09:15:04] Drew 2 level lines on chart',
+    '[09:15:04] Important levels drawn: 24450, 24380',
+    '[09:30:02] 15-min candle close — checking levels',
+    '[09:30:02] Price 24320 — between levels, no action',
+    '[09:45:02] [BREAK] Level 24450 broken — close 24462 above level',
+    '[09:45:03] Drew next level: D-3 H 24580',
+    '[10:00:02] 15-min candle close — checking levels',
+    '[10:00:02] Price 24510 — between levels, no action',
+  ];
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i < lines.length) {
+      res.write(`event: log\ndata: ${JSON.stringify({ line: lines[i++] })}\n\n`);
+    }
+  }, 400);
+  req.on('close', () => clearInterval(iv));
+});
+
 const server = app.listen(PORT, () => {
   console.log(`UI Server →  http://localhost:${PORT}            (Dashboard)`);
   console.log(`             http://localhost:${PORT}/supertrend (Supertrend Monitor)`);
+  console.log(`             http://localhost:${PORT}/pattern    (Pattern Monitor)`);
   console.log(`             http://localhost:${PORT}/test-alerts (Supertrend Alert Test)`);
 });
 

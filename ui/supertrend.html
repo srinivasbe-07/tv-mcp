@@ -531,7 +531,6 @@
           id="btn-st-restart"
           onclick="confirm2('Restart Supertrend Monitor?', stRestart)"
           disabled
-          style="display: none"
         >
           ↺ Restart
         </button>
@@ -854,7 +853,6 @@
           btnStT.className = 'hdr-btn btn-red';
           btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop);
           btnStT.disabled = false;
-          btnStR.style.display = '';
           btnStR.disabled = false;
         } else {
           stDot.className = 'status-dot dot-stopped';
@@ -864,7 +862,7 @@
           btnStT.className = 'hdr-btn btn-green';
           btnStT.onclick = stStart;
           btnStT.disabled = !tvRunning;
-          btnStR.style.display = 'none';
+          btnStR.disabled = true;
         }
       }
 

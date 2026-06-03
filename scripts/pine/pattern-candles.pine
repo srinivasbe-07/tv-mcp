@@ -1,0 +1,15 @@
+//@version=5
+indicator("Pattern Candles", overlay=true)
+
+body        = math.abs(close - open)
+candleRange = high - low
+upper       = high - math.max(open, close)
+lower       = math.min(open, close) - low
+
+isHammer       = candleRange > 0 and body > 0 and lower >= 2 * body and upper <= body
+isShootingStar = candleRange > 0 and body > 0 and upper >= 2 * body and lower <= body
+isDoji         = candleRange > 0 and body <= candleRange * 0.1
+isBullEngulf   = close > open and close[1] < open[1] and open <= close[1] and close >= open[1]
+
+col = isHammer ? color.lime : isBullEngulf ? color.new(color.blue, 0) : isDoji ? color.yellow : isShootingStar ? color.red : na
+barcolor(col)
