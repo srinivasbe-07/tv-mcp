@@ -132,12 +132,20 @@ export class AlertTools {
           const visibleTabs = () => Array.from(document.querySelectorAll('[role="tab"]'))
             .filter(t => !!t.offsetParent);
 
-          // Step 1: If no tabs visible, panel is hidden — click button to open/expand
-          if (visibleTabs().length === 0) {
+          // True only when the Alerts panel itself is in focus (has an Alerts or Log tab).
+          // Tabs from other panels (Data Window, Watchlist etc.) don't match this.
+          const alertsPanelActive = () => visibleTabs().some(t => {
+            const txt = (t.textContent || t.innerText || '').trim().toLowerCase();
+            return txt === 'alerts' || txt.startsWith('alert') || txt === 'log';
+          });
+
+          // Step 1: Bring Alerts panel into focus if it isn't already.
+          // Covers: panel closed, panel collapsed, another panel is open.
+          if (!alertsPanelActive()) {
             btn.click();
             for (let i = 0; i < 16; i++) {
               await new Promise(r => setTimeout(r, 250));
-              if (hasItems() || visibleTabs().length > 0) break;
+              if (hasItems() || alertsPanelActive()) break;
             }
           }
 

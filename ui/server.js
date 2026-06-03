@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * UI Server — Pattern Monitor + Supertrend Monitor
+ * UI Server — Supertrend Monitor
  *
  * Pages:
- *   http://localhost:3000            → Pattern Monitor
+ *   http://localhost:3000            → Dashboard
  *   http://localhost:3000/supertrend → Supertrend Monitor
  *
  * Usage: node ui/server.js
@@ -21,10 +21,8 @@ import { ChartTools } from '../src/tools/chart.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
-const PATTERN_CONFIG = path.join(ROOT, 'config', 'pattern-monitor-config.json');
 const ST_CONFIG = path.join(ROOT, 'config', 'monitor-config.json');
 const POSITION_FILE = path.join(ROOT, 'config', 'position.json');
-const _PATTERN_LOG = path.join(ROOT, 'logs', 'pattern-monitor.log');
 const _ST_LOG = path.join(ROOT, 'logs', 'monitor.log');
 const LAUNCH_TV_PS = path.join(ROOT, 'launch-tv.ps1');
 
@@ -35,26 +33,18 @@ app.use(express.json());
 
 // ── Pages (must be before express.static so routes take priority) ─
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html')));
-app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
-app.get('/test-pattern-alerts', (_req, res) =>
-  res.sendFile(path.join(__dirname, 'test-pattern-alerts.html'))
-);
 
 app.use(express.static(__dirname, { index: false }));
 
 // ── Process state ────────────────────────────────────────────────
-let monitorProc = null;
 let stProc = null;
 let tvProc = null;
 let tvReady = false;
 
-// ── SSE clients — separate channels per page ─────────────────────
-let patternClients = [];
+// ── SSE clients ───────────────────────────────────────────────────
 let stClients = [];
-
-let patternLog = [];
 let stLog = [];
 
 function broadcast(clients, event, data) {
@@ -73,14 +63,6 @@ function broadcast(clients, event, data) {
   );
 }
 
-function pushPattern(line) {
-  const t = line.trim();
-  if (!t) return;
-  patternLog.push(t);
-  if (patternLog.length > 200) patternLog.shift();
-  broadcast(patternClients, 'log', { line: t });
-}
-
 function pushST(line) {
   const t = line.trim();
   if (!t) return;
@@ -92,19 +74,15 @@ function pushST(line) {
 function getStatus() {
   return {
     tv: tvReady ? 'running' : tvProc ? 'starting' : 'stopped',
-    monitor: monitorProc ? 'running' : 'stopped',
     st: stProc ? 'running' : 'stopped',
   };
 }
 
 function broadcastStatus() {
-  const s = getStatus();
-  broadcast(patternClients, 'status', s);
-  broadcast(stClients, 'status', s);
+  broadcast(stClients, 'status', getStatus());
 }
 
 function broadcastPosition(pos) {
-  broadcast(patternClients, 'position', pos);
   broadcast(stClients, 'position', pos);
 }
 
@@ -113,41 +91,6 @@ fs.watch(POSITION_FILE, () => {
   try {
     const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
     broadcastPosition(pos);
-  } catch (_) {
-    /* ignore */
-  }
-});
-
-// ── Pattern Monitor config ────────────────────────────────────────
-app.get('/api/config', (_req, res) => {
-  try {
-    res.json(JSON.parse(fs.readFileSync(PATTERN_CONFIG, 'utf8')));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/config', (req, res) => {
-  try {
-    const current = JSON.parse(fs.readFileSync(PATTERN_CONFIG, 'utf8'));
-    const updated = { ...current, ...req.body };
-    lastConfigWrite = Date.now();
-    fs.writeFileSync(PATTERN_CONFIG, JSON.stringify(updated, null, 2));
-    res.json({ ok: true });
-    pushPattern(`[UI] Config saved`);
-    broadcast(patternClients, 'config', updated);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Watch config file for external changes (e.g. drag sync from pattern-monitor.js)
-let lastConfigWrite = 0;
-fs.watch(PATTERN_CONFIG, () => {
-  if (Date.now() - lastConfigWrite < 500) return; // skip our own POST writes
-  try {
-    const cfg = JSON.parse(fs.readFileSync(PATTERN_CONFIG, 'utf8'));
-    broadcast(patternClients, 'config', cfg);
   } catch (_) {
     /* ignore */
   }
@@ -199,28 +142,6 @@ app.post('/api/st/position', (req, res) => {
 // ── Status ────────────────────────────────────────────────────────
 app.get('/api/status', (_req, res) => res.json(getStatus()));
 
-// ── SSE — Pattern Monitor ─────────────────────────────────────────
-app.get('/api/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  patternLog
-    .slice(-50)
-    .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
-  res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
-  try {
-    const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
-    res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
-  } catch (_) {
-    /* ignore */
-  }
-  patternClients.push(res);
-  req.on('close', () => {
-    patternClients = patternClients.filter((c) => c !== res);
-  });
-});
-
 // ── SSE — Supertrend ──────────────────────────────────────────────
 app.get('/api/st/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -248,7 +169,6 @@ app.post('/api/tv/start', (_req, res) => {
   if (tvReady) return res.json({ ok: true, message: 'Already running' });
   if (tvProc) return res.json({ ok: false, message: 'Already starting' });
 
-  pushPattern('[UI] Starting TradingView...');
   pushST('[UI] Starting TradingView...');
 
   tvProc = spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', LAUNCH_TV_PS], {
@@ -257,7 +177,6 @@ app.post('/api/tv/start', (_req, res) => {
   tvProc.stdout.on('data', (d) => {
     const line = d.toString().trim();
     if (!line) return;
-    pushPattern(`[TV] ${line}`);
     pushST(`[TV] ${line}`);
     if (line.includes('CDP is ready') || line.includes('already running')) {
       tvReady = true;
@@ -265,15 +184,12 @@ app.post('/api/tv/start', (_req, res) => {
     }
   });
   tvProc.stderr.on('data', (d) => {
-    pushPattern(`[TV] ${d}`);
     pushST(`[TV] ${d}`);
   });
   tvProc.on('close', (code) => {
     tvProc = null;
     if (code !== 0) tvReady = false;
-    const msg = `[TV] Script exited (${code})`;
-    pushPattern(msg);
-    pushST(msg);
+    pushST(`[TV] Script exited (${code})`);
     broadcastStatus();
   });
   broadcastStatus();
@@ -284,68 +200,9 @@ app.post('/api/tv/stop', (_req, res) => {
   exec('taskkill /IM TradingView.exe /F', () => {
     tvReady = false;
     tvProc = null;
-    pushPattern('[UI] TradingView stopped');
     pushST('[UI] TradingView stopped');
     broadcastStatus();
   });
-  res.json({ ok: true });
-});
-
-// ── Pattern Monitor process ───────────────────────────────────────
-app.post('/api/monitor/start', (_req, res) => {
-  if (monitorProc) return res.json({ ok: false, message: 'Already running' });
-  pushPattern('[UI] Starting pattern monitor...');
-  monitorProc = spawn('node', ['monitors/pattern-monitor.js'], { cwd: ROOT });
-  monitorProc.stdout.on('data', (d) => d.toString().split('\n').forEach(pushPattern));
-  monitorProc.stderr.on('data', (d) =>
-    d
-      .toString()
-      .split('\n')
-      .forEach((l) => {
-        if (l.trim()) pushPattern(`[ERR] ${l.trim()}`);
-      })
-  );
-  monitorProc.on('close', (code) => {
-    pushPattern(`[UI] Pattern monitor stopped (${code})`);
-    monitorProc = null;
-    broadcastStatus();
-  });
-  broadcastStatus();
-  res.json({ ok: true });
-});
-
-app.post('/api/monitor/stop', (_req, res) => {
-  if (!monitorProc) return res.json({ ok: false });
-  monitorProc.kill('SIGINT');
-  res.json({ ok: true });
-});
-
-app.post('/api/monitor/restart', (_req, res) => {
-  pushPattern('[UI] Restarting pattern monitor...');
-  const doStart = () => {
-    monitorProc = spawn('node', ['monitors/pattern-monitor.js'], { cwd: ROOT });
-    monitorProc.stdout.on('data', (d) => d.toString().split('\n').forEach(pushPattern));
-    monitorProc.stderr.on('data', (d) =>
-      d
-        .toString()
-        .split('\n')
-        .forEach((l) => {
-          if (l.trim()) pushPattern(`[ERR] ${l.trim()}`);
-        })
-    );
-    monitorProc.on('close', (code) => {
-      pushPattern(`[UI] Pattern monitor stopped (${code})`);
-      monitorProc = null;
-      broadcastStatus();
-    });
-    broadcastStatus();
-  };
-  if (monitorProc) {
-    monitorProc.once('close', () => setTimeout(doStart, 500));
-    monitorProc.kill('SIGINT');
-  } else {
-    doStart();
-  }
   res.json({ ok: true });
 });
 
@@ -577,177 +434,10 @@ app.post('/api/test/supertrend', async (req, res) => {
   }
 });
 
-// ── Pattern Alert Test ────────────────────────────────────────────
-const PATTERN_ALERT_NAMES_TEST = {
-  NIFTY: {
-    entry: 'niftyPatternLongEntry',
-    sl: 'niftyPatternLongSL',
-    target: 'niftyPatternLongTarget',
-  },
-  SENSEX: {
-    entry: 'sensexPatternLongEntry',
-    sl: 'sensexPatternLongSL',
-    target: 'sensexPatternLongTarget',
-  },
-};
-const PATTERN_ITM_BY_DAY_TEST = { 1: 2, 2: 2, 5: 1 };
-
-app.post('/api/test/pattern', async (req, res) => {
-  const { instr = 'NIFTY', spot: spotOverride = null, bias = 'up', itmOverride = null } = req.body;
-  const instrName = instr.toUpperCase();
-  const cfg = INSTRUMENTS_TEST[instrName];
-  if (!cfg) return res.status(400).json({ error: `Unknown instrument: ${instrName}` });
-  const names = PATTERN_ALERT_NAMES_TEST[instrName];
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.flushHeaders();
-
-  const emit = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  const log = (msg) => emit('log', { msg });
-
-  let cdp;
-  try {
-    log('Connecting to TradingView CDP...');
-    cdp = new CDPManager();
-    await cdp.connect();
-    log('CDP connected');
-  } catch (e) {
-    emit('done', { error: `CDP connect failed: ${e.message}` });
-    res.end();
-    return;
-  }
-
-  const cdpAlerts = new AlertTools(cdp);
-  const cdpChart = new ChartTools(cdp);
-
-  try {
-    // Read spot price
-    let spot = spotOverride;
-    if (!spot) {
-      log(`Reading ${instrName} spot price from chart...`);
-      await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-      await new Promise((r) => setTimeout(r, 2000));
-      const r = await cdpChart.handle('quote_get', {});
-      const d = JSON.parse(r?.content?.[0]?.text || '{}');
-      spot = d.close || d.price || d.last;
-    }
-    if (!spot) {
-      emit('done', { error: `Could not read ${instrName} spot. Enter it manually.` });
-      res.end();
-      return;
-    }
-
-    // Calculate option symbol
-    const day = nowIST().getUTCDay();
-    const itmDepth =
-      itmOverride !== null
-        ? itmOverride
-        : instrName === 'SENSEX'
-          ? 2
-          : (PATTERN_ITM_BY_DAY_TEST[day] ?? 2);
-    const atm = calcATMTest(spot, cfg.strikeInterval);
-    const optType = bias === 'up' ? 'CE' : 'PE';
-    const strike =
-      bias === 'up' ? atm - itmDepth * cfg.strikeInterval : atm + itmDepth * cfg.strikeInterval;
-    const symbol = buildSymbolTest(cfg, strike, optType);
-    const exchange = cfg.spotSymbol.split(':')[0];
-
-    log(`Spot: ${spot}   ATM: ${atm}   ITM-${itmDepth}   ${optType}`);
-    log(`Option: ${symbol}`);
-
-    // Normalize panel BEFORE chart switch — keeps all alerts visible after switch
-    await cdpAlerts.normalizeAlertsPanel();
-
-    // Switch chart to option (needed so symbol appears in alert dropdown)
-    log(`Switching chart to ${symbol}...`);
-    await cdpChart.handle('chart_set_symbol', { symbol: `${exchange}:${symbol}` });
-    await new Promise((r) => setTimeout(r, 3000));
-
-    // Derive test levels from last completed bar
-    let entry, sl, target;
-    try {
-      const barsR = await cdpChart.handle('data_get_ohlcv', { symbol, timeframe: '3', bars: 5 });
-      const bars = JSON.parse(barsR?.content?.[0]?.text || '{}').bars || [];
-      const last = bars[bars.length - 2] || bars[bars.length - 1];
-      if (last) {
-        entry = last.high;
-        sl = last.low;
-        target = Math.round((entry + (entry - sl)) * 100) / 100;
-        log(`Levels from last bar — Entry:${entry}  SL:${sl}  Target:${target}`);
-      }
-    } catch {
-      /* ignore */
-    }
-    if (!entry) {
-      entry = strike + 10;
-      sl = Math.max(1, strike - 10);
-      target = strike + 30;
-      log(`Levels (fallback) — Entry:${entry}  SL:${sl}  Target:${target}`);
-    }
-
-    // Update the 3 fixed alerts
-    const tests = [
-      { name: names.entry, level: entry, role: 'entry' },
-      { name: names.sl, level: sl, role: 'sl' },
-      { name: names.target, level: target, role: 'target' },
-    ];
-
-    const results = [];
-    for (const t of tests) {
-      log(`[${t.role}] Updating "${t.name}" @ ${t.level}...`);
-      try {
-        const r = await cdpAlerts.handle('alert_update', {
-          alertName: t.name,
-          symbol,
-          level: t.level,
-        });
-        const rawText = r?.content?.[0]?.text || '{}';
-        let data = {};
-        if (!r?.isError) {
-          try {
-            data = JSON.parse(rawText);
-          } catch {
-            /* ignore */
-          }
-        }
-        const success = !r?.isError && !!data.success;
-        const message = r?.isError ? rawText : data.message || rawText;
-        log(`[${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
-        const result = { name: t.name, symbol, level: t.level, role: t.role, success, message };
-        results.push(result);
-        emit('result', result);
-      } catch (e) {
-        log(`[${t.role}] ✗ ERROR — ${e.message}`);
-        const result = {
-          name: t.name,
-          symbol,
-          level: t.level,
-          role: t.role,
-          success: false,
-          message: e.message,
-        };
-        results.push(result);
-        emit('result', result);
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-
-    log('Done — switching back to spot chart');
-    await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-    emit('done', { results, spot, atm, itmDepth, symbol });
-  } finally {
-    await cdp.disconnect().catch(() => {});
-    res.end();
-  }
-});
-
 const server = app.listen(PORT, () => {
   console.log(`UI Server →  http://localhost:${PORT}            (Dashboard)`);
-  console.log(`             http://localhost:${PORT}/pattern    (Pattern Monitor)`);
   console.log(`             http://localhost:${PORT}/supertrend (Supertrend Monitor)`);
   console.log(`             http://localhost:${PORT}/test-alerts (Supertrend Alert Test)`);
-  console.log(`             http://localhost:${PORT}/test-pattern-alerts (Pattern Alert Test)`);
 });
 
 server.on('error', (e) => {
