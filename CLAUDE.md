@@ -285,34 +285,40 @@ Step 4  Debounce: ATM must hold same value for 2 consecutive ticks before acting
         └── tick 1: "ATM pending confirmation" → save & wait
         └── tick 2: "ATM confirmed" → proceed
         └── price reverts before tick 2 → cancel, no update
-Step 5  Nothing changed (ATM same, depth same, instrument same, not force)?
+Step 5  Nothing changed (ATM same, depth same, instrument same, not force, no trade just closed)?
         └── save state & exit — no alert updates needed
 Step 6  Calculate strikes
         └── CE strike = ATM − (itmDepth × stepSize)
         └── PE strike = ATM + (itmDepth × stepSize)
 Step 7  Update CE alerts
-        └── CE = OPEN  → SKIP  (logged: "CE trade is RUNNING — skipping")
-        └── CE = CLOSED → switch chart to CE option → update entry + exit → switch back
+        └── CE = OPEN        → SKIP  (logged: "CE trade is RUNNING — skipping")
+        └── CE just CLOSED   → FORCE sync to current strike (ATM may have moved during trade)
+        └── CE = CLOSED + ATM shifted → update to new strike
 Step 8  Update PE alerts
-        └── PE = OPEN  → SKIP  (logged: "PE trade is RUNNING — skipping")
-        └── PE = CLOSED → switch chart to PE option → update entry + exit → switch back
+        └── PE = OPEN        → SKIP  (logged: "PE trade is RUNNING — skipping")
+        └── PE just CLOSED   → FORCE sync to current strike
+        └── PE = CLOSED + ATM shifted → update to new strike
 Step 9  Wait 3s → verify all 4 alerts are active → auto re-activate any stopped
 Step 10 Save position.json
 ```
 
-**Key point:** Position state (Step 2) is always read *before* any alert update (Steps 7–8).
-If an entry alert fires between ticks, the next tick detects it first and blocks the update.
+**Key points:**
+- Position state (Step 2) is always read *before* any alert update (Steps 7–8) — if an entry fires between ticks, the next tick blocks the update automatically.
+- When a trade exits (OPEN → CLOSED), alerts are **immediately synced** to the current strike even if ATM hasn't shifted — because ATM may have moved while updates were blocked during the trade.
 
 ### Alert Update Behaviour by Position State
 
-| State                | CE alerts                     | PE alerts                     |
-| -------------------- | ----------------------------- | ----------------------------- |
-| CE=closed, PE=closed | ✓ Updated to new strike       | ✓ Updated to new strike       |
-| CE=open, PE=closed   | `CE trade RUNNING — skipping` | ✓ Updated to new strike       |
-| CE=closed, PE=open   | ✓ Updated to new strike       | `PE trade RUNNING — skipping` |
-| CE=open, PE=open     | `CE trade RUNNING — skipping` | `PE trade RUNNING — skipping` |
+| State                | CE alerts                          | PE alerts                          |
+| -------------------- | ---------------------------------- | ---------------------------------- |
+| CE=closed, PE=closed | ✓ Updated on ATM shift             | ✓ Updated on ATM shift             |
+| CE=open, PE=closed   | ✗ Skipped — trade running          | ✓ Updated on ATM shift             |
+| CE=closed, PE=open   | ✓ Updated on ATM shift             | ✗ Skipped — trade running          |
+| CE=open, PE=open     | ✗ Skipped — trade running          | ✗ Skipped — trade running          |
+| CE just closed       | ✓ Force sync to current strike     | (PE continues normally)            |
+| PE just closed       | (CE continues normally)            | ✓ Force sync to current strike     |
 
 A running trade's alerts **never move** — they stay on the exact entry strike.
+When the trade exits, alerts are synced to current ITM strike immediately.
 
 ---
 
