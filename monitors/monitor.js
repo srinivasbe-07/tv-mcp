@@ -194,7 +194,7 @@ let state = {
   lastATM: null,
   lastInstrument: null,
   lastITMDepth: null,
-  seenHistoryKeys: [],
+  lastLogSnapshot: [], // top of Log tab from previous tick — used to detect new fires
 };
 let itmOverride = null; // set by --itm CLI flag (highest priority)
 let pendingATM = null; // ATM seen last tick — confirmed only if seen twice in a row
@@ -207,6 +207,7 @@ function loadState() {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       state = { ...state, ...saved };
+      delete state.seenHistoryKeys; // remove legacy field if present
     }
   } catch (_e) {
     /* ignore missing/corrupt state file */
@@ -504,14 +505,35 @@ async function verifyAlertStatus(cdpAlerts, instrName) {
 }
 
 export function processHistoryForPositionChanges(historyItems, stateObj) {
-  const seenSet = new Set(stateObj.seenHistoryKeys);
+  // Detect new fires by comparing current log with the previous tick's snapshot.
+  // TV's time field is often empty so key-based dedup breaks (same key every fire).
+  // Instead: find items at the TOP of the current list that weren't at the top last tick.
+  const prevSnapshot = stateObj.lastLogSnapshot || [];
+  let newItems = [];
+
+  if (prevSnapshot.length === 0) {
+    // First tick — don't retroactively process old history, just save snapshot.
+  } else {
+    // Find where the previous tick's top item appears in the current list.
+    // Everything before it is new.
+    const prevFirst = prevSnapshot[0];
+    const boundaryIdx = historyItems.findIndex(
+      (h) => h.name === prevFirst.name && h.symbol === prevFirst.symbol
+    );
+    if (boundaryIdx > 0) {
+      newItems = historyItems.slice(0, boundaryIdx);
+    } else if (boundaryIdx === -1) {
+      // Previous top item no longer visible — log rolled over; process top 5 to be safe.
+      newItems = historyItems.slice(0, 5);
+    }
+    // boundaryIdx === 0 → nothing new
+  }
+
+  // Save current log as snapshot for next tick (top 10 items)
+  stateObj.lastLogSnapshot = historyItems.slice(0, 10);
+
   let changed = false;
-
-  for (const item of historyItems) {
-    const key = `${item.name}|${item.time}`;
-    if (seenSet.has(key)) continue;
-    seenSet.add(key);
-
+  for (const item of newItems) {
     const name = item.name;
     const isCEEntry = Object.values(ALERT_NAMES).some((a) => a.CE.entry === name);
     const isCEExit = Object.values(ALERT_NAMES).some((a) => a.CE.exit === name);
@@ -519,34 +541,23 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
     const isPEExit = Object.values(ALERT_NAMES).some((a) => a.PE.exit === name);
 
     if (isCEEntry) {
-      if (stateObj.CE !== 'open') {
-        stateObj.CE = 'open';
-        changed = true;
-        log(`[POSITION] CE OPENED  (alert: ${name})`);
-      }
+      stateObj.CE = 'open';
+      changed = true;
+      log(`[POSITION] CE OPENED  (alert: ${name})`);
     } else if (isCEExit) {
-      if (stateObj.CE !== 'closed') {
-        stateObj.CE = 'closed';
-        changed = true;
-        log(`[POSITION] CE CLOSED  (alert: ${name})`);
-      }
+      stateObj.CE = 'closed';
+      changed = true;
+      log(`[POSITION] CE CLOSED  (alert: ${name})`);
     } else if (isPEEntry) {
-      if (stateObj.PE !== 'open') {
-        stateObj.PE = 'open';
-        changed = true;
-        log(`[POSITION] PE OPENED  (alert: ${name})`);
-      }
+      stateObj.PE = 'open';
+      changed = true;
+      log(`[POSITION] PE OPENED  (alert: ${name})`);
     } else if (isPEExit) {
-      if (stateObj.PE !== 'closed') {
-        stateObj.PE = 'closed';
-        changed = true;
-        log(`[POSITION] PE CLOSED  (alert: ${name})`);
-      }
+      stateObj.PE = 'closed';
+      changed = true;
+      log(`[POSITION] PE CLOSED  (alert: ${name})`);
     }
   }
-
-  // Keep only last 200 seen keys to avoid unbounded growth
-  stateObj.seenHistoryKeys = [...seenSet].slice(-200);
   return changed;
 }
 
