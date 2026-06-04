@@ -516,6 +516,7 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
   if (prevSnapshot.length === 0) {
     // Fresh start — scan log from newest to oldest to determine current CE/PE state.
     // Stop once both sides are determined (most recent event wins per side).
+    let changed = false;
     let ceDone = false, peDone = false;
     for (const item of historyItems) {
       if (ceDone && peDone) break;
