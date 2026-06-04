@@ -830,6 +830,11 @@ async function main() {
       if (state.PE === 'closed') {
         if (needsUpdate || updateFailedSides.has('PE')) {
           if (needsUpdate) updateRetryCount.delete('PE'); // fresh trigger — reset count
+          // Brief stop at spot between CE and PE switches so TV resets the alerts panel to
+          // show all alerts. Without this, TV filters alerts to the CE symbol and PE alerts
+          // are not visible when the chart jumps directly to the PE option symbol.
+          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+          await new Promise((r) => setTimeout(r, 1000));
           log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
           const peResults = await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
