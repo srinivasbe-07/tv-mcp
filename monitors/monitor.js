@@ -513,7 +513,27 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
   let newItems = [];
 
   if (prevSnapshot.length === 0) {
-    // First tick — don't retroactively process old history, just save snapshot.
+    // Fresh start — scan log from newest to oldest to determine current CE/PE state.
+    // Stop once both sides are determined (most recent event wins per side).
+    let ceDone = false, peDone = false;
+    for (const item of historyItems) {
+      if (ceDone && peDone) break;
+      const n = item.name;
+      if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.entry === n)) {
+        stateObj.CE = 'open'; ceDone = true; changed = true;
+        log(`[POSITION] CE OPENED from history (alert: ${n})`);
+      } else if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.exit === n)) {
+        ceDone = true; // already closed, no log needed
+      }
+      if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.entry === n)) {
+        stateObj.PE = 'open'; peDone = true; changed = true;
+        log(`[POSITION] PE OPENED from history (alert: ${n})`);
+      } else if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.exit === n)) {
+        peDone = true;
+      }
+    }
+    stateObj.lastLogSnapshot = historyItems.slice(0, 10);
+    return changed;
   } else {
     // Find where the previous tick's top item appears in the current list.
     // Everything before it is new.
@@ -652,6 +672,7 @@ async function main() {
     log(`Waiting for Alerts panel to load (${instrName}, up to ${TIMEOUT_MS / 1000}s)...`);
     while (Date.now() < deadline) {
       try {
+        await cdpAlerts.normalizeAlertsPanel();
         const r = await cdpAlerts.handle('alert_list', {});
         const data = JSON.parse(r?.content?.[0]?.text || '{}');
         const alertNames = (data.alerts || []).map((a) => a.name);
