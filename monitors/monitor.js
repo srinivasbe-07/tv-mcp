@@ -298,25 +298,23 @@ async function getSpot(cdp, spotSymbol) {
         // Wait for chart to load
         await new Promise(r => setTimeout(r, 2000));
 
-        // Read last close from bars store
+        // Primary: right-axis last-price button label (live price, works pre-open too)
         let price = null;
-        const model = widget?._chartWidget?._modelWV?._value;
-        const barsStore = model?.mainSeries?.()?.bars?.();
-        if (barsStore && barsStore.size() > 0) {
-          const b = barsStore.valueAt(barsStore.lastIndex());
-          const v = Array.isArray(b) ? b : (b?.value || []);
-          if (v.length >= 5) price = v[4]; // close
+        const btnEls = Array.from(document.querySelectorAll('[class*="buttonText"]'))
+          .filter(e => e.offsetParent !== null);
+        for (const el of btnEls) {
+          const n = parseFloat((el.textContent || '').replace(/,/g, ''));
+          if (n > 5000 && n < 200000) { price = n; break; }
         }
 
-        // Fallback: chart legend
-        if (!price || price < 10000) {
-          const center = document.querySelector('.layout__area--center');
-          const lines = (center?.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean);
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i] === 'C') {
-              const p = parseFloat((lines[i+1] || '').replace(/,/g,''));
-              if (p > 10000) { price = p; break; }
-            }
+        // Fallback: bars store close (stale during pre-open)
+        if (!price) {
+          const model = widget?._chartWidget?._modelWV?._value;
+          const barsStore = model?.mainSeries?.()?.bars?.();
+          if (barsStore && barsStore.size() > 0) {
+            const b = barsStore.valueAt(barsStore.lastIndex());
+            const v = Array.isArray(b) ? b : (b?.value || []);
+            if (v.length >= 5) price = v[4];
           }
         }
 

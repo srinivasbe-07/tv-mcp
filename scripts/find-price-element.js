@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Diagnostic: find which DOM element shows the live current price in TV.
+ * Diagnostic: find which DOM element / internal API shows the live current price in TV.
  * Run during pre-open (9:00-9:15) when live price differs from yesterday's close.
  *
  * Usage: node scripts/find-price-element.js
@@ -16,67 +16,157 @@ try {
 
   const result = await cdp.executeScript(`
     (function() {
-      // Strategy 1: look for TV's price scale label elements (right-axis price tag)
-      const priceSelectors = [
-        '[class*="lastValue"]',
-        '[class*="priceValue"]',
-        '[class*="currentPrice"]',
-        '[class*="price-axis"]',
-        '[class*="priceLabel"]',
-        '[class*="lastPrice"]',
-        '[class*="latestPrice"]',
-      ];
+      // ── Strategy 1: known TV right-axis price label selectors (hashed class search) ──
+      // TV uses hashed classnames, so we search by partial substring on className
+      const allEls = Array.from(document.querySelectorAll('*'));
 
-      const found = [];
-      for (const sel of priceSelectors) {
-        const els = Array.from(document.querySelectorAll(sel)).filter(e => e.offsetParent !== null);
-        for (const el of els.slice(0, 3)) {
-          const txt = el.textContent?.trim();
-          if (txt && /^[\\d,]+\\.?\\d*$/.test(txt.replace(/,/g, ''))) {
-            found.push({ selector: sel, text: txt, cls: el.className.slice(0, 60) });
+      function matchesAny(el, substrings) {
+        const cls = (el.className || '').toString();
+        return substrings.some(s => cls.toLowerCase().includes(s));
+      }
+
+      const priceKeywords = ['lastvalue', 'pricevalue', 'currentprice', 'pricelabel',
+        'lastprice', 'latestprice', 'pricescale', 'priceaxis', 'price-axis',
+        'current-price', 'last-price', 'pricetag', 'price-tag'];
+
+      const selectorHits = [];
+      for (const el of allEls) {
+        if (!el.offsetParent && el.tagName !== 'BODY') continue;
+        if (matchesAny(el, priceKeywords)) {
+          const txt = el.textContent?.trim().replace(/,/g, '');
+          const num = parseFloat(txt);
+          if (num > 5000 && num < 200000) {
+            selectorHits.push({
+              tag: el.tagName,
+              text: el.textContent?.trim().slice(0, 30),
+              cls: (el.className || '').toString().slice(0, 80),
+              id: el.id || '',
+            });
           }
         }
       }
 
-      // Strategy 2: search all visible elements for text matching a price pattern
-      // (5-6 digit number like 74361 or 23297)
-      const allEls = Array.from(document.querySelectorAll('*'))
-        .filter(e => {
-          if (!e.offsetParent) return false;
-          const children = e.children.length;
-          if (children > 3) return false; // skip containers
-          const txt = e.textContent?.trim();
-          return txt && /^\\d{4,6}(\\.\\d+)?$/.test(txt);
-        });
+      // ── Strategy 2: scan ALL visible text nodes for 4–6 digit numbers ──
+      // Includes elements regardless of offsetParent; checks all text nodes
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+      const priceTexts = [];
+      while (walker.nextNode()) {
+        const txt = walker.currentNode.textContent?.trim();
+        if (!txt) continue;
+        const clean = txt.replace(/,/g, '');
+        const num = parseFloat(clean);
+        if (/^\\d{4,6}(\\.\\d+)?$/.test(clean) && num > 5000 && num < 200000) {
+          const parent = walker.currentNode.parentElement;
+          priceTexts.push({
+            text: txt,
+            tag: parent?.tagName,
+            cls: (parent?.className || '').toString().slice(0, 80),
+            id: parent?.id || '',
+            visible: !!parent?.offsetParent,
+          });
+        }
+      }
 
-      const priceEls = allEls.slice(0, 20).map(e => ({
-        tag: e.tagName,
-        text: e.textContent?.trim(),
-        cls: e.className.slice(0, 60),
-        id: e.id || '',
-        dataName: e.getAttribute('data-name') || '',
-      }));
-
-      // Strategy 3: TV internal quote API
-      let quotePrice = null;
+      // ── Strategy 3: TV internal widget API paths ──
+      let widgetInfo = {};
       try {
-        const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
-        const sym = widget?.symbol?.();
-        quotePrice = { symbol: sym };
-      } catch(_) {}
+        // Try several known paths to the chart widget
+        const paths = [
+          () => window.TradingViewApi?._activeChartWidgetWV?._value,
+          () => window.tvWidget?._iFrame?.contentWindow?.tvWidget?.activeChart?.(),
+          () => window.TradingView?.activeChart?.(),
+        ];
 
-      return { selectorHits: found, priceEls, quotePrice };
+        let widget = null;
+        for (const p of paths) {
+          try { widget = p(); } catch(_) {}
+          if (widget) break;
+        }
+
+        if (widget) {
+          const model = widget?._chartWidget?._modelWV?._value;
+          const series = model?.mainSeries?.();
+          const barsStore = series?.bars?.();
+          let barClose = null;
+          if (barsStore && barsStore.size() > 0) {
+            const b = barsStore.valueAt(barsStore.lastIndex());
+            const v = Array.isArray(b) ? b : (b?.value || []);
+            if (v.length >= 5) barClose = v[4];
+          }
+
+          // Try to read real-time price from series (not from bars)
+          let realtimePrice = null;
+          try { realtimePrice = series?.lastValueData?.()?.price; } catch(_) {}
+          try { if (!realtimePrice) realtimePrice = series?.lastValue?.(); } catch(_) {}
+          try { if (!realtimePrice) realtimePrice = series?.data?.last?.()?.close; } catch(_) {}
+
+          // Pricescale methods
+          let priceScaleVal = null;
+          try {
+            const ps = widget?._chartWidget?.getPanes?.()[0]?.getLeftPriceScale?.() ||
+                       widget?._chartWidget?.getPanes?.()[0]?.getRightPriceScale?.();
+            priceScaleVal = ps?.mainSource?.()?.lastValueData?.()?.price;
+          } catch(_) {}
+
+          widgetInfo = {
+            symbol: widget.symbol?.() || null,
+            barClose,
+            realtimePrice,
+            priceScaleVal,
+            seriesKeys: series ? Object.keys(series).slice(0, 30) : [],
+          };
+        } else {
+          widgetInfo = { error: 'No widget found on any known path' };
+        }
+      } catch(e) {
+        widgetInfo = { error: e.message };
+      }
+
+      // ── Strategy 4: check price axis DOM container for any labels ──
+      const priceAxisLabels = [];
+      const candidates = document.querySelectorAll('[class*="axis"], [class*="scale"], [class*="label"]');
+      for (const el of candidates) {
+        if (!el.offsetParent) continue;
+        const txt = el.textContent?.trim();
+        const clean = txt?.replace(/,/g, '') || '';
+        const num = parseFloat(clean);
+        if (num > 5000 && num < 200000 && /^\\d{4,6}(\\.\\d+)?$/.test(clean)) {
+          priceAxisLabels.push({
+            text: txt,
+            cls: (el.className || '').toString().slice(0, 80),
+          });
+        }
+      }
+
+      return { selectorHits, priceTexts: priceTexts.slice(0, 30), widgetInfo, priceAxisLabels };
     })()
   `);
 
-  console.log('=== Selector hits ===');
+  // ── Key comparison: DOM Close vs barClose ──
+  const domPrices = (result?.priceTexts || [])
+    .filter(p => p.cls.includes('valueValue'))
+    .map(p => parseFloat(p.text.replace(/,/g, '')));
+  const domClose = domPrices[domPrices.length - 1] ?? null; // last = Close
+  const barClose = result?.widgetInfo?.barClose ?? null;
+
+  console.log('=== KEY COMPARISON (pre-open diagnostic) ===');
+  console.log(`  DOM valueValue elements (O/H/L/C): ${domPrices.join(', ')}`);
+  console.log(`  DOM Close (4th valueValue):        ${domClose}`);
+  console.log(`  Widget barClose (bars store):      ${barClose}`);
+  console.log(`  MATCH: ${domClose === barClose ? 'YES (no pre-open diff)' : 'NO → DOM has live/indicative price!'}`);
+
+  console.log('\n=== Selector hits (class keyword match) ===');
   console.log(JSON.stringify(result?.selectorHits, null, 2));
 
-  console.log('\n=== Price-like elements ===');
-  console.log(JSON.stringify(result?.priceEls, null, 2));
+  console.log('\n=== All price-like text nodes ===');
+  console.log(JSON.stringify(result?.priceTexts, null, 2));
 
-  console.log('\n=== Quote API ===');
-  console.log(JSON.stringify(result?.quotePrice, null, 2));
+  console.log('\n=== Widget internal API ===');
+  console.log(JSON.stringify(result?.widgetInfo, null, 2));
+
+  console.log('\n=== Price axis DOM labels ===');
+  console.log(JSON.stringify(result?.priceAxisLabels, null, 2));
+
 } catch (e) {
   console.error('Error:', e.message);
 } finally {
