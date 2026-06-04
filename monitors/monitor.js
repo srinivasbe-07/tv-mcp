@@ -435,17 +435,6 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
     await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
     // Wait for TradingView to settle after chart switch
     await new Promise((r) => setTimeout(r, 3000));
-
-    // Diagnostic: log panel state after switch so we can see if TV filtered alerts
-    const panelDiag = await cdpAlerts.cdp.executeScript(`
-      (function() {
-        const tabs = Array.from(document.querySelectorAll('[role="tab"]'))
-          .filter(t => !!t.offsetParent).map(t => t.textContent?.trim());
-        const names = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'))
-          .map(e => e.innerText?.trim());
-        return { tabs, names };
-      })()`).catch(() => null);
-    log(`  [DIAG] panel tabs: ${JSON.stringify(panelDiag?.tabs)}  visible alerts: ${JSON.stringify(panelDiag?.names)}`);
   } else {
     log(`  Chart tab already on ${qualifiedSymbol}`);
   }
