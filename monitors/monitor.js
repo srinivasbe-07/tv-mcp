@@ -340,20 +340,19 @@ async function getSpot(cdp, spotSymbol) {
 const ALERT_HISTORY_SCRIPT = `
   (async function() {
     try {
-      // The Log tab must be active for its DOM items to be rendered.
-      // normalizeAlertsPanel always leaves the Alerts tab active, so we
-      // briefly switch to Log, read history, then switch back to Alerts.
       const visibleTabs = () => Array.from(document.querySelectorAll('[role="tab"]'))
         .filter(t => !!t.offsetParent);
 
       const findTab = (label) => visibleTabs().find(t =>
         (t.textContent || '').trim().toLowerCase().includes(label));
 
+      const allTabTexts = visibleTabs().map(t => t.textContent?.trim());
+
       // Click Log tab if Alerts panel is open
       const logTab = findTab('log');
       if (logTab) {
         logTab.click();
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 600));
       }
 
       const selectors = [
@@ -363,9 +362,10 @@ const ALERT_HISTORY_SCRIPT = `
         '[class*="historyItem"]',
       ];
       let items = [];
+      let usedSel = '';
       for (const sel of selectors) {
         items = Array.from(document.querySelectorAll(sel));
-        if (items.length) break;
+        if (items.length) { usedSel = sel; break; }
       }
 
       const result = items.slice(0, 30).map(el => ({
@@ -375,15 +375,16 @@ const ALERT_HISTORY_SCRIPT = `
                 el.querySelector('[class*="time"]')?.innerText?.trim()    || '',
         symbol: el.querySelector('[data-name="alert-log-item-symbol"]')?.innerText?.trim() ||
                 el.querySelector('[class*="symbol"]')?.innerText?.trim()  || '',
+        raw:    el.innerText?.trim().slice(0, 80) || '',
       }));
 
       // Switch back to Alerts tab
       const alertsTab = findTab('alert');
       if (alertsTab) alertsTab.click();
 
-      return result;
+      return { items: result, diag: { allTabTexts, logTabFound: !!logTab, usedSel, itemCount: items.length } };
     } catch (e) {
-      return [];
+      return { items: [], diag: { error: e.message } };
     }
   })()
 `;
@@ -759,10 +760,11 @@ async function main() {
       // 2. Check alert history for position changes
       const prevCE = state.CE;
       const prevPE = state.PE;
-      const history = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
-      if (Array.isArray(history)) {
-        processHistoryForPositionChanges(history, state);
-      }
+      const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
+      const historyItems = historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
+      const histDiag = historyResult?.diag;
+      log(`[HIST] tabs:${JSON.stringify(histDiag?.allTabTexts)} logFound:${histDiag?.logTabFound} sel:"${histDiag?.usedSel}" items:${histDiag?.itemCount ?? 0} top:${JSON.stringify(historyItems[0])}`);
+      processHistoryForPositionChanges(historyItems, state);
       // If a trade just closed, force an immediate alert sync to the current strike —
       // ATM may have moved while the trade was running and the alerts are stale.
       const CEjustClosed = prevCE === 'open' && state.CE === 'closed';
