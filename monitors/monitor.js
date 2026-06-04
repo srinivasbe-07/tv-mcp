@@ -786,18 +786,25 @@ async function main() {
         `${instrName}: ${spot.toFixed(2)}  ATM: ${atm}  ITM-${itmDepth}  (prev ATM: ${state.lastATM || '?'})  CE:${state.CE.toUpperCase()}  PE:${state.PE.toUpperCase()}`
       );
 
-      // Debounce: require ATM to hold for 2 consecutive ticks before updating alerts
+      // Debounce: require ATM to hold for 2 consecutive ticks before updating alerts.
+      // Exception: if a trade just closed, skip the debounce and sync immediately using
+      // the current ATM — the exit must not be delayed by a pending confirmation.
       if (atmShifted && !force) {
         if (pendingATM === atm) {
           log(`ATM confirmed: ${state.lastATM} → ${atm}`);
           pendingATM = null;
         } else {
-          log(
-            `ATM pending confirmation: ${state.lastATM} → ${atm} (will update next tick if it holds)`
-          );
           pendingATM = atm;
-          saveState();
-          return;
+          if (!CEjustClosed && !PEjustClosed) {
+            log(
+              `ATM pending confirmation: ${state.lastATM} → ${atm} (will update next tick if it holds)`
+            );
+            saveState();
+            return;
+          }
+          log(
+            `ATM pending confirmation: ${state.lastATM} → ${atm} — but trade just closed, syncing now with current ATM`
+          );
         }
       } else {
         if (!atmShifted) pendingATM = null; // price came back — cancel pending
