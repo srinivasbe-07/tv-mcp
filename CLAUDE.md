@@ -272,16 +272,36 @@ Expiry: NIFTY = next Tuesday, SENSEX = next Thursday (shifts back if holiday).
 
 ---
 
-### Every 60 Seconds It
+### Every 60 Seconds It (exact sequence)
 
-1. Reads spot price from its dedicated chart tab
-2. Calculates ATM — rounds spot to nearest strike interval
-3. **Requires 2 consecutive ticks to confirm ATM shift** (avoids false updates on noise)
-4. Updates CE alerts → switches chart to CE option → updates entry + exit → switches back
-5. Updates PE alerts → switches chart to PE option → updates entry + exit → switches back
-6. Reads alert history → entry fired → marks CE/PE `OPEN` · exit fired → marks `CLOSED`
-7. **Skips a side if that trade is running** — never moves alerts mid-trade
-8. Waits 3s then verifies all 4 alerts are active — **auto re-activates any that are stopped**
+```
+Step 1  Identify instrument (NIFTY / SENSEX by day) + read itmOverride from config
+Step 2  Read alert Log tab → detect new entry/exit fires → update CE/PE position state
+        └── entry alert fired → CE or PE = OPEN  (logged: [POSITION] CE OPENED)
+        └── exit  alert fired → CE or PE = CLOSED (logged: [POSITION] CE CLOSED)
+Step 3  Read spot price from dedicated chart tab → calculate ATM
+        └── spot invalid → save state & skip tick
+Step 4  Debounce: ATM must hold same value for 2 consecutive ticks before acting
+        └── tick 1: "ATM pending confirmation" → save & wait
+        └── tick 2: "ATM confirmed" → proceed
+        └── price reverts before tick 2 → cancel, no update
+Step 5  Nothing changed (ATM same, depth same, instrument same, not force)?
+        └── save state & exit — no alert updates needed
+Step 6  Calculate strikes
+        └── CE strike = ATM − (itmDepth × stepSize)
+        └── PE strike = ATM + (itmDepth × stepSize)
+Step 7  Update CE alerts
+        └── CE = OPEN  → SKIP  (logged: "CE trade is RUNNING — skipping")
+        └── CE = CLOSED → switch chart to CE option → update entry + exit → switch back
+Step 8  Update PE alerts
+        └── PE = OPEN  → SKIP  (logged: "PE trade is RUNNING — skipping")
+        └── PE = CLOSED → switch chart to PE option → update entry + exit → switch back
+Step 9  Wait 3s → verify all 4 alerts are active → auto re-activate any stopped
+Step 10 Save position.json
+```
+
+**Key point:** Position state (Step 2) is always read *before* any alert update (Steps 7–8).
+If an entry alert fires between ticks, the next tick detects it first and blocks the update.
 
 ### Alert Update Behaviour by Position State
 
