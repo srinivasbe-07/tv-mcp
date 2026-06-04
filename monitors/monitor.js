@@ -539,7 +539,7 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
         log(`[POSITION] PE CLOSED from history (alert: ${n})`);
       }
     }
-    stateObj.lastLogSnapshot = historyItems.slice(0, 10);
+    stateObj.lastLogSnapshot = historyItems.slice(0, 30);
     return changed;
   } else {
     // Find where the previous tick's top item appears in the current list.
@@ -558,7 +558,7 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
   }
 
   // Save current log as snapshot for next tick (top 10 items)
-  stateObj.lastLogSnapshot = historyItems.slice(0, 10);
+  stateObj.lastLogSnapshot = historyItems.slice(0, 30);
 
   let changed = false;
   for (const item of newItems) {
