@@ -337,8 +337,24 @@ async function getSpot(cdp, spotSymbol) {
 }
 
 const ALERT_HISTORY_SCRIPT = `
-  (function() {
+  (async function() {
     try {
+      // The Log tab must be active for its DOM items to be rendered.
+      // normalizeAlertsPanel always leaves the Alerts tab active, so we
+      // briefly switch to Log, read history, then switch back to Alerts.
+      const visibleTabs = () => Array.from(document.querySelectorAll('[role="tab"]'))
+        .filter(t => !!t.offsetParent);
+
+      const findTab = (label) => visibleTabs().find(t =>
+        (t.textContent || '').trim().toLowerCase().startsWith(label));
+
+      // Click Log tab if Alerts panel is open
+      const logTab = findTab('log');
+      if (logTab) {
+        logTab.click();
+        await new Promise(r => setTimeout(r, 400));
+      }
+
       const selectors = [
         '[data-name="alert-log-item"]',
         '[data-name="alert-history-item"]',
@@ -351,14 +367,20 @@ const ALERT_HISTORY_SCRIPT = `
         if (items.length) break;
       }
 
-      return items.slice(0, 30).map(el => ({
-        name:    el.querySelector('[data-name="alert-log-item-name"]')?.innerText?.trim()   ||
-                 el.querySelector('[class*="name"]')?.innerText?.trim()    || '',
-        time:    el.querySelector('[data-name="alert-log-item-time"]')?.innerText?.trim()   ||
-                 el.querySelector('[class*="time"]')?.innerText?.trim()    || '',
-        symbol:  el.querySelector('[data-name="alert-log-item-symbol"]')?.innerText?.trim() ||
-                 el.querySelector('[class*="symbol"]')?.innerText?.trim()  || '',
+      const result = items.slice(0, 30).map(el => ({
+        name:   el.querySelector('[data-name="alert-log-item-name"]')?.innerText?.trim()   ||
+                el.querySelector('[class*="name"]')?.innerText?.trim()    || '',
+        time:   el.querySelector('[data-name="alert-log-item-time"]')?.innerText?.trim()   ||
+                el.querySelector('[class*="time"]')?.innerText?.trim()    || '',
+        symbol: el.querySelector('[data-name="alert-log-item-symbol"]')?.innerText?.trim() ||
+                el.querySelector('[class*="symbol"]')?.innerText?.trim()  || '',
       }));
+
+      // Switch back to Alerts tab
+      const alertsTab = findTab('alert');
+      if (alertsTab) alertsTab.click();
+
+      return result;
     } catch (e) {
       return [];
     }
