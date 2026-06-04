@@ -413,41 +413,42 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
     await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
     // Wait for TradingView to settle after chart switch
     await new Promise((r) => setTimeout(r, 3000));
+
+    // Diagnostic: log panel state after switch so we can see if TV filtered alerts
+    const panelDiag = await cdpAlerts.cdp.executeScript(`
+      (function() {
+        const tabs = Array.from(document.querySelectorAll('[role="tab"]'))
+          .filter(t => !!t.offsetParent).map(t => t.textContent?.trim());
+        const names = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'))
+          .map(e => e.innerText?.trim());
+        return { tabs, names };
+      })()`).catch(() => null);
+    log(`  [DIAG] panel tabs: ${JSON.stringify(panelDiag?.tabs)}  visible alerts: ${JSON.stringify(panelDiag?.names)}`);
   } else {
     log(`  Chart tab already on ${qualifiedSymbol}`);
   }
 
   for (const [role, name] of Object.entries(alertDefs)) {
-    let lastResult = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const attemptLabel = attempt === 0 ? '' : ' [retry]';
-      log(`  [${side}:${role}]${attemptLabel} "${name}" → ${symbol}`);
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
-      try {
-        const r = await cdpAlerts.handle('alert_update_symbol', { alertName: name, symbol });
-        if (r?.isError) {
-          lastResult = {
-            name,
-            symbol,
-            success: false,
-            error: r?.content?.[0]?.text || 'unknown error',
-          };
-        } else {
-          const data = JSON.parse(r?.content?.[0]?.text || '{}');
-          lastResult = { name, symbol, success: data.success, message: data.message };
-        }
-      } catch (e) {
-        lastResult = { name, symbol, success: false, error: e.message };
-      }
-      const detail = lastResult?.message || lastResult?.error || '';
-      if (lastResult?.success) {
-        log(`  [OK]   "${name}" updated to ${symbol}${detail ? ' — ' + detail : ''}`);
+    log(`  [${side}:${role}] "${name}" → ${symbol}`);
+    let result;
+    try {
+      const r = await cdpAlerts.handle('alert_update_symbol', { alertName: name, symbol });
+      if (r?.isError) {
+        result = { name, symbol, success: false, error: r?.content?.[0]?.text || 'unknown error' };
       } else {
-        log(`  [FAIL] "${name}" not updated${detail ? ' — ' + detail : ''}`);
+        const data = JSON.parse(r?.content?.[0]?.text || '{}');
+        result = { name, symbol, success: data.success, message: data.message };
       }
-      if (lastResult?.success) break;
+    } catch (e) {
+      result = { name, symbol, success: false, error: e.message };
     }
-    results.push(lastResult);
+    const detail = result?.message || result?.error || '';
+    if (result?.success) {
+      log(`  [OK]   "${name}" updated to ${symbol}${detail ? ' — ' + detail : ''}`);
+    } else {
+      log(`  [FAIL] "${name}" not updated${detail ? ' — ' + detail : ''}`);
+    }
+    results.push(result);
     // Gap between edit dialogs — allow TV to settle after save animation
     await new Promise((r) => setTimeout(r, 1500));
   }

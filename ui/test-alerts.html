@@ -302,12 +302,15 @@
 
         <div class="btn-row">
           <button class="run-btn run-btn-ce" id="nifty-ce-btn" onclick="runTest('NIFTY', 'CE')">
-            ▶ Test CE
+            ▶ CE only
           </button>
           <button class="run-btn run-btn-pe" id="nifty-pe-btn" onclick="runTest('NIFTY', 'PE')">
-            ▶ Test PE
+            ▶ PE only
           </button>
         </div>
+        <button class="run-btn" id="nifty-btn" onclick="runTest('NIFTY')">
+          ▶ Test Both — CE + PE
+        </button>
 
         <div class="results" id="nifty-results">
           <div class="result-row">
@@ -363,12 +366,15 @@
 
         <div class="btn-row">
           <button class="run-btn run-btn-ce" id="sensex-ce-btn" onclick="runTest('SENSEX', 'CE')">
-            ▶ Test CE
+            ▶ CE only
           </button>
           <button class="run-btn run-btn-pe" id="sensex-pe-btn" onclick="runTest('SENSEX', 'PE')">
-            ▶ Test PE
+            ▶ PE only
           </button>
         </div>
+        <button class="run-btn" id="sensex-btn" onclick="runTest('SENSEX')">
+          ▶ Test Both — CE + PE
+        </button>
 
         <div class="results" id="sensex-results">
           <div class="result-row">
@@ -398,6 +404,13 @@
         </div>
         <div class="log-panel hidden" id="sensex-log"></div>
         <div class="summary sum-idle" id="sensex-summary">Not run yet</div>
+      </div>
+      <!-- Test All row -->
+      <div style="grid-column: 1 / -1;">
+        <button class="run-btn" id="all-btn" onclick="runAllTests()"
+          style="font-size:14px; padding:12px; background:#1e2035; border-color:#4b5563; color:#e5e7eb; letter-spacing:0.5px;">
+          ▶ Test All — NIFTY + SENSEX (CE + PE)
+        </button>
       </div>
     </div>
 
@@ -449,14 +462,37 @@
         sumEl.textContent = 'Running...';
       }
 
+      function setAllBtns(disabled) {
+        ['nifty-ce-btn','nifty-pe-btn','nifty-btn','sensex-ce-btn','sensex-pe-btn','sensex-btn','all-btn']
+          .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+      }
+
+      async function runAllTests() {
+        setAllBtns(true);
+        resetCard('NIFTY');
+        resetCard('SENSEX');
+        try {
+          await runTestInner('NIFTY', null);
+          await runTestInner('SENSEX', null);
+        } finally {
+          setAllBtns(false);
+        }
+      }
+
       async function runTest(instr, side = null) {
+        setAllBtns(true);
+        try {
+          await runTestInner(instr, side);
+        } finally {
+          setAllBtns(false);
+        }
+      }
+
+      async function runTestInner(instr, side) {
         const i = instr.toLowerCase();
         const activeRoles = side
           ? ROLES.filter((r) => r.startsWith(side.toLowerCase() + '-'))
           : ROLES;
-        const btnId = side ? `${i}-${side.toLowerCase()}-btn` : `${i}-btn`;
-        const btn = document.getElementById(btnId);
-        btn.disabled = true;
 
         activeRoles.forEach((r) => setStatus(instr, r, '—', '·', 's-wait'));
         const logEl = document.getElementById(`${i}-log`);
@@ -534,8 +570,6 @@
           activeRoles.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
           document.getElementById(`${i}-summary`).className = 'summary sum-fail';
           document.getElementById(`${i}-summary`).textContent = 'Server error: ' + e.message;
-        } finally {
-          btn.disabled = false;
         }
       }
     </script>
