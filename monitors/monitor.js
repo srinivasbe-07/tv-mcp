@@ -757,10 +757,18 @@ async function main() {
         log(`ITM depth changed: ITM-${state.lastITMDepth} → ITM-${itmDepth} — forcing sync`);
 
       // 2. Check alert history for position changes
+      const prevCE = state.CE;
+      const prevPE = state.PE;
       const history = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
       if (Array.isArray(history)) {
         processHistoryForPositionChanges(history, state);
       }
+      // If a trade just closed, force an immediate alert sync to the current strike —
+      // ATM may have moved while the trade was running and the alerts are stale.
+      const CEjustClosed = prevCE === 'open' && state.CE === 'closed';
+      const PEjustClosed = prevPE === 'open' && state.PE === 'closed';
+      if (CEjustClosed) log('[POSITION] CE closed — will sync CE alerts to current strike');
+      if (PEjustClosed) log('[POSITION] PE closed — will sync PE alerts to current strike');
 
       // 3. Get spot price — tab is on NIFTY, reads directly without switching.
       const spot = await getSpot(cdp, cfg.spotSymbol);
@@ -795,7 +803,7 @@ async function main() {
         if (!atmShifted) pendingATM = null; // price came back — cancel pending
       }
 
-      if (!atmShifted && !depthChanged && !instrChanged && !force) {
+      if (!atmShifted && !depthChanged && !instrChanged && !force && !CEjustClosed && !PEjustClosed) {
         saveState();
         return;
       }
@@ -809,8 +817,9 @@ async function main() {
 
       // 4. Update CE alerts — skip if CE trade is running (don't move alerts mid-trade)
       if (state.CE === 'closed') {
-        if (needsUpdate) {
-          log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
+        if (needsUpdate || CEjustClosed) {
+          if (CEjustClosed && !needsUpdate) log(`Syncing CE alerts after trade exit → strike: ${ceStrike}`);
+          else log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
           const ceResults = await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           if (ceResults.some((r) => !r?.success)) {
@@ -825,11 +834,12 @@ async function main() {
 
       // 5. Update PE alerts — skip if PE trade is running (don't move alerts mid-trade)
       if (state.PE === 'closed') {
-        if (needsUpdate) {
+        if (needsUpdate || PEjustClosed) {
           // Brief stop at spot between CE and PE so the panel scroll position resets.
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           await new Promise((r) => setTimeout(r, 1000));
-          log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
+          if (PEjustClosed && !needsUpdate) log(`Syncing PE alerts after trade exit → strike: ${peStrike}`);
+          else log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
           const peResults = await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           if (peResults.some((r) => !r?.success)) {
