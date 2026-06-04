@@ -163,6 +163,29 @@ export class AlertTools {
               }
             }
           }
+
+          // Step 3: If panel is open (tabs visible) but still empty, force-toggle
+          // close+reopen to recover from broken/unloaded state.
+          if (!hasItems() && alertsPanelActive()) {
+            btn.click(); // close
+            await new Promise(r => setTimeout(r, 400));
+            btn.click(); // reopen
+            for (let i = 0; i < 20; i++) {
+              await new Promise(r => setTimeout(r, 250));
+              if (hasItems()) break;
+            }
+            const alertsTab = visibleTabs().find(t => {
+              const txt = (t.textContent || t.innerText || '').trim().toLowerCase();
+              return txt === 'alerts' || txt.startsWith('alert');
+            });
+            if (alertsTab) {
+              alertsTab.click();
+              for (let i = 0; i < 8; i++) {
+                await new Promise(r => setTimeout(r, 250));
+                if (hasItems()) break;
+              }
+            }
+          }
         })()`
       )
       .catch(() => {});

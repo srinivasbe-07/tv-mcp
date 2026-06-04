@@ -379,9 +379,12 @@ const ALERT_HISTORY_SCRIPT = `
         raw:    el.innerText?.trim().slice(0, 80) || '',
       }));
 
-      // Switch back to Alerts tab
+      // Switch back to Alerts tab and wait for items to reload
       const alertsTab = findTab('alert');
-      if (alertsTab) alertsTab.click();
+      if (alertsTab) {
+        alertsTab.click();
+        await new Promise(r => setTimeout(r, 500));
+      }
 
       return { items: result, diag: { allTabTexts, logTabFound: !!logTab, usedSel, itemCount: items.length } };
     } catch (e) {
