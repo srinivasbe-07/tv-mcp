@@ -347,7 +347,7 @@ const ALERT_HISTORY_SCRIPT = `
         .filter(t => !!t.offsetParent);
 
       const findTab = (label) => visibleTabs().find(t =>
-        (t.textContent || '').trim().toLowerCase().startsWith(label));
+        (t.textContent || '').trim().toLowerCase().includes(label));
 
       // Click Log tab if Alerts panel is open
       const logTab = findTab('log');
