@@ -632,12 +632,14 @@ export class AlertTools {
       const script = `
         (async function() {
           try {
-            // Find the virtual-list scroll container by walking up from a known alert item
+            // Find the virtual-list scroll container using computed overflow style
             const seedEl = document.querySelector('[data-name="alert-item-name"]');
             let scroller = null;
             let node = seedEl?.parentElement;
             while (node && node !== document.body) {
-              if (node.scrollHeight > node.clientHeight + 10) { scroller = node; break; }
+              const oy = window.getComputedStyle(node).overflowY;
+              if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') &&
+                  node.scrollHeight > node.clientHeight + 2) { scroller = node; break; }
               node = node.parentElement;
             }
 
@@ -673,20 +675,24 @@ export class AlertTools {
             await new Promise(r => setTimeout(r, 500));
             readCurrent(byAbsY);
 
-            if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
-              const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
-              for (let pos = step; pos < maxScroll; pos += step) {
+            if (scroller) {
+              const scrollTo = async (pos) => {
                 scroller.scrollTop = pos;
+                scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
                 await new Promise(r => setTimeout(r, 600));
+              };
+              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
+              let pos = step;
+              while (pos <= scroller.scrollHeight) {
+                await scrollTo(pos);
                 readCurrent(byAbsY);
+                if (pos >= scroller.scrollHeight - scroller.clientHeight) break;
+                pos += step;
               }
-              // Always read at exact bottom too
-              scroller.scrollTop = maxScroll;
-              await new Promise(r => setTimeout(r, 600));
+              await scrollTo(scroller.scrollHeight - scroller.clientHeight);
               readCurrent(byAbsY);
-              // Restore to top
               scroller.scrollTop = 0;
+              scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
               await new Promise(r => setTimeout(r, 300));
             }
 

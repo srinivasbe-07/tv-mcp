@@ -207,7 +207,8 @@ function loadState() {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       state = { ...state, ...saved };
-      delete state.seenHistoryKeys; // remove legacy field if present
+      delete state.seenHistoryKeys;  // legacy field
+      delete state.lastLogSnapshot;  // session-only — always re-detect on restart
     }
   } catch (_e) {
     /* ignore missing/corrupt state file */
