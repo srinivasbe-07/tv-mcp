@@ -705,8 +705,6 @@ async function main() {
 
   let forceFirst = true;
   // Tracks CE/PE sides whose last update failed — forces retry next tick
-  const updateFailedSides = new Set();
-  const updateRetryCount = new Map(); // consecutive failure count per side
 
   async function tick(cdp, cdpChart, cdpAlerts, force = false) {
     try {
@@ -775,12 +773,10 @@ async function main() {
         if (!atmShifted) pendingATM = null; // price came back — cancel pending
       }
 
-      if (!atmShifted && !depthChanged && !instrChanged && !force && updateFailedSides.size === 0) {
+      if (!atmShifted && !depthChanged && !instrChanged && !force) {
         saveState();
         return;
       }
-      if (updateFailedSides.size > 0)
-        log(`[RETRY] Retrying failed update for: ${[...updateFailedSides].join(', ')}`);
 
       if (atmShifted) log(`ATM shifted: ${state.lastATM} → ${atm}`);
 
@@ -789,83 +785,39 @@ async function main() {
 
       const needsUpdate = atmShifted || depthChanged || instrChanged || force;
 
-      const MAX_RETRIES = 3;
-
       // 4. Update CE alerts — skip if CE trade is running (don't move alerts mid-trade)
       if (state.CE === 'closed') {
-        if (needsUpdate || updateFailedSides.has('CE')) {
-          if (needsUpdate) updateRetryCount.delete('CE'); // fresh trigger — reset count
+        if (needsUpdate) {
           log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
           const ceResults = await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           if (ceResults.some((r) => !r?.success)) {
-            const n = (updateRetryCount.get('CE') || 0) + 1;
-            updateRetryCount.set('CE', n);
-            const failedNames = ceResults
-              .filter((r) => !r?.success)
-              .map((r) => r.name)
-              .filter(Boolean);
+            const failedNames = ceResults.filter((r) => !r?.success).map((r) => r.name).filter(Boolean);
             await deactivateAlerts(cdpAlerts, failedNames);
-            if (n <= MAX_RETRIES) {
-              log(`[WARN] CE update failed (attempt ${n}/${MAX_RETRIES}) — will retry next tick.`);
-              updateFailedSides.add('CE');
-            } else {
-              log(
-                `[ERROR] CE update failed after ${MAX_RETRIES} attempts — manual check required.`
-              );
-              updateFailedSides.delete('CE');
-              updateRetryCount.delete('CE');
-            }
-          } else {
-            updateFailedSides.delete('CE');
-            updateRetryCount.delete('CE');
+            log(`[WARN] CE update failed — manual check required.`);
           }
         }
       } else {
         log(`CE trade is RUNNING — skipping CE alert update (alerts stay on current strike)`);
-        updateFailedSides.delete('CE');
-        updateRetryCount.delete('CE');
       }
 
       // 5. Update PE alerts — skip if PE trade is running (don't move alerts mid-trade)
       if (state.PE === 'closed') {
-        if (needsUpdate || updateFailedSides.has('PE')) {
-          if (needsUpdate) updateRetryCount.delete('PE'); // fresh trigger — reset count
-          // Brief stop at spot between CE and PE switches so TV resets the alerts panel to
-          // show all alerts. Without this, TV filters alerts to the CE symbol and PE alerts
-          // are not visible when the chart jumps directly to the PE option symbol.
+        if (needsUpdate) {
+          // Brief stop at spot between CE and PE so the panel scroll position resets.
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           await new Promise((r) => setTimeout(r, 1000));
           log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
           const peResults = await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           if (peResults.some((r) => !r?.success)) {
-            const n = (updateRetryCount.get('PE') || 0) + 1;
-            updateRetryCount.set('PE', n);
-            const failedNames = peResults
-              .filter((r) => !r?.success)
-              .map((r) => r.name)
-              .filter(Boolean);
+            const failedNames = peResults.filter((r) => !r?.success).map((r) => r.name).filter(Boolean);
             await deactivateAlerts(cdpAlerts, failedNames);
-            if (n <= MAX_RETRIES) {
-              log(`[WARN] PE update failed (attempt ${n}/${MAX_RETRIES}) — will retry next tick.`);
-              updateFailedSides.add('PE');
-            } else {
-              log(
-                `[ERROR] PE update failed after ${MAX_RETRIES} attempts — manual check required.`
-              );
-              updateFailedSides.delete('PE');
-              updateRetryCount.delete('PE');
-            }
-          } else {
-            updateFailedSides.delete('PE');
-            updateRetryCount.delete('PE');
+            log(`[WARN] PE update failed — manual check required.`);
           }
         }
       } else {
         log(`PE trade is RUNNING — skipping PE alert update (alerts stay on current strike)`);
-        updateFailedSides.delete('PE');
-        updateRetryCount.delete('PE');
       }
 
       // 6. Verify all 4 alerts are active after updates (3s delay lets TV self-recover)
