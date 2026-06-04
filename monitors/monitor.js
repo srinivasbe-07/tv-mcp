@@ -524,13 +524,15 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
         stateObj.CE = 'open'; ceDone = true; changed = true;
         log(`[POSITION] CE OPENED from history (alert: ${n})`);
       } else if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.exit === n)) {
-        ceDone = true; // already closed, no log needed
+        stateObj.CE = 'closed'; ceDone = true; changed = true;
+        log(`[POSITION] CE CLOSED from history (alert: ${n})`);
       }
       if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.entry === n)) {
         stateObj.PE = 'open'; peDone = true; changed = true;
         log(`[POSITION] PE OPENED from history (alert: ${n})`);
       } else if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.exit === n)) {
-        peDone = true;
+        stateObj.PE = 'closed'; peDone = true; changed = true;
+        log(`[POSITION] PE CLOSED from history (alert: ${n})`);
       }
     }
     stateObj.lastLogSnapshot = historyItems.slice(0, 10);
