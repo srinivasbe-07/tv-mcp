@@ -965,14 +965,29 @@ export class AlertTools {
       // We walk up from each edit button to its row's name element to ensure correct matching.
       const clickResult = await this.cdp.executeScript(`
         (async function() {
+          // Use computed overflow style — more reliable than scrollHeight delta for virtual lists.
           const findScroller = () => {
             const seed = document.querySelector('[data-name="alert-item-name"]');
-            let node = seed?.parentElement;
+            if (!seed) return null;
+            let node = seed.parentElement;
             while (node && node !== document.body) {
-              if (node.scrollHeight > node.clientHeight + 10) return node;
+              const oy = window.getComputedStyle(node).overflowY;
+              if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') &&
+                  node.scrollHeight > node.clientHeight + 2) return node;
               node = node.parentElement;
             }
             return null;
+          };
+          const scrollTo = async (scroller, pos) => {
+            scroller.scrollTop = pos;
+            scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+            // Poll until virtual list re-renders the item or timeout
+            for (let i = 0; i < 12; i++) {
+              await new Promise(r => setTimeout(r, 100));
+              if (document.querySelectorAll('[data-name="alert-item-name"]').length >
+                  (scroller._prevCount || 0)) break;
+            }
+            scroller._prevCount = document.querySelectorAll('[data-name="alert-item-name"]').length;
           };
           const clickEdit = () => {
             const editBtns = Array.from(document.querySelectorAll('[data-name="alert-edit-button"]'));
@@ -983,7 +998,7 @@ export class AlertTools {
                 const nameEl = node.querySelector('[data-name="alert-item-name"]');
                 if (nameEl) {
                   if (nameEl.innerText?.trim() === '${alertName}') { btn.click(); return true; }
-                  break; // wrong alert row — try next button
+                  break;
                 }
                 node = node.parentElement;
                 depth++;
@@ -991,24 +1006,21 @@ export class AlertTools {
             }
             return false;
           };
-          // Always scroll to top first — after a previous dialog saves, the virtual list
-          // may be at an arbitrary scroll position where the target item isn't in the DOM.
+          // Scroll to top first so virtual list starts from a known position.
           const scroller = findScroller();
-          if (scroller) {
-            scroller.scrollTop = 0;
-            await new Promise(r => setTimeout(r, 300));
-          }
+          if (scroller) await scrollTo(scroller, 0);
           if (clickEdit()) return { clicked: true };
           if (scroller) {
-            const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-            const step = Math.max(80, Math.floor(scroller.clientHeight * 0.6));
-            for (let pos = step; pos <= maxScroll; pos += step) {
-              scroller.scrollTop = pos;
-              await new Promise(r => setTimeout(r, 400));
+            const step = Math.max(60, Math.floor(scroller.clientHeight * 0.5));
+            let pos = step;
+            while (pos <= scroller.scrollHeight) {
+              await scrollTo(scroller, pos);
               if (clickEdit()) return { clicked: true };
+              if (pos >= scroller.scrollHeight - scroller.clientHeight) break;
+              pos += step;
             }
-            scroller.scrollTop = maxScroll;
-            await new Promise(r => setTimeout(r, 400));
+            // Final pass: scroll to absolute bottom
+            await scrollTo(scroller, scroller.scrollHeight - scroller.clientHeight);
             if (clickEdit()) return { clicked: true };
           }
           return { clicked: false };
