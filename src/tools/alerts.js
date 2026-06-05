@@ -1052,20 +1052,11 @@ export class AlertTools {
             await scrollTo(scroller, scroller.scrollHeight - scroller.clientHeight);
             if (clickEdit()) return { clicked: true };
           }
-          const allNames = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'))
-            .map(e => e.innerText?.trim());
-          const tabs = Array.from(document.querySelectorAll('[role="tab"]'))
-            .filter(t => t.offsetParent).map(t => t.textContent?.trim());
-          const si = scroller ? { sh: scroller.scrollHeight, ch: scroller.clientHeight } : null;
-          return { clicked: false, diag: { tabs, allNames, si } };
+          return { clicked: false };
         })()
       `);
       if (!clickResult?.clicked) {
-        const d = clickResult?.diag;
-        const diagMsg = d
-          ? ` | tabs:${JSON.stringify(d.tabs)} scroller:${JSON.stringify(d.si)} names:[${(d.allNames||[]).join(', ')}]`
-          : '';
-        return this.error(`Alert "${alertName}" not found in Alerts panel${diagMsg}`);
+        return this.error(`Alert "${alertName}" not found in Alerts panel`);
       }
 
       // Step 2: Wait for edit dialog to open

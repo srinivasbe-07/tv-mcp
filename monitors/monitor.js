@@ -338,7 +338,7 @@ async function getSpot(cdp, spotSymbol) {
   return result?.price || null;
 }
 
-const ALERT_HISTORY_SCRIPT = `
+export const ALERT_HISTORY_SCRIPT = `
   (async function() {
     try {
       const visibleTabs = () => Array.from(document.querySelectorAll('[role="tab"]'))
@@ -362,22 +362,80 @@ const ALERT_HISTORY_SCRIPT = `
         '[class*="alertLogItem"]',
         '[class*="historyItem"]',
       ];
-      let items = [];
       let usedSel = '';
       for (const sel of selectors) {
-        items = Array.from(document.querySelectorAll(sel));
-        if (items.length) { usedSel = sel; break; }
+        if (document.querySelector(sel)) { usedSel = sel; break; }
       }
 
-      const result = items.slice(0, 30).map(el => ({
-        name:   el.querySelector('[data-name="alert-log-item-name"]')?.innerText?.trim()   ||
+      // Find virtual-list scroll container by computed overflowY
+      const seedEl = usedSel ? document.querySelector(usedSel) : null;
+      let scroller = null;
+      if (seedEl) {
+        let node = seedEl.parentElement;
+        while (node && node !== document.body) {
+          const oy = window.getComputedStyle(node).overflowY;
+          if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') &&
+              node.scrollHeight > node.clientHeight + 2) { scroller = node; break; }
+          node = node.parentElement;
+        }
+      }
+
+      const readItem = (el) => ({
+        name:   el.querySelector('[data-name="alert-log-item-name"]')?.innerText?.trim() ||
                 el.querySelector('[class*="name"]')?.innerText?.trim()    || '',
-        time:   el.querySelector('[data-name="alert-log-item-time"]')?.innerText?.trim()   ||
+        time:   el.querySelector('[data-name="alert-log-item-time"]')?.innerText?.trim() ||
                 el.querySelector('[class*="time"]')?.innerText?.trim()    || '',
         symbol: el.querySelector('[data-name="alert-log-item-symbol"]')?.innerText?.trim() ||
                 el.querySelector('[class*="symbol"]')?.innerText?.trim()  || '',
         raw:    el.innerText?.trim().slice(0, 80) || '',
-      }));
+      });
+
+      // Collect items keyed by absY to dedup virtual-list re-renders across scroll positions
+      const byAbsY = new Map();
+      const readCurrent = () => {
+        if (!usedSel) return;
+        const scrollerRect = scroller ? scroller.getBoundingClientRect() : null;
+        const scrollTop    = scroller ? scroller.scrollTop : 0;
+        Array.from(document.querySelectorAll(usedSel)).forEach(el => {
+          const rect = el.getBoundingClientRect();
+          const absY = scrollerRect
+            ? Math.round(rect.top - scrollerRect.top + scrollTop)
+            : Math.round(rect.top * 10);
+          if (!byAbsY.has(absY)) byAbsY.set(absY, readItem(el));
+        });
+      };
+
+      // Scroll from top, stop once 30 items collected (newest are at top)
+      if (scroller) scroller.scrollTop = 0;
+      await new Promise(r => setTimeout(r, 400));
+      readCurrent();
+      const countAfterTop = byAbsY.size;
+
+      if (scroller && byAbsY.size < 30) {
+        const scrollTo = async (pos) => {
+          scroller.scrollTop = pos;
+          scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 400));
+        };
+        const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
+        let pos = step;
+        while (pos <= scroller.scrollHeight && byAbsY.size < 30) {
+          await scrollTo(pos);
+          readCurrent();
+          if (pos >= scroller.scrollHeight - scroller.clientHeight) break;
+          pos += step;
+        }
+        // Reset to top so Log tab starts fresh next time
+        scroller.scrollTop = 0;
+        scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // Sort ascending absY = newest first (Log tab shows newest at top)
+      const result = Array.from(byAbsY.entries())
+        .sort((a, b) => a[0] - b[0])
+        .slice(0, 30)
+        .map(([, item]) => item);
 
       // Switch back to Alerts tab and wait for items to reload
       const alertsTab = findTab('alert');
@@ -386,7 +444,7 @@ const ALERT_HISTORY_SCRIPT = `
         await new Promise(r => setTimeout(r, 500));
       }
 
-      return { items: result, diag: { allTabTexts, logTabFound: !!logTab, usedSel, itemCount: items.length } };
+      return { items: result, diag: { allTabTexts, logTabFound: !!logTab, usedSel, scrollerFound: !!scroller, countAfterTop, itemCount: result.length } };
     } catch (e) {
       return { items: [], diag: { error: e.message } };
     }
@@ -790,8 +848,6 @@ async function main() {
       const prevPE = state.PE;
       const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
       const historyItems = historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
-      const histDiag = historyResult?.diag;
-      log(`[HIST] tabs:${JSON.stringify(histDiag?.allTabTexts)} logFound:${histDiag?.logTabFound} sel:"${histDiag?.usedSel}" items:${histDiag?.itemCount ?? 0} top:${JSON.stringify(historyItems[0])}`);
       processHistoryForPositionChanges(historyItems, state);
       // If a trade just closed, force an immediate alert sync to the current strike —
       // ATM may have moved while the trade was running and the alerts are stale.
