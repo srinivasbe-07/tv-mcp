@@ -249,7 +249,7 @@ Automatically keeps 4 TradingView alerts pointed at the correct ITM option strik
 | 9:12 AM     | OK — first force tick updates in ~30s, done before 9:15      |
 | After 9:14  | ⚠️ Risky — may not complete before Pine Script fires         |
 
-The **first tick always runs with `force=true`**, bypassing both market hours and the 2-tick confirmation — so alerts are always updated immediately on startup regardless of whether ATM changed overnight.
+The **first tick always runs with `force=true`**, bypassing both market hours and the 90s cooldown — so alerts are always updated immediately on startup regardless of whether ATM changed overnight.
 
 ---
 
@@ -281,10 +281,12 @@ Step 2  Read alert Log tab → detect new entry/exit fires → update CE/PE posi
         └── exit  alert fired → CE or PE = CLOSED (logged: [POSITION] CE CLOSED)
 Step 3  Read spot price from dedicated chart tab → calculate ATM
         └── spot invalid → save state & skip tick
-Step 4  Debounce: ATM must hold same value for 2 consecutive ticks before acting
-        └── tick 1: "ATM pending confirmation" → save & wait
-        └── tick 2: "ATM confirmed" → proceed
-        └── price reverts before tick 2 → cancel, no update
+Step 4  ATM Cooldown: update immediately on first ATM shift, then lock for 90s
+        └── ATM shifts → update alerts NOW (same tick)
+        └── Next 90s → further ATM shifts blocked ("cooldown active Xs remaining")
+        └── After 90s → next ATM shift updates again
+        └── Force tick (startup) → always bypasses cooldown
+        └── Trade just closed → always bypasses cooldown (sync to current strike)
 Step 5  Nothing changed (ATM same, depth same, instrument same, not force, no trade just closed)?
         └── save state & exit — no alert updates needed
 Step 6  Calculate strikes
@@ -329,7 +331,7 @@ When the trade exits, alerts are synced to current ITM strike immediately.
 1. Connect to dedicated chart tab (logs/supertrend-tab.json)
 2. Poll alert_list every 5s until all 4 today-instrument alerts visible (up to 120s)
    → prevents "not found" failures when TV just restarted and alerts haven't synced
-3. First force tick → update CE + PE alerts immediately (no 2-tick wait)
+3. First force tick → update CE + PE alerts immediately (bypasses 90s cooldown)
 4. Verify status → re-activate any stopped alerts
 5. Enter 60s poll loop
 ```
