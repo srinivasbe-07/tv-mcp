@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * Test NIFTY / SENSEX supertrend alert updates
+ * Supertrend alert recovery / verification script
+ *
+ * Reads position.json before updating — skips open trades to avoid
+ * moving alerts mid-trade. Use --force to override.
  *
  * Usage:
  *   node scripts/test-supertrend-alerts.js                     ← today's instrument, spot from chart
@@ -8,12 +11,14 @@
  *   node scripts/test-supertrend-alerts.js --instr SENSEX      ← force SENSEX
  *   node scripts/test-supertrend-alerts.js --spot 23400        ← manual spot price
  *   node scripts/test-supertrend-alerts.js --itm 1             ← force ITM-1
+ *   node scripts/test-supertrend-alerts.js --force             ← update all 4 regardless of position
  *   node scripts/test-supertrend-alerts.js --instr NIFTY --instr SENSEX  ← test both
  */
 
 import { CDPManager } from '../src/cdp.js';
 import { AlertTools } from '../src/tools/alerts.js';
 import { ChartTools } from '../src/tools/chart.js';
+import fs from 'fs';
 
 // ── Constants (mirrors monitor.js) ──────────────────────────────────────────
 const ALERT_NAMES = {
@@ -68,18 +73,42 @@ function buildSymbol(cfg, strike, type) {
   return `${cfg.symbolPrefix}${yy}${mm}${dd}${type === 'CE' ? 'C' : 'P'}${strike}`;
 }
 
+// ── Read position.json ────────────────────────────────────────────────────────
+function loadPosition() {
+  try {
+    return JSON.parse(fs.readFileSync('./config/position.json', 'utf8'));
+  } catch {
+    return { CE: 'closed', PE: 'closed' };
+  }
+}
+
 // ── Parse CLI args ────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const instrArgs = [];
 let spotArg = null;
 let itmArg = null;
+let forceArg = false;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--instr' && argv[i + 1]) instrArgs.push(argv[++i].toUpperCase());
   if (argv[i] === '--spot' && argv[i + 1]) spotArg = parseFloat(argv[++i]);
   if (argv[i] === '--itm' && argv[i + 1]) itmArg = parseInt(argv[++i]);
+  if (argv[i] === '--force') forceArg = true;
 }
 const day = nowIST().getUTCDay();
 const instrsToTest = instrArgs.length ? instrArgs : [DAY_INSTRUMENT[day] || 'NIFTY'];
+
+// ── Load position ─────────────────────────────────────────────────────────────
+const position = loadPosition();
+console.log(`Position: CE=${position.CE.toUpperCase()}  PE=${position.PE.toUpperCase()}`);
+if (forceArg) {
+  console.log('--force: updating all 4 alerts regardless of position\n');
+} else {
+  if (position.CE === 'open')
+    console.log('  CE trade RUNNING → CE alerts will be skipped (use --force to override)');
+  if (position.PE === 'open')
+    console.log('  PE trade RUNNING → PE alerts will be skipped (use --force to override)');
+  console.log('');
+}
 
 // ── Connect ───────────────────────────────────────────────────────────────────
 const cdp = new CDPManager();
@@ -95,9 +124,10 @@ try {
 const cdpAlerts = new AlertTools(cdp);
 const cdpChart = new ChartTools(cdp);
 
-// ── Run test for each instrument ──────────────────────────────────────────────
+// ── Run for each instrument ───────────────────────────────────────────────────
 let totalPassed = 0;
 let totalFailed = 0;
+let totalSkipped = 0;
 
 for (const instrName of instrsToTest) {
   const cfg = INSTRUMENTS[instrName];
@@ -148,6 +178,13 @@ for (const instrName of instrsToTest) {
   ];
 
   for (const t of tests) {
+    // Skip if trade is running for this side (unless --force)
+    if (!forceArg && position[t.side] === 'open') {
+      console.log(`  [${t.side}:${t.role}] "${t.name}" → SKIPPED (trade running)`);
+      totalSkipped++;
+      continue;
+    }
+
     process.stdout.write(`  [${t.side}:${t.role}] "${t.name}" → ${t.symbol} ... `);
     try {
       await cdpChart.handle('chart_set_symbol', { symbol: `${exchange}:${t.symbol}` });
@@ -174,8 +211,17 @@ for (const instrName of instrsToTest) {
   console.log('');
 }
 
-console.log(`── Summary: ${totalPassed} passed, ${totalFailed} failed ─────────────`);
-if (totalFailed === 0) console.log('  All alerts updated successfully ✓');
-else console.log(`  ${totalFailed} alert(s) failed — check names in TradingView Alerts panel`);
+// ── Summary ───────────────────────────────────────────────────────────────────
+console.log('── Summary ──────────────────────────────────────────────────');
+if (totalSkipped > 0)
+  console.log(`  Skipped : ${totalSkipped} (trade running — use --force to override)`);
+if (totalFailed === 0 && totalPassed > 0) {
+  console.log(`  Updated : ${totalPassed} ✓  All stable`);
+} else if (totalFailed > 0) {
+  console.log(`  Updated : ${totalPassed} ✓`);
+  console.log(`  Failed  : ${totalFailed} ✗  Check alert names in TradingView`);
+} else if (totalPassed === 0 && totalSkipped > 0) {
+  console.log('  No alerts updated — all sides have open trades');
+}
 
 await cdp.disconnect();
