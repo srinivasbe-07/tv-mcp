@@ -1151,7 +1151,8 @@
       });
       stES.addEventListener('log', (e) => {
         const line = JSON.parse(e.data).line;
-        if (stMonRunning || line.startsWith('[TV]') || line.startsWith('[UI]')) appendLog(stLogBody, line);
+        if (stMonRunning || line.startsWith('[TV]') || line.startsWith('[UI]'))
+          appendLog(stLogBody, line);
         parseSTLine(line);
       });
       stES.onerror = () => {};

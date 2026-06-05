@@ -192,12 +192,13 @@ let state = {
   CE: 'closed',
   PE: 'closed',
   lastATM: null,
+  lastATMUpdateTime: 0, // ms timestamp of last ATM-triggered alert update
   lastInstrument: null,
   lastITMDepth: null,
   lastLogSnapshot: [], // top of Log tab from previous tick — used to detect new fires
 };
 let itmOverride = null; // set by --itm CLI flag (highest priority)
-let pendingATM = null; // ATM seen last tick — confirmed only if seen twice in a row
+const ATM_COOLDOWN_MS = 120_000; // 2 min cooldown after an ATM-triggered update
 
 // Minimum valid spot price per instrument (rejects background tab garbage reads)
 const MIN_SPOT = { NIFTY: 15000, SENSEX: 50000 };
@@ -882,28 +883,17 @@ async function main() {
         `${instrName}: ${spot.toFixed(2)}  ATM: ${atm}  ITM-${itmDepth}  (prev ATM: ${state.lastATM || '?'})  CE:${state.CE.toUpperCase()}  PE:${state.PE.toUpperCase()}`
       );
 
-      // Debounce: require ATM to hold for 2 consecutive ticks before updating alerts.
-      // Exception: if a trade just closed, skip the debounce and sync immediately using
-      // the current ATM — the exit must not be delayed by a pending confirmation.
-      if (atmShifted && !force) {
-        if (pendingATM === atm) {
-          log(`ATM confirmed: ${state.lastATM} → ${atm}`);
-          pendingATM = null;
-        } else {
-          pendingATM = atm;
-          if (!CEjustClosed && !PEjustClosed) {
-            log(
-              `ATM pending confirmation: ${state.lastATM} → ${atm} (will update next tick if it holds)`
-            );
-            saveState();
-            return;
-          }
-          log(
-            `ATM pending confirmation: ${state.lastATM} → ${atm} — but trade just closed, syncing now with current ATM`
-          );
+      // Cooldown: after an ATM-triggered update, block further ATM updates for 2 min.
+      // This prevents rapid back-and-forth updates when price oscillates around the ATM
+      // boundary. Trade-just-closed and force always bypass the cooldown.
+      if (atmShifted && !force && !CEjustClosed && !PEjustClosed) {
+        const elapsed = Date.now() - (state.lastATMUpdateTime || 0);
+        if (elapsed < ATM_COOLDOWN_MS) {
+          const remaining = Math.round((ATM_COOLDOWN_MS - elapsed) / 1000);
+          log(`ATM shifted ${state.lastATM}→${atm} — cooldown active (${remaining}s remaining)`);
+          saveState();
+          return;
         }
-      } else {
-        if (!atmShifted) pendingATM = null; // price came back — cancel pending
       }
 
       if (
@@ -973,6 +963,7 @@ async function main() {
       // 6. Verify all 4 alerts are active after updates (3s delay lets TV self-recover)
       await verifyAlertStatus(cdpAlerts, instrName);
 
+      if (atmShifted) state.lastATMUpdateTime = Date.now();
       state.lastATM = atm;
       state.lastInstrument = instrName;
       state.lastITMDepth = itmDepth;

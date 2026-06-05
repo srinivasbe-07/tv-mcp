@@ -873,7 +873,7 @@
         if (line.includes('[OK]')) return 'l-ok';
         if (line.includes('[FAIL]')) return 'l-fail';
         if (line.includes('[POSITION]')) return 'l-pos';
-        if (line.includes('ATM shifted') || line.includes('ATM confirmed')) return 'l-atm';
+        if (line.includes('ATM shifted') || line.includes('cooldown')) return 'l-atm';
         if (line.includes('[ERROR]') || line.includes('[CRASH]') || line.includes('[ERR]'))
           return 'l-err';
         if (line.includes('[MANUAL]') || line.includes('[UI]') || line.includes('[TV]'))
