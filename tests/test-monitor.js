@@ -232,7 +232,7 @@ test('config=1 on SENSEX → ITM-1 override', () =>
 // processHistoryForPositionChanges
 // ---------------------------------------------------------------------------
 function makeState(overrides = {}) {
-  return { CE: 'closed', PE: 'closed', seenHistoryKeys: [], ...overrides };
+  return { CE: 'closed', PE: 'closed', seenHistoryKeys: [], lastLogSnapshot: [], ...overrides };
 }
 
 const CE_ENTRY = 'niftySupertrendLongEntry';
@@ -300,7 +300,7 @@ test('same name, different time → treated as new alert', () => {
   processHistoryForPositionChanges([{ name: CE_EXIT, time: '09:30' }], s);
   return s.CE === 'closed';
 });
-test('seenHistoryKeys grows with new items', () => {
+test('lastLogSnapshot updated after processing', () => {
   const s = makeState();
   processHistoryForPositionChanges(
     [
@@ -309,14 +309,13 @@ test('seenHistoryKeys grows with new items', () => {
     ],
     s
   );
-  return s.seenHistoryKeys.length === 2;
+  return s.lastLogSnapshot.length === 2;
 });
-test('seenHistoryKeys trimmed to 200', () => {
+test('lastLogSnapshot capped at 30 items', () => {
   const s = makeState();
-  // Pre-fill with 199 seen keys
-  s.seenHistoryKeys = Array.from({ length: 199 }, (_, i) => `alert|${i}`);
-  processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s);
-  return s.seenHistoryKeys.length === 200;
+  const items = Array.from({ length: 35 }, (_, i) => ({ name: `alert${i}`, time: `${i}:00` }));
+  processHistoryForPositionChanges(items, s);
+  return s.lastLogSnapshot.length === 30;
 });
 test('seenHistoryKeys capped at 200 even with 201 items', () => {
   const s = makeState();
@@ -349,10 +348,11 @@ test('batch: CE entry + PE entry in one call', () => {
 });
 test('batch: full cycle CE open → close in one call', () => {
   const s = makeState();
+  // Log tab is newest-first: CE_EXIT@10:00 is more recent than CE_ENTRY@09:15
   processHistoryForPositionChanges(
     [
-      { name: CE_ENTRY, time: '09:15' },
       { name: CE_EXIT, time: '10:00' },
+      { name: CE_ENTRY, time: '09:15' },
     ],
     s
   );

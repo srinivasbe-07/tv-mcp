@@ -584,25 +584,25 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
       if (ceDone && peDone) break;
       const n = item.name;
       if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.entry === n)) {
+        if (stateObj.CE !== 'open') changed = true;
         stateObj.CE = 'open';
         ceDone = true;
-        changed = true;
         log(`[POSITION] CE OPENED from history (alert: ${n})`);
       } else if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.exit === n)) {
+        if (stateObj.CE !== 'closed') changed = true;
         stateObj.CE = 'closed';
         ceDone = true;
-        changed = true;
         log(`[POSITION] CE CLOSED from history (alert: ${n})`);
       }
       if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.entry === n)) {
+        if (stateObj.PE !== 'open') changed = true;
         stateObj.PE = 'open';
         peDone = true;
-        changed = true;
         log(`[POSITION] PE OPENED from history (alert: ${n})`);
       } else if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.exit === n)) {
+        if (stateObj.PE !== 'closed') changed = true;
         stateObj.PE = 'closed';
         peDone = true;
-        changed = true;
         log(`[POSITION] PE CLOSED from history (alert: ${n})`);
       }
     }
