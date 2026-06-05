@@ -198,7 +198,23 @@ let state = {
   lastLogSnapshot: [], // top of Log tab from previous tick — used to detect new fires
 };
 let itmOverride = null; // set by --itm CLI flag (highest priority)
-const ATM_COOLDOWN_MS = 90_000; // 90s cooldown after an ATM-triggered update
+export const ATM_COOLDOWN_MS = 90_000; // 90s cooldown after an ATM-triggered update
+
+/**
+ * Decide whether an ATM shift should trigger alert updates.
+ * Returns { update: true } or { update: false, remaining: <seconds> }.
+ */
+export function shouldUpdateATM(
+  { lastATMUpdateTime = 0 },
+  { force = false, CEjustClosed = false, PEjustClosed = false, atmShifted = true } = {}
+) {
+  if (!atmShifted || force || CEjustClosed || PEjustClosed) return { update: true };
+  const elapsed = Date.now() - lastATMUpdateTime;
+  if (elapsed < ATM_COOLDOWN_MS) {
+    return { update: false, remaining: Math.round((ATM_COOLDOWN_MS - elapsed) / 1000) };
+  }
+  return { update: true };
+}
 
 // Minimum valid spot price per instrument (rejects background tab garbage reads)
 const MIN_SPOT = { NIFTY: 15000, SENSEX: 50000 };
@@ -883,17 +899,20 @@ async function main() {
         `${instrName}: ${spot.toFixed(2)}  ATM: ${atm}  ITM-${itmDepth}  (prev ATM: ${state.lastATM || '?'})  CE:${state.CE.toUpperCase()}  PE:${state.PE.toUpperCase()}`
       );
 
-      // Cooldown: after an ATM-triggered update, block further ATM updates for 2 min.
-      // This prevents rapid back-and-forth updates when price oscillates around the ATM
-      // boundary. Trade-just-closed and force always bypass the cooldown.
-      if (atmShifted && !force && !CEjustClosed && !PEjustClosed) {
-        const elapsed = Date.now() - (state.lastATMUpdateTime || 0);
-        if (elapsed < ATM_COOLDOWN_MS) {
-          const remaining = Math.round((ATM_COOLDOWN_MS - elapsed) / 1000);
-          log(`ATM shifted ${state.lastATM}→${atm} — cooldown active (${remaining}s remaining)`);
-          saveState();
-          return;
-        }
+      // Cooldown: update immediately on first ATM shift, block for 90s after.
+      // Trade-just-closed and force always bypass.
+      const cooldownCheck = shouldUpdateATM(state, {
+        force,
+        CEjustClosed,
+        PEjustClosed,
+        atmShifted,
+      });
+      if (!cooldownCheck.update) {
+        log(
+          `ATM shifted ${state.lastATM}→${atm} — cooldown active (${cooldownCheck.remaining}s remaining)`
+        );
+        saveState();
+        return;
       }
 
       if (

@@ -16,6 +16,8 @@ import {
   NIFTY_ITM_BY_DAY,
   calcITMDepth,
   processHistoryForPositionChanges,
+  shouldUpdateATM,
+  ATM_COOLDOWN_MS,
 } from '../monitors/monitor.js';
 
 // ---------------------------------------------------------------------------
@@ -357,6 +359,50 @@ test('batch: full cycle CE open → close in one call', () => {
     s
   );
   return s.CE === 'closed';
+});
+
+// ---------------------------------------------------------------------------
+// shouldUpdateATM — ATM cooldown logic
+// ---------------------------------------------------------------------------
+section('shouldUpdateATM — ATM not shifted (always update)');
+test('atmShifted=false → update regardless of cooldown', () => {
+  const state = { lastATMUpdateTime: Date.now() }; // cooldown active
+  return shouldUpdateATM(state, { atmShifted: false }).update === true;
+});
+
+section('shouldUpdateATM — no cooldown active');
+test('fresh state (lastATMUpdateTime=0) → update', () => {
+  return shouldUpdateATM({ lastATMUpdateTime: 0 }, { atmShifted: true }).update === true;
+});
+test('cooldown expired (>90s ago) → update', () => {
+  const state = { lastATMUpdateTime: Date.now() - ATM_COOLDOWN_MS - 1000 };
+  return shouldUpdateATM(state, { atmShifted: true }).update === true;
+});
+
+section('shouldUpdateATM — cooldown active');
+test('within cooldown → blocked, remaining seconds returned', () => {
+  const state = { lastATMUpdateTime: Date.now() - 30_000 }; // 30s ago
+  const r = shouldUpdateATM(state, { atmShifted: true });
+  return r.update === false && r.remaining > 0 && r.remaining <= 60;
+});
+test('cooldown just started → ~90s remaining', () => {
+  const state = { lastATMUpdateTime: Date.now() };
+  const r = shouldUpdateATM(state, { atmShifted: true });
+  return r.update === false && r.remaining >= 89;
+});
+
+section('shouldUpdateATM — bypass conditions');
+test('force=true bypasses cooldown', () => {
+  const state = { lastATMUpdateTime: Date.now() };
+  return shouldUpdateATM(state, { atmShifted: true, force: true }).update === true;
+});
+test('CEjustClosed bypasses cooldown', () => {
+  const state = { lastATMUpdateTime: Date.now() };
+  return shouldUpdateATM(state, { atmShifted: true, CEjustClosed: true }).update === true;
+});
+test('PEjustClosed bypasses cooldown', () => {
+  const state = { lastATMUpdateTime: Date.now() };
+  return shouldUpdateATM(state, { atmShifted: true, PEjustClosed: true }).update === true;
 });
 
 // ---------------------------------------------------------------------------
