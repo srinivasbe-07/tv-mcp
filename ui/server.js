@@ -375,8 +375,38 @@ app.post('/api/test/supertrend', async (req, res) => {
     ];
     const tests = side ? allTests.filter((t) => t.side === side.toUpperCase()) : allTests;
 
+    // Read position — skip open trades (same guard as test-supertrend-alerts.js)
+    let position = { CE: 'closed', PE: 'closed' };
+    try {
+      position = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    } catch (_) {
+      /* default closed */
+    }
+    log(`Position: CE=${position.CE.toUpperCase()}  PE=${position.PE.toUpperCase()}`);
+
     const results = [];
     for (const t of tests) {
+      if (position[t.side] === 'open') {
+        log(`[${t.side}:${t.role}] "${t.name}" → SKIPPED (trade running)`);
+        results.push({
+          name: t.name,
+          symbol: t.symbol,
+          side: t.side,
+          role: t.role,
+          success: null,
+          message: 'SKIPPED — trade running',
+        });
+        emit('result', {
+          name: t.name,
+          symbol: t.symbol,
+          side: t.side,
+          role: t.role,
+          success: null,
+          message: 'SKIPPED — trade running',
+        });
+        continue;
+      }
+
       await cdpAlerts.normalizeAlertsPanel();
 
       log(`[${t.side}:${t.role}] Switching chart to ${t.symbol}...`);
