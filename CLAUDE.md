@@ -303,19 +303,20 @@ Step 10 Save position.json
 ```
 
 **Key points:**
-- Position state (Step 2) is always read *before* any alert update (Steps 7–8) — if an entry fires between ticks, the next tick blocks the update automatically.
+
+- Position state (Step 2) is always read _before_ any alert update (Steps 7–8) — if an entry fires between ticks, the next tick blocks the update automatically.
 - When a trade exits (OPEN → CLOSED), alerts are **immediately synced** to the current strike even if ATM hasn't shifted — because ATM may have moved while updates were blocked during the trade.
 
 ### Alert Update Behaviour by Position State
 
-| State                | CE alerts                          | PE alerts                          |
-| -------------------- | ---------------------------------- | ---------------------------------- |
-| CE=closed, PE=closed | ✓ Updated on ATM shift             | ✓ Updated on ATM shift             |
-| CE=open, PE=closed   | ✗ Skipped — trade running          | ✓ Updated on ATM shift             |
-| CE=closed, PE=open   | ✓ Updated on ATM shift             | ✗ Skipped — trade running          |
-| CE=open, PE=open     | ✗ Skipped — trade running          | ✗ Skipped — trade running          |
-| CE just closed       | ✓ Force sync to current strike     | (PE continues normally)            |
-| PE just closed       | (CE continues normally)            | ✓ Force sync to current strike     |
+| State                | CE alerts                      | PE alerts                      |
+| -------------------- | ------------------------------ | ------------------------------ |
+| CE=closed, PE=closed | ✓ Updated on ATM shift         | ✓ Updated on ATM shift         |
+| CE=open, PE=closed   | ✗ Skipped — trade running      | ✓ Updated on ATM shift         |
+| CE=closed, PE=open   | ✓ Updated on ATM shift         | ✗ Skipped — trade running      |
+| CE=open, PE=open     | ✗ Skipped — trade running      | ✗ Skipped — trade running      |
+| CE just closed       | ✓ Force sync to current strike | (PE continues normally)        |
+| PE just closed       | (CE continues normally)        | ✓ Force sync to current strike |
 
 A running trade's alerts **never move** — they stay on the exact entry strike.
 When the trade exits, alerts are synced to current ITM strike immediately.

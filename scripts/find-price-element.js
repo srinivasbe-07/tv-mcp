@@ -144,8 +144,8 @@ try {
 
   // ── Key comparison: DOM Close vs barClose ──
   const domPrices = (result?.priceTexts || [])
-    .filter(p => p.cls.includes('valueValue'))
-    .map(p => parseFloat(p.text.replace(/,/g, '')));
+    .filter((p) => p.cls.includes('valueValue'))
+    .map((p) => parseFloat(p.text.replace(/,/g, '')));
   const domClose = domPrices[domPrices.length - 1] ?? null; // last = Close
   const barClose = result?.widgetInfo?.barClose ?? null;
 
@@ -153,7 +153,9 @@ try {
   console.log(`  DOM valueValue elements (O/H/L/C): ${domPrices.join(', ')}`);
   console.log(`  DOM Close (4th valueValue):        ${domClose}`);
   console.log(`  Widget barClose (bars store):      ${barClose}`);
-  console.log(`  MATCH: ${domClose === barClose ? 'YES (no pre-open diff)' : 'NO → DOM has live/indicative price!'}`);
+  console.log(
+    `  MATCH: ${domClose === barClose ? 'YES (no pre-open diff)' : 'NO → DOM has live/indicative price!'}`
+  );
 
   console.log('\n=== Selector hits (class keyword match) ===');
   console.log(JSON.stringify(result?.selectorHits, null, 2));
@@ -166,7 +168,6 @@ try {
 
   console.log('\n=== Price axis DOM labels ===');
   console.log(JSON.stringify(result?.priceAxisLabels, null, 2));
-
 } catch (e) {
   console.error('Error:', e.message);
 } finally {

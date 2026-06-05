@@ -406,9 +406,20 @@
         <div class="summary sum-idle" id="sensex-summary">Not run yet</div>
       </div>
       <!-- Test All row -->
-      <div style="grid-column: 1 / -1;">
-        <button class="run-btn" id="all-btn" onclick="runAllTests()"
-          style="font-size:14px; padding:12px; background:#1e2035; border-color:#4b5563; color:#e5e7eb; letter-spacing:0.5px;">
+      <div style="grid-column: 1 / -1">
+        <button
+          class="run-btn"
+          id="all-btn"
+          onclick="runAllTests()"
+          style="
+            font-size: 14px;
+            padding: 12px;
+            background: #1e2035;
+            border-color: #4b5563;
+            color: #e5e7eb;
+            letter-spacing: 0.5px;
+          "
+        >
           ▶ Test All — NIFTY + SENSEX (CE + PE)
         </button>
       </div>
@@ -463,8 +474,18 @@
       }
 
       function setAllBtns(disabled) {
-        ['nifty-ce-btn','nifty-pe-btn','nifty-btn','sensex-ce-btn','sensex-pe-btn','sensex-btn','all-btn']
-          .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+        [
+          'nifty-ce-btn',
+          'nifty-pe-btn',
+          'nifty-btn',
+          'sensex-ce-btn',
+          'sensex-pe-btn',
+          'sensex-btn',
+          'all-btn',
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = disabled;
+        });
       }
 
       async function runAllTests() {

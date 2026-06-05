@@ -207,8 +207,8 @@ function loadState() {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       state = { ...state, ...saved };
-      delete state.seenHistoryKeys;  // legacy field
-      delete state.lastLogSnapshot;  // session-only — always re-detect on restart
+      delete state.seenHistoryKeys; // legacy field
+      delete state.lastLogSnapshot; // session-only — always re-detect on restart
     }
   } catch (_e) {
     /* ignore missing/corrupt state file */
@@ -578,22 +578,31 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
     // Fresh start — scan log from newest to oldest to determine current CE/PE state.
     // Stop once both sides are determined (most recent event wins per side).
     let changed = false;
-    let ceDone = false, peDone = false;
+    let ceDone = false,
+      peDone = false;
     for (const item of historyItems) {
       if (ceDone && peDone) break;
       const n = item.name;
       if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.entry === n)) {
-        stateObj.CE = 'open'; ceDone = true; changed = true;
+        stateObj.CE = 'open';
+        ceDone = true;
+        changed = true;
         log(`[POSITION] CE OPENED from history (alert: ${n})`);
       } else if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.exit === n)) {
-        stateObj.CE = 'closed'; ceDone = true; changed = true;
+        stateObj.CE = 'closed';
+        ceDone = true;
+        changed = true;
         log(`[POSITION] CE CLOSED from history (alert: ${n})`);
       }
       if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.entry === n)) {
-        stateObj.PE = 'open'; peDone = true; changed = true;
+        stateObj.PE = 'open';
+        peDone = true;
+        changed = true;
         log(`[POSITION] PE OPENED from history (alert: ${n})`);
       } else if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.exit === n)) {
-        stateObj.PE = 'closed'; peDone = true; changed = true;
+        stateObj.PE = 'closed';
+        peDone = true;
+        changed = true;
         log(`[POSITION] PE CLOSED from history (alert: ${n})`);
       }
     }
@@ -847,7 +856,8 @@ async function main() {
       const prevCE = state.CE;
       const prevPE = state.PE;
       const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
-      const historyItems = historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
+      const historyItems =
+        historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
       processHistoryForPositionChanges(historyItems, state);
       // If a trade just closed, force an immediate alert sync to the current strike —
       // ATM may have moved while the trade was running and the alerts are stale.
@@ -896,7 +906,14 @@ async function main() {
         if (!atmShifted) pendingATM = null; // price came back — cancel pending
       }
 
-      if (!atmShifted && !depthChanged && !instrChanged && !force && !CEjustClosed && !PEjustClosed) {
+      if (
+        !atmShifted &&
+        !depthChanged &&
+        !instrChanged &&
+        !force &&
+        !CEjustClosed &&
+        !PEjustClosed
+      ) {
         saveState();
         return;
       }
@@ -911,12 +928,16 @@ async function main() {
       // 4. Update CE alerts — skip if CE trade is running (don't move alerts mid-trade)
       if (state.CE === 'closed') {
         if (needsUpdate || CEjustClosed) {
-          if (CEjustClosed && !needsUpdate) log(`Syncing CE alerts after trade exit → strike: ${ceStrike}`);
+          if (CEjustClosed && !needsUpdate)
+            log(`Syncing CE alerts after trade exit → strike: ${ceStrike}`);
           else log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
           const ceResults = await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           if (ceResults.some((r) => !r?.success)) {
-            const failedNames = ceResults.filter((r) => !r?.success).map((r) => r.name).filter(Boolean);
+            const failedNames = ceResults
+              .filter((r) => !r?.success)
+              .map((r) => r.name)
+              .filter(Boolean);
             await deactivateAlerts(cdpAlerts, failedNames);
             log(`[WARN] CE update failed — manual check required.`);
           }
@@ -931,12 +952,16 @@ async function main() {
           // Brief stop at spot between CE and PE so the panel scroll position resets.
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           await new Promise((r) => setTimeout(r, 1000));
-          if (PEjustClosed && !needsUpdate) log(`Syncing PE alerts after trade exit → strike: ${peStrike}`);
+          if (PEjustClosed && !needsUpdate)
+            log(`Syncing PE alerts after trade exit → strike: ${peStrike}`);
           else log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
           const peResults = await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
           await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
           if (peResults.some((r) => !r?.success)) {
-            const failedNames = peResults.filter((r) => !r?.success).map((r) => r.name).filter(Boolean);
+            const failedNames = peResults
+              .filter((r) => !r?.success)
+              .map((r) => r.name)
+              .filter(Boolean);
             await deactivateAlerts(cdpAlerts, failedNames);
             log(`[WARN] PE update failed — manual check required.`);
           }

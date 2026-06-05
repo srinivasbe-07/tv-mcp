@@ -21,7 +21,7 @@ try {
   console.log('Selector used  :', d.usedSel || '(none matched)');
   console.log('Scroller found :', d.scrollerFound);
   console.log('Items at top   :', d.countAfterTop, '(before scroll loop)');
-  console.log('Items total    :', d.itemCount,     '(after scroll)');
+  console.log('Items total    :', d.itemCount, '(after scroll)');
 
   const items = result?.items || [];
   if (items.length > 0) {
@@ -40,7 +40,6 @@ try {
   } else {
     console.log(`\n✓ No virtual list scroller — ${d.itemCount} items read directly`);
   }
-
 } catch (err) {
   console.error('Error:', err.message);
   console.error('Is TradingView running with --remote-debugging-port=9222?');
