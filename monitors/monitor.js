@@ -198,7 +198,7 @@ let state = {
   lastLogSnapshot: [], // top of Log tab from previous tick — used to detect new fires
 };
 let itmOverride = null; // set by --itm CLI flag (highest priority)
-const ATM_COOLDOWN_MS = 120_000; // 2 min cooldown after an ATM-triggered update
+const ATM_COOLDOWN_MS = 90_000; // 90s cooldown after an ATM-triggered update
 
 // Minimum valid spot price per instrument (rejects background tab garbage reads)
 const MIN_SPOT = { NIFTY: 15000, SENSEX: 50000 };
