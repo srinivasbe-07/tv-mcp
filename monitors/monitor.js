@@ -200,7 +200,7 @@ let state = {
   lastLogSnapshot: [], // top of Log tab from previous tick — used to detect new fires
 };
 let itmOverride = null; // set by --itm CLI flag (highest priority)
-export const ATM_COOLDOWN_MS = 90_000; // 90s cooldown after an ATM-triggered update
+export const ATM_COOLDOWN_MS = 120_000; // 2 min cooldown after an ATM-triggered update
 
 /**
  * Decide whether an ATM shift should trigger alert updates.
@@ -546,6 +546,36 @@ async function updateAlerts(cdpChart, cdpAlerts, side, strike, cfg, instrName) {
     // Gap between edit dialogs — allow TV to settle after save animation
     await new Promise((r) => setTimeout(r, 1500));
   }
+
+  // Retry any failed alerts once — TV sometimes needs more time to load the symbol
+  const failed = results.filter((r) => !r?.success);
+  if (failed.length > 0) {
+    log(`  Retrying ${failed.length} failed alert(s) after extra wait...`);
+    await new Promise((r) => setTimeout(r, 5000));
+    for (const f of failed) {
+      const role = Object.entries(alertDefs).find(([, n]) => n === f.name)?.[0];
+      log(`  [${side}:${role}] retry "${f.name}" → ${symbol}`);
+      try {
+        const r = await cdpAlerts.handle('alert_update_symbol', { alertName: f.name, symbol });
+        const data = r?.isError ? null : JSON.parse(r?.content?.[0]?.text || '{}');
+        const retryResult = r?.isError
+          ? { name: f.name, symbol, success: false, error: r?.content?.[0]?.text }
+          : { name: f.name, symbol, success: data.success, message: data.message };
+        const detail = retryResult?.message || retryResult?.error || '';
+        if (retryResult?.success) {
+          log(`  [OK]   "${f.name}" updated to ${symbol}${detail ? ' — ' + detail : ''}`);
+        } else {
+          log(`  [FAIL] "${f.name}" retry failed${detail ? ' — ' + detail : ''}`);
+        }
+        const idx = results.findIndex((r) => r.name === f.name);
+        if (idx >= 0) results[idx] = retryResult;
+      } catch (e) {
+        log(`  [FAIL] "${f.name}" retry error — ${e.message}`);
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
   return results;
 }
 
