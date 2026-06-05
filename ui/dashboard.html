@@ -907,7 +907,12 @@
           btnStT.onclick = stStart;
           btnStT.disabled = !tvRunning;
           btnStR.style.display = 'none';
-          stLogPnl.classList.remove('visible');
+          if (tvActive) {
+            stLogPnl.classList.add('visible');
+            stLogHdr.textContent = 'TradingView — Startup Log';
+          } else {
+            stLogPnl.classList.remove('visible');
+          }
           setStChip('stopped');
         }
       }
@@ -1146,7 +1151,7 @@
       });
       stES.addEventListener('log', (e) => {
         const line = JSON.parse(e.data).line;
-        if (stMonRunning) appendLog(stLogBody, line);
+        if (stMonRunning || line.startsWith('[TV]') || line.startsWith('[UI]')) appendLog(stLogBody, line);
         parseSTLine(line);
       });
       stES.onerror = () => {};
