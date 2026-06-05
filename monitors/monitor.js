@@ -193,6 +193,8 @@ let state = {
   PE: 'closed',
   lastATM: null,
   lastATMUpdateTime: 0, // ms timestamp of last ATM-triggered alert update
+  lastCEStrike: null, // strike CE alerts were last set to
+  lastPEStrike: null, // strike PE alerts were last set to
   lastInstrument: null,
   lastITMDepth: null,
   lastLogSnapshot: [], // top of Log tab from previous tick — used to detect new fires
@@ -937,18 +939,30 @@ async function main() {
       // 4. Update CE alerts — skip if CE trade is running (don't move alerts mid-trade)
       if (state.CE === 'closed') {
         if (needsUpdate || CEjustClosed) {
-          if (CEjustClosed && !needsUpdate)
-            log(`Syncing CE alerts after trade exit → strike: ${ceStrike}`);
-          else log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
-          const ceResults = await updateAlerts(cdpChart, cdpAlerts, 'CE', ceStrike, cfg, instrName);
-          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-          if (ceResults.some((r) => !r?.success)) {
-            const failedNames = ceResults
-              .filter((r) => !r?.success)
-              .map((r) => r.name)
-              .filter(Boolean);
-            await deactivateAlerts(cdpAlerts, failedNames);
-            log(`[WARN] CE update failed — manual check required.`);
+          if (CEjustClosed && !needsUpdate && state.lastCEStrike === ceStrike) {
+            log(`CE exit sync skipped — strike unchanged (${ceStrike})`);
+          } else {
+            if (CEjustClosed && !needsUpdate)
+              log(`Syncing CE alerts after trade exit → strike: ${ceStrike}`);
+            else log(`Updating CE alerts → ITM-${itmDepth} strike: ${ceStrike}`);
+            const ceResults = await updateAlerts(
+              cdpChart,
+              cdpAlerts,
+              'CE',
+              ceStrike,
+              cfg,
+              instrName
+            );
+            state.lastCEStrike = ceStrike;
+            await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+            if (ceResults.some((r) => !r?.success)) {
+              const failedNames = ceResults
+                .filter((r) => !r?.success)
+                .map((r) => r.name)
+                .filter(Boolean);
+              await deactivateAlerts(cdpAlerts, failedNames);
+              log(`[WARN] CE update failed — manual check required.`);
+            }
           }
         }
       } else {
@@ -958,21 +972,33 @@ async function main() {
       // 5. Update PE alerts — skip if PE trade is running (don't move alerts mid-trade)
       if (state.PE === 'closed') {
         if (needsUpdate || PEjustClosed) {
-          // Brief stop at spot between CE and PE so the panel scroll position resets.
-          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-          await new Promise((r) => setTimeout(r, 1000));
-          if (PEjustClosed && !needsUpdate)
-            log(`Syncing PE alerts after trade exit → strike: ${peStrike}`);
-          else log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
-          const peResults = await updateAlerts(cdpChart, cdpAlerts, 'PE', peStrike, cfg, instrName);
-          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-          if (peResults.some((r) => !r?.success)) {
-            const failedNames = peResults
-              .filter((r) => !r?.success)
-              .map((r) => r.name)
-              .filter(Boolean);
-            await deactivateAlerts(cdpAlerts, failedNames);
-            log(`[WARN] PE update failed — manual check required.`);
+          if (PEjustClosed && !needsUpdate && state.lastPEStrike === peStrike) {
+            log(`PE exit sync skipped — strike unchanged (${peStrike})`);
+          } else {
+            // Brief stop at spot between CE and PE so the panel scroll position resets.
+            await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+            await new Promise((r) => setTimeout(r, 1000));
+            if (PEjustClosed && !needsUpdate)
+              log(`Syncing PE alerts after trade exit → strike: ${peStrike}`);
+            else log(`Updating PE alerts → ITM-${itmDepth} strike: ${peStrike}`);
+            const peResults = await updateAlerts(
+              cdpChart,
+              cdpAlerts,
+              'PE',
+              peStrike,
+              cfg,
+              instrName
+            );
+            state.lastPEStrike = peStrike;
+            await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+            if (peResults.some((r) => !r?.success)) {
+              const failedNames = peResults
+                .filter((r) => !r?.success)
+                .map((r) => r.name)
+                .filter(Boolean);
+              await deactivateAlerts(cdpAlerts, failedNames);
+              log(`[WARN] PE update failed — manual check required.`);
+            }
           }
         }
       } else {
