@@ -427,14 +427,14 @@ Each trading day is one JSON file: `logs/daily-trades-YYYY-MM-DD.json`
 
 Fields auto-populated by the generator:
 
-| Field      | How set                                                                          |
-| ---------- | -------------------------------------------------------------------------------- |
-| `exitSL`   | `clamp(exitNSL, entry − SL, entry + TARGET_G)` — intraday bar scan for TARGET_G  |
-| `exitTgt`  | `entry + tgtPts`                                                                 |
-| `exitNSL`  | Raw exit price from TradingView at the alert-fire minute                         |
-| `tgtPts`   | `clamp(exitNSL − entry, −SL, TARGET_L)` — or TARGET_L if intraday bar hit it     |
-| `maxReach` | Max `(bar.high − entry)` across all 1m bars during the trade (stored, not shown) |
-| `notes`    | `"SL HIT"` if loss ≥ SL pts; `"PINE SCRIPT SL"` if exit < entry but < SL         |
+| Field      | How set                                                                                                                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exitSL`   | `clamp(exitNSL, entry − SL, entry + TARGET_G)` — intraday bar scan for TARGET_G                                                                                                                 |
+| `exitTgt`  | `entry + TARGET_L` always (fixed target exit price, e.g. entry 100 + 31 = 131)                                                                                                                  |
+| `exitNSL`  | Raw exit price from TradingView at the alert-fire minute                                                                                                                                        |
+| `tgtPts`   | `clamp(exitNSL − entry, −SL, TARGET_L)` — or TARGET_L if intraday bar hit it                                                                                                                    |
+| `maxReach` | Max `(bar.high − entry)` across all 1m bars during the trade (stored, not shown)                                                                                                                |
+| `notes`    | Auto-classified in priority order: `"price reach upto X points"` if `maxReach ≥ 20`; `"SL HIT"` if loss ≥ SL and reach < 20; `"PINE SCRIPT SL"` if exit < entry and reach < 20; blank if profit |
 
 Files are never overwritten by the generator — delete the file to re-import for a date.
 
@@ -483,15 +483,15 @@ Example: set 09:30–11:00 and 14:30–15:00 to see only opening and closing ses
 
 #### Notes Filter
 
-| Control            | What it filters                                               |
-| ------------------ | ------------------------------------------------------------- |
-| **SL HIT**         | Trades where loss ≥ SL threshold (15 pts NIFTY, 35 SENSEX)    |
-| **PINE SCRIPT SL** | Trades where exit < entry but loss < SL threshold             |
-| **REACH ≥ N**      | Trades where price reached N+ points above entry during trade |
-| **▶ Apply**        | Apply the current notes + reach filter                        |
-| **✕ Clear**        | Reset notes + reach filter                                    |
+| Control            | What it filters                                                     |
+| ------------------ | ------------------------------------------------------------------- |
+| **SL HIT**         | Trades with notes = `"SL HIT"` (loss ≥ SL and reach < 20)           |
+| **PINE SCRIPT SL** | Trades with notes = `"PINE SCRIPT SL"` (small loss, reach < 20)     |
+| **REACH ≥ N**      | Trades where `maxReach` ≥ N — includes `"price reach upto X"` notes |
+| **▶ Apply**        | Apply the current notes + reach filter                              |
+| **✕ Clear**        | Reset notes + reach filter                                          |
 
-`REACH ≥` works with both new data (numeric `maxReach` field) and old data (parses "price reach upto X points" from notes text).
+`REACH ≥` works with both new data (numeric `maxReach` field) and old data (parses `"price reach upto X points"` from notes text). Trades with `"price reach upto X"` notes are not matched by the SL HIT or PINE SCRIPT SL checkboxes.
 
 #### Date Filter
 
@@ -501,20 +501,20 @@ Dropdown at the top of each month tab. Shows only dates that have at least one t
 
 ### Trade Table Columns
 
-| Column      | What it shows                                                  |
-| ----------- | -------------------------------------------------------------- |
-| Time        | Entry time (HH:MM)                                             |
-| Symbol      | Option symbol at entry (e.g. `NIFTY260609C23400`)              |
-| Lots        | Number of lots traded                                          |
-| Entry       | Option entry price                                             |
-| Exit w/SL   | Exit price clamped to SL/target range (see below)              |
-| Exit w/Tgt  | `entry + tgtPts`                                               |
-| Exit w/oSL  | Actual exit price, no clamping                                 |
-| Tgt Pts     | Points clamped to max target (see below)                       |
-| Notes       | Auto-classified outcome: SL HIT / PINE SCRIPT SL / blank       |
-| P&L w/SL ₹  | P&L using clamped exit — simulates disciplined SL + target     |
-| P&L w/Tgt ₹ | P&L based on Tgt Pts — simulates taking full target every time |
-| P&L w/oSL ₹ | P&L using actual exit — what actually happened                 |
+| Column      | What it shows                                                 |
+| ----------- | ------------------------------------------------------------- |
+| Time        | Entry time (HH:MM)                                            |
+| Symbol      | Option symbol at entry (e.g. `NIFTY260609C23400`)             |
+| Lots        | Number of lots traded                                         |
+| Entry       | Option entry price                                            |
+| Exit w/SL   | Exit price clamped to SL/target range (see below)             |
+| Exit w/Tgt  | `entry + TARGET_L` always — where the target exit would be    |
+| Exit w/oSL  | Actual exit price, no clamping                                |
+| Tgt Pts     | `clamp(exitNSL − entry, −SL, TARGET_L)` — actual clamped pts  |
+| Notes       | Auto-classified: SL HIT / price reach upto X / PINE SCRIPT SL |
+| P&L w/SL ₹  | P&L using clamped exit — simulates disciplined SL + target    |
+| P&L w/Tgt ₹ | `tgtPts × lots × lotSize` — P&L with SL and target discipline |
+| P&L w/oSL ₹ | P&L using actual exit — what actually happened                |
 
 P&L = (exit − entry) × lots × lotSize. Green = profit, red = loss. Trades sorted by entry time.
 
@@ -533,7 +533,8 @@ Clamping prevents outlier exits from skewing the "disciplined" P&L columns.
 | Default lots | 10    | 15     | Used if lots not set in trade                 |
 
 - **exitSL** = `clamp(exitPrice, entry − SL, entry + TARGET_G)`
-- **tgtPts** = `clamp(exitPrice − entry, −SL, TARGET_L)`
+- **exitTgt** = `entry + TARGET_L` (always fixed — shows where target would be)
+- **tgtPts** = `clamp(exitPrice − entry, −SL, TARGET_L)` (actual clamped result, can be negative)
 
 ---
 
@@ -585,7 +586,7 @@ When **Entry** price or **Exit w/oSL** changes, the following are recalculated i
 
 - **Exit w/SL** = `clamp(exitNSL, entry − SL, entry + TARGET_G)`
 - **Tgt Pts** = `clamp(exitNSL − entry, −SL, TARGET_L)`
-- **Exit w/Tgt** = `entry + tgtPts`
+- **Exit w/Tgt** = `entry + TARGET_L` (always fixed target price)
 - **P&L preview** (w/SL | w/Tgt | w/oSL) shown live in the P&L cell
 
 ---

@@ -233,28 +233,30 @@ const REACH_THRESHOLD = 20; // same constant as in generate-daily-report.js
 function autoNotes(instrument, entryPrice, exitPrice, maxReach = 0) {
   if (entryPrice === null || exitPrice === null) return '';
   const slPts = SL_INLINE[instrument] || 15;
-  if (entryPrice - exitPrice >= slPts) return 'SL HIT';
   if (maxReach >= REACH_THRESHOLD) return `price reach upto ${maxReach} points`;
+  if (entryPrice - exitPrice >= slPts) return 'SL HIT';
   if (exitPrice < entryPrice) return 'PINE SCRIPT SL';
   return '';
 }
 
-test('loss = exactly SL → SL HIT', () => autoNotes('NIFTY', 200, 185, 0) === 'SL HIT');
-test('loss > SL → SL HIT', () => autoNotes('NIFTY', 200, 180, 0) === 'SL HIT');
-test('SL HIT wins even when reach >= 20', () => autoNotes('NIFTY', 200, 184, 25) === 'SL HIT');
+test('reach >= 20 wins over SL HIT (reach=25, loss=16)', () =>
+  autoNotes('NIFTY', 200, 184, 25) === 'price reach upto 25 points');
 test('reach >= 20 + small loss → price reach upto X', () =>
   autoNotes('NIFTY', 200, 196, 42) === 'price reach upto 42 points');
 test('reach >= 20 + profit → price reach upto X', () =>
   autoNotes('NIFTY', 200, 215, 25) === 'price reach upto 25 points');
 test('reach = exactly 20 → price reach upto X', () =>
   autoNotes('NIFTY', 200, 198, 20) === 'price reach upto 20 points');
+test('reach < 20 + loss >= SL → SL HIT', () => autoNotes('NIFTY', 200, 184, 10) === 'SL HIT');
+test('loss = exactly SL, reach < 20 → SL HIT', () => autoNotes('NIFTY', 200, 185, 0) === 'SL HIT');
+test('loss > SL, reach < 20 → SL HIT', () => autoNotes('NIFTY', 200, 180, 0) === 'SL HIT');
 test('reach < 20 + small loss → PINE SCRIPT SL', () =>
   autoNotes('NIFTY', 200, 190, 10) === 'PINE SCRIPT SL');
 test('profit + reach < 20 → empty', () => autoNotes('NIFTY', 200, 210, 5) === '');
 test('null entry → empty', () => autoNotes('NIFTY', null, 200, 30) === '');
-test('SENSEX SL threshold = 35', () => autoNotes('SENSEX', 500, 465, 0) === 'SL HIT');
 test('SENSEX reach >= 20 → price reach note', () =>
   autoNotes('SENSEX', 500, 495, 22) === 'price reach upto 22 points');
+test('SENSEX SL, reach < 20 → SL HIT', () => autoNotes('SENSEX', 500, 465, 0) === 'SL HIT');
 test('exit == entry + no reach → empty (break-even)', () => autoNotes('NIFTY', 200, 200, 0) === '');
 
 // ---------------------------------------------------------------------------

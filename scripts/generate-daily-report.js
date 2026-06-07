@@ -333,18 +333,18 @@ async function main() {
           )
         : 0;
 
-    // Auto-classify outcome for notes:
-    //   SL HIT          → loss >= full SL threshold
-    //   price reach upto X points → maxReach >= 20 pts (price moved favourably before exit)
+    // Auto-classify outcome for notes (priority order):
+    //   price reach upto X points → maxReach >= 20 (highest priority — notable move regardless of exit)
+    //   SL HIT          → loss >= full SL threshold and reach < 20
     //   PINE SCRIPT SL  → small loss, reach < 20 (pine exited without notable move)
     const REACH_THRESHOLD = 20;
     let autoNotes = '';
     if (t.entryPrice !== null && t.exitPrice !== null) {
       const slPts = SL[t.instrument] || 15;
-      if (t.entryPrice - t.exitPrice >= slPts) {
-        autoNotes = 'SL HIT';
-      } else if (t.maxReach >= REACH_THRESHOLD) {
+      if (t.maxReach >= REACH_THRESHOLD) {
         autoNotes = `price reach upto ${t.maxReach} points`;
+      } else if (t.entryPrice - t.exitPrice >= slPts) {
+        autoNotes = 'SL HIT';
       } else if (t.exitPrice < t.entryPrice) {
         autoNotes = 'PINE SCRIPT SL';
       }
