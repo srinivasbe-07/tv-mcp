@@ -672,7 +672,7 @@ function recalc(instr, entry, exitNSL, lots) {
   const tgtPts = parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2));
   const exitTgt = parseFloat((entry + tgL).toFixed(2));
   const pSL = Math.round((exitSL - entry) * lots * lotSz);
-  const pTgt = Math.round(tgL * lots * lotSz);
+  const pTgt = Math.round(tgtPts * lots * lotSz);
   const pNSL = Math.round((exitNSL - entry) * lots * lotSz);
   return { exitSL, tgtPts, exitTgt, pSL, pTgt, pNSL };
 }
@@ -690,10 +690,14 @@ test('tgtPts capped at TARGET_L=31', () => recalc('NIFTY', 200, 240, 10).tgtPts 
 test('tgtPts capped at -SL=-15 for big loss', () => recalc('NIFTY', 200, 170, 10).tgtPts === -15);
 test('exitTgt = entry + TARGET_L always', () => recalc('NIFTY', 200, 210, 10).exitTgt === 231);
 test('exitTgt fixed even on a loss trade', () => recalc('NIFTY', 200, 185, 10).exitTgt === 231);
-test('pTgt = TARGET_L * lots * lotSize always', () =>
-  recalc('NIFTY', 200, 210, 10).pTgt === 31 * 10 * 65); // 20150
-test('SENSEX pTgt = 70 * 15 * 20 = 21000', () =>
-  recalc('SENSEX', 500, 540, 15).pTgt === 70 * 15 * 20);
+test('pTgt uses tgtPts (small profit 10pts) → 10 * 10 * 65 = 6500', () =>
+  recalc('NIFTY', 200, 210, 10).pTgt === 6500);
+test('pTgt uses tgtPts (SL hit) → -15 * 10 * 65 = -9750', () =>
+  recalc('NIFTY', 200, 180, 10).pTgt === -9750);
+test('pTgt uses tgtPts (target hit) → 31 * 10 * 65 = 20150', () =>
+  recalc('NIFTY', 200, 240, 10).pTgt === 20150);
+test('SENSEX pTgt (target hit) → 70 * 15 * 20 = 21000', () =>
+  recalc('SENSEX', 500, 580, 15).pTgt === 21000);
 
 section('recalcEditRow — P&L computation');
 test('profit 10pts, 10 lots, 65 lotSize → pNSL = +6500', () =>

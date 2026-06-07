@@ -919,14 +919,14 @@
             if (t.exitNSL !== null && t.entryPrice !== null) {
               dNSL += (t.exitNSL - t.entryPrice) * tq;
             }
-            if (t.entryPrice !== null) {
-              dTgt += (TGT_L[day.instrument] || 31) * tq;
+            if (t.tgtPts !== null) {
+              dTgt += t.tgtPts * tq;
             }
             totalTrades++;
             if (t.exitSL !== null && t.entryPrice !== null && t.exitSL - t.entryPrice > 0) winSL++;
             if (t.exitNSL !== null && t.entryPrice !== null && t.exitNSL - t.entryPrice > 0)
               winNSL++;
-            if (t.entryPrice !== null) winTgt++;
+            if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
           }
           dayPnl.sl.push(Math.round(dSL));
           dayPnl.nsl.push(Math.round(dNSL));
@@ -1091,8 +1091,7 @@
             t.exitSL !== null && t.entryPrice !== null
               ? Math.round((t.exitSL - t.entryPrice) * tq)
               : null;
-          const pTgt =
-            t.entryPrice !== null ? Math.round((TGT_L[day.instrument] || 31) * tq) : null;
+          const pTgt = t.tgtPts !== null ? Math.round(t.tgtPts * tq) : null;
           const pNSL =
             t.exitNSL !== null && t.entryPrice !== null
               ? Math.round((t.exitNSL - t.entryPrice) * tq)
@@ -1290,7 +1289,7 @@
         const tgtPts = parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2));
         const exitTgt = parseFloat((entry + tgL).toFixed(2));
         const pSL = Math.round((exitSL - entry) * nLots * lotSz);
-        const pTgt = Math.round(tgL * nLots * lotSz);
+        const pTgt = Math.round(tgtPts * nLots * lotSz);
         const pNSL = Math.round((exitNSL - entry) * nLots * lotSz);
 
         const set = (id, v) => {
@@ -1559,8 +1558,7 @@
               t.exitNSL !== null && t.entryPrice !== null
                 ? Math.round((t.exitNSL - t.entryPrice) * tq)
                 : '';
-            const pTgt =
-              t.entryPrice !== null ? Math.round((TGT_L[day.instrument] || 31) * tq) : '';
+            const pTgt = t.tgtPts !== null ? Math.round(t.tgtPts * tq) : '';
 
             rows.push([
               date,
