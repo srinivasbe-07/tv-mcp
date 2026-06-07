@@ -747,6 +747,12 @@
         try {
           const res = await fetch('/api/report/data');
           allData = await res.json();
+          // Assign stable IDs to trades that came from JSON without one
+          for (const day of Object.values(allData)) {
+            for (const t of day.trades || []) {
+              if (t.id == null) t.id = nextId++;
+            }
+          }
           renderPage();
         } catch (e) {
           document.getElementById('panels-container').innerHTML =

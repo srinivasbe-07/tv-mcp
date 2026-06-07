@@ -175,6 +175,7 @@ function parseTrades(snapshot) {
   const items = [...snapshot].reverse(); // oldest → newest
   const trades = [];
   const pending = {}; // side → { instrument, symbol, entryTime }
+  let idSeq = 1;
 
   for (const item of items) {
     const meta = classify(item.name);
@@ -186,6 +187,7 @@ function parseTrades(snapshot) {
       pending[side] = { instrument, symbol, entryTime: time };
     } else if (event === 'exit' && pending[side]) {
       trades.push({
+        id: idSeq++,
         instrument,
         side,
         entrySymbol: pending[side].symbol,
