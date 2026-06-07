@@ -131,10 +131,8 @@ function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
     }
   }
 
-  // Exit w/Tgt / TgtPts:
-  //   - If price touched entry+TARGET_L (31) intraday → tgtPts = TARGET_L (target achieved)
-  //   - Otherwise                                    → tgtPts = exitSL − entry (same discipline as exitSL)
-  // ExitTgt = entry + tgtPts  (mirrors the Excel formula: ExitTgt = Entry + TgtPts)
+  // TgtPts: actual clamped result (-SL to TARGET_L)
+  // ExitTgt: always entry + TARGET_L (fixed target exit, independent of actual outcome)
   let tgtHit = false;
   for (const bar of tradeBars) {
     if (bar.high >= entry + tgL) {
@@ -143,7 +141,7 @@ function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
     }
   }
   const tgtPts = tgtHit ? tgL : parseFloat((exitSLPrice - entry).toFixed(2));
-  const exitTgtPrice = parseFloat((entry + tgtPts).toFixed(2));
+  const exitTgtPrice = parseFloat((entry + tgL).toFixed(2));
 
   return {
     exitSL: parseFloat(exitSLPrice.toFixed(2)),
