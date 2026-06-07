@@ -16,14 +16,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT      = path.join(__dirname, '..');
-const LOGS_DIR  = path.join(ROOT, 'logs');
-const XLSX_SRC  = 'C:\\Users\\ksrin\\OneDrive\\Trading\\Daily_PL_Tracker.xlsx';
+const ROOT = path.join(__dirname, '..');
+const LOGS_DIR = path.join(ROOT, 'logs');
+const XLSX_SRC = 'C:\\Users\\ksrin\\OneDrive\\Trading\\Daily_PL_Tracker.xlsx';
 const XLSX_TEMP = 'C:\\Temp\\pl_temp.xlsx';
 
 // Copy to temp first (avoids "file locked" when Excel is open)
 try {
-  execSync(`powershell -Command "Copy-Item '${XLSX_SRC}' '${XLSX_TEMP}' -Force"`, { stdio: 'pipe' });
+  execSync(`powershell -Command "Copy-Item '${XLSX_SRC}' '${XLSX_TEMP}' -Force"`, {
+    stdio: 'pipe',
+  });
   console.log('Copied to temp file.');
 } catch (e) {
   console.warn('Could not copy — will try original path directly.');
@@ -108,7 +110,10 @@ try {
   const tmpPy = path.join(ROOT, 'logs', '_import_tmp.py');
   fs.writeFileSync(tmpPy, pyScript);
   try {
-    result = execSync(`python "${tmpPy}"`, { stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024 });
+    result = execSync(`python "${tmpPy}"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024,
+    });
     fs.unlinkSync(tmpPy);
   } catch (e2) {
     fs.unlinkSync(tmpPy);
@@ -118,11 +123,12 @@ try {
 }
 
 const allDays = JSON.parse(result.toString().trim());
-const dates   = Object.keys(allDays).sort();
+const dates = Object.keys(allDays).sort();
 
 if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
 
-let saved = 0, skipped = 0;
+let saved = 0,
+  skipped = 0;
 for (const date of dates) {
   const outPath = path.join(LOGS_DIR, `daily-trades-${date}.json`);
   if (fs.existsSync(outPath)) {

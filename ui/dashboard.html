@@ -1063,7 +1063,9 @@
       const patLogBody = document.getElementById('pat-log-body');
       let patESConnected = false;
       const patES = new EventSource('/api/events');
-      patES.addEventListener('open', () => { patESConnected = true; });
+      patES.addEventListener('open', () => {
+        patESConnected = true;
+      });
       patES.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
       patES.addEventListener('config', (e) => applyPatternConfig(JSON.parse(e.data)));
       patES.addEventListener('log', (e) => {
@@ -1071,7 +1073,9 @@
         appendLog(patLogBody, line);
         parsePatternLine(line);
       });
-      patES.onerror = () => { patESConnected = false; };
+      patES.onerror = () => {
+        patESConnected = false;
+      };
 
       function parsePatternLine(line) {
         // Day levels: R=74223  S=73126

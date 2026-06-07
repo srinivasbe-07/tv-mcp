@@ -37,7 +37,9 @@ app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html'))
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
 app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'pattern.html')));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
-app.get('/supertrend-reports', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend-reports.html')));
+app.get('/supertrend-reports', (_req, res) =>
+  res.sendFile(path.join(__dirname, 'supertrend-reports.html'))
+);
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -47,10 +49,10 @@ let tvProc = null;
 let tvReady = false;
 
 // ── SSE clients ───────────────────────────────────────────────────
-let stClients  = [];
-let stLog      = [];
+let stClients = [];
+let stLog = [];
 let patClients = [];
-let patLog     = [];
+let patLog = [];
 
 function broadcast(clients, event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -93,7 +95,7 @@ function getStatus() {
 
 function broadcastStatus() {
   const s = getStatus();
-  broadcast(stClients,  'status', s);
+  broadcast(stClients, 'status', s);
   broadcast(patClients, 'status', s);
 }
 
@@ -185,12 +187,14 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
-  patLog.slice(-50).forEach(line =>
-    res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`)
-  );
+  patLog
+    .slice(-50)
+    .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
   patClients.push(res);
-  req.on('close', () => { patClients = patClients.filter(c => c !== res); });
+  req.on('close', () => {
+    patClients = patClients.filter((c) => c !== res);
+  });
 });
 
 // ── TradingView ───────────────────────────────────────────────────
@@ -567,9 +571,9 @@ app.get('/api/pm/events', (req, res) => {
 });
 
 // ── EOD Report ────────────────────────────────────────────────────
-const reportLog     = [];
+const reportLog = [];
 const reportClients = [];
-let   reportRunning = false;
+let reportRunning = false;
 
 function pushReport(line) {
   if (!line.trim()) return;
@@ -588,9 +592,9 @@ app.get('/api/report/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  reportLog.slice(-80).forEach((l) =>
-    res.write(`event: log\ndata: ${JSON.stringify({ line: l })}\n\n`)
-  );
+  reportLog
+    .slice(-80)
+    .forEach((l) => res.write(`event: log\ndata: ${JSON.stringify({ line: l })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
   reportClients.push(res);
   req.on('close', () => {
@@ -605,19 +609,25 @@ app.post('/api/report/run', (req, res) => {
   reportRunning = true;
   broadcastReportStatus();
 
-  const date    = (req.body?.date || '').trim();
+  const date = (req.body?.date || '').trim();
   const dateArg = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
-  const label   = dateArg || 'today';
+  const label = dateArg || 'today';
   pushReport(`[REPORT] Fetching trade prices for ${label} from TradingView...`);
 
   const args = ['scripts/generate-daily-report.js'];
   if (dateArg) args.push(dateArg);
   const proc = spawn('node', args, { cwd: ROOT });
   proc.stdout.on('data', (d) =>
-    d.toString().split('\n').forEach((l) => l.trim() && pushReport(l))
+    d
+      .toString()
+      .split('\n')
+      .forEach((l) => l.trim() && pushReport(l))
   );
   proc.stderr.on('data', (d) =>
-    d.toString().split('\n').forEach((l) => l.trim() && pushReport(`[ERR] ${l.trim()}`))
+    d
+      .toString()
+      .split('\n')
+      .forEach((l) => l.trim() && pushReport(`[ERR] ${l.trim()}`))
   );
   proc.on('close', (code) => {
     if (code === 0) {
@@ -639,7 +649,9 @@ app.get('/api/report/data', (_req, res) => {
   const logsDir = path.join(ROOT, 'logs');
   let files;
   try {
-    files = fs.readdirSync(logsDir).filter(f => f.match(/^daily-trades-\d{4}-\d{2}-\d{2}\.json$/));
+    files = fs
+      .readdirSync(logsDir)
+      .filter((f) => f.match(/^daily-trades-\d{4}-\d{2}-\d{2}\.json$/));
   } catch {
     return res.json({});
   }
@@ -649,7 +661,9 @@ app.get('/api/report/data', (_req, res) => {
     try {
       const data = JSON.parse(fs.readFileSync(path.join(logsDir, f), 'utf8'));
       result[data.date] = data;
-    } catch { /* skip corrupt files */ }
+    } catch {
+      /* skip corrupt files */
+    }
   }
   res.json(result);
 });
@@ -657,7 +671,8 @@ app.get('/api/report/data', (_req, res) => {
 // Save edits back to the correct daily-trades JSON file
 app.post('/api/report/save', (req, res) => {
   const { date, trades } = req.body;
-  if (!date || !trades) return res.status(400).json({ ok: false, error: 'date and trades required' });
+  if (!date || !trades)
+    return res.status(400).json({ ok: false, error: 'date and trades required' });
 
   const filePath = path.join(ROOT, 'logs', `daily-trades-${date}.json`);
   try {

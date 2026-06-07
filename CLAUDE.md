@@ -24,13 +24,13 @@ Then open **http://localhost:3000** in the browser.
 
 ### Pages
 
-| URL                                        | Purpose                                                          |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `http://localhost:3000`                    | Dashboard — overview + start/stop all processes                  |
-| `http://localhost:3000/pattern`            | Pattern Monitor — full config, log, candle feed                  |
+| URL                                        | Purpose                                                                |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| `http://localhost:3000`                    | Dashboard — overview + start/stop all processes                        |
+| `http://localhost:3000/pattern`            | Pattern Monitor — full config, log, candle feed                        |
 | `http://localhost:3000/supertrend`         | Supertrend Monitor — ITM override, CE/PE position, generate EOD report |
-| `http://localhost:3000/test-alerts`        | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts         |
-| `http://localhost:3000/supertrend-reports` | **Trade Reports** — paper trade journal, P&L stats, filters      |
+| `http://localhost:3000/test-alerts`        | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts               |
+| `http://localhost:3000/supertrend-reports` | **Trade Reports** — paper trade journal, P&L stats, filters            |
 
 ### Keys (still work when running from terminal directly)
 
@@ -383,12 +383,12 @@ Then open **http://localhost:3000/supertrend-reports** (or click **View Reports*
 
 ### EOD Workflow (after market close)
 
-| Method          | Command / Action                                             |
-| --------------- | ------------------------------------------------------------ |
-| UI button       | Go to `http://localhost:3000/supertrend` → click **Generate Report** |
-| PowerShell      | `.\eod-report.ps1`                                           |
-| Node            | `node scripts/generate-daily-report.js`                      |
-| Specific date   | `.\eod-report.ps1 2026-06-07`                                |
+| Method        | Command / Action                                                     |
+| ------------- | -------------------------------------------------------------------- |
+| UI button     | Go to `http://localhost:3000/supertrend` → click **Generate Report** |
+| PowerShell    | `.\eod-report.ps1`                                                   |
+| Node          | `node scripts/generate-daily-report.js`                              |
+| Specific date | `.\eod-report.ps1 2026-06-07`                                        |
 
 The script fetches the option entry/exit prices from TradingView for each trade logged that day, scrolls the chart to the target date to load historical bars, computes clamped exit values, auto-classifies the outcome (SL HIT / PINE SCRIPT SL), and saves to `logs/daily-trades-YYYY-MM-DD.json`. The reports page auto-opens when generation finishes.
 
@@ -408,18 +408,18 @@ Each trading day is one JSON file: `logs/daily-trades-YYYY-MM-DD.json`
       "instrument": "NIFTY",
       "side": "CE",
       "entrySymbol": "NIFTY260609C23400",
-      "exitSymbol":  "NIFTY260609C23400",
+      "exitSymbol": "NIFTY260609C23400",
       "entryTime": "09:32:00",
-      "exitTime":  "10:15:00",
+      "exitTime": "10:15:00",
       "lots": 10,
       "lotSize": 65,
-      "entryPrice": 123.50,
-      "exitSL":   138.50,
-      "exitTgt":  154.50,
-      "exitNSL":  142.00,
-      "tgtPts":   31.00,
+      "entryPrice": 123.5,
+      "exitSL": 138.5,
+      "exitTgt": 154.5,
+      "exitNSL": 142.0,
+      "tgtPts": 31.0,
       "maxReach": 35.25,
-      "notes":    "PINE SCRIPT SL"
+      "notes": "PINE SCRIPT SL"
     }
   ]
 }
@@ -427,14 +427,14 @@ Each trading day is one JSON file: `logs/daily-trades-YYYY-MM-DD.json`
 
 Fields auto-populated by the generator:
 
-| Field        | How set                                                                          |
-| ------------ | -------------------------------------------------------------------------------- |
-| `exitSL`     | `clamp(exitNSL, entry − SL, entry + TARGET_G)` — intraday bar scan for TARGET_G  |
-| `exitTgt`    | `entry + tgtPts`                                                                 |
-| `exitNSL`    | Raw exit price from TradingView at the alert-fire minute                         |
-| `tgtPts`     | `clamp(exitNSL − entry, −SL, TARGET_L)` — or TARGET_L if intraday bar hit it     |
-| `maxReach`   | Max `(bar.high − entry)` across all 1m bars during the trade (stored, not shown) |
-| `notes`      | `"SL HIT"` if loss ≥ SL pts; `"PINE SCRIPT SL"` if exit < entry but < SL        |
+| Field      | How set                                                                          |
+| ---------- | -------------------------------------------------------------------------------- |
+| `exitSL`   | `clamp(exitNSL, entry − SL, entry + TARGET_G)` — intraday bar scan for TARGET_G  |
+| `exitTgt`  | `entry + tgtPts`                                                                 |
+| `exitNSL`  | Raw exit price from TradingView at the alert-fire minute                         |
+| `tgtPts`   | `clamp(exitNSL − entry, −SL, TARGET_L)` — or TARGET_L if intraday bar hit it     |
+| `maxReach` | Max `(bar.high − entry)` across all 1m bars during the trade (stored, not shown) |
+| `notes`    | `"SL HIT"` if loss ≥ SL pts; `"PINE SCRIPT SL"` if exit < entry but < SL         |
 
 Files are never overwritten by the generator — delete the file to re-import for a date.
 
@@ -472,24 +472,24 @@ All filters combine with AND logic — a trade must satisfy every active filter 
 
 Multiple ranges can be active simultaneously. A trade is included if it falls within **any** defined range.
 
-| Action          | How                                                |
-| --------------- | -------------------------------------------------- |
-| Add a range     | Click **+ Add Range** → set From and To times      |
-| Remove a range  | Click **✕** on that range row                     |
-| Apply           | Click **▶ Apply** to update the table              |
-| Clear all       | Click **✕ Clear All**                              |
+| Action         | How                                           |
+| -------------- | --------------------------------------------- |
+| Add a range    | Click **+ Add Range** → set From and To times |
+| Remove a range | Click **✕** on that range row                 |
+| Apply          | Click **▶ Apply** to update the table         |
+| Clear all      | Click **✕ Clear All**                         |
 
 Example: set 09:30–11:00 and 14:30–15:00 to see only opening and closing session trades.
 
 #### Notes Filter
 
-| Control            | What it filters                                              |
-| ------------------ | ------------------------------------------------------------ |
-| **SL HIT**         | Trades where loss ≥ SL threshold (15 pts NIFTY, 35 SENSEX)  |
-| **PINE SCRIPT SL** | Trades where exit < entry but loss < SL threshold            |
-| **REACH ≥ N**      | Trades where price reached N+ points above entry during trade|
-| **▶ Apply**        | Apply the current notes + reach filter                       |
-| **✕ Clear**        | Reset notes + reach filter                                   |
+| Control            | What it filters                                               |
+| ------------------ | ------------------------------------------------------------- |
+| **SL HIT**         | Trades where loss ≥ SL threshold (15 pts NIFTY, 35 SENSEX)    |
+| **PINE SCRIPT SL** | Trades where exit < entry but loss < SL threshold             |
+| **REACH ≥ N**      | Trades where price reached N+ points above entry during trade |
+| **▶ Apply**        | Apply the current notes + reach filter                        |
+| **✕ Clear**        | Reset notes + reach filter                                    |
 
 `REACH ≥` works with both new data (numeric `maxReach` field) and old data (parses "price reach upto X points" from notes text).
 
@@ -501,20 +501,20 @@ Dropdown at the top of each month tab. Shows only dates that have at least one t
 
 ### Trade Table Columns
 
-| Column        | What it shows                                                     |
-| ------------- | ----------------------------------------------------------------- |
-| Time          | Entry time (HH:MM)                                                |
-| Symbol        | Option symbol at entry (e.g. `NIFTY260609C23400`)                 |
-| Lots          | Number of lots traded                                             |
-| Entry         | Option entry price                                                |
-| Exit w/SL     | Exit price clamped to SL/target range (see below)                 |
-| Exit w/Tgt    | `entry + tgtPts`                                                  |
-| Exit w/oSL    | Actual exit price, no clamping                                    |
-| Tgt Pts       | Points clamped to max target (see below)                          |
-| Notes         | Auto-classified outcome: SL HIT / PINE SCRIPT SL / blank          |
-| P&L w/SL ₹   | P&L using clamped exit — simulates disciplined SL + target        |
-| P&L w/Tgt ₹  | P&L based on Tgt Pts — simulates taking full target every time    |
-| P&L w/oSL ₹  | P&L using actual exit — what actually happened                    |
+| Column      | What it shows                                                  |
+| ----------- | -------------------------------------------------------------- |
+| Time        | Entry time (HH:MM)                                             |
+| Symbol      | Option symbol at entry (e.g. `NIFTY260609C23400`)              |
+| Lots        | Number of lots traded                                          |
+| Entry       | Option entry price                                             |
+| Exit w/SL   | Exit price clamped to SL/target range (see below)              |
+| Exit w/Tgt  | `entry + tgtPts`                                               |
+| Exit w/oSL  | Actual exit price, no clamping                                 |
+| Tgt Pts     | Points clamped to max target (see below)                       |
+| Notes       | Auto-classified outcome: SL HIT / PINE SCRIPT SL / blank       |
+| P&L w/SL ₹  | P&L using clamped exit — simulates disciplined SL + target     |
+| P&L w/Tgt ₹ | P&L based on Tgt Pts — simulates taking full target every time |
+| P&L w/oSL ₹ | P&L using actual exit — what actually happened                 |
 
 P&L = (exit − entry) × lots × lotSize. Green = profit, red = loss. Trades sorted by entry time.
 
@@ -526,7 +526,7 @@ Clamping prevents outlier exits from skewing the "disciplined" P&L columns.
 
 | Constant     | NIFTY | SENSEX | Meaning                                       |
 | ------------ | ----- | ------ | --------------------------------------------- |
-| SL           | 15    | 35     | Max loss per lot in option points              |
+| SL           | 15    | 35     | Max loss per lot in option points             |
 | TARGET_G     | 50    | 100    | Max gain for exit price clamp (Exit w/SL col) |
 | TARGET_L     | 31    | 70     | Max gain for Tgt Pts clamp                    |
 | Lot size     | 65    | 20     | Qty per lot                                   |
@@ -541,13 +541,13 @@ Clamping prevents outlier exits from skewing the "disciplined" P&L columns.
 
 Three cards — one per P&L type (w/SL, w/oSL, Tgt):
 
-| Stat              | Meaning                                                          |
-| ----------------- | ---------------------------------------------------------------- |
-| Net P&L           | Sum of all day P&Ls for the filtered trades                      |
-| Net Capital       | ₹2,00,000 (initial) ± Net P&L                                    |
-| Win Rate          | % of trades with positive P&L                                    |
-| Max Drawdown      | Largest peak-to-trough cumulative P&L decline (worst losing run) |
-| Max Run-Up        | Largest trough-to-peak cumulative P&L gain (best winning run)    |
+| Stat         | Meaning                                                          |
+| ------------ | ---------------------------------------------------------------- |
+| Net P&L      | Sum of all day P&Ls for the filtered trades                      |
+| Net Capital  | ₹2,00,000 (initial) ± Net P&L                                    |
+| Win Rate     | % of trades with positive P&L                                    |
+| Max Drawdown | Largest peak-to-trough cumulative P&L decline (worst losing run) |
+| Max Run-Up   | Largest trough-to-peak cumulative P&L gain (best winning run)    |
 
 Drawdown/Run-Up show the date of occurrence in brackets. These are calculated on the **filtered** data (instrument + time ranges applied).
 
@@ -557,11 +557,11 @@ Drawdown/Run-Up show the date of occurrence in brackets. These are calculated on
 
 Each day's trade table has two footer rows:
 
-| Row             | Columns                                          |
-| --------------- | ------------------------------------------------ |
-| **Day Total**   | Sum of P&L for all 3 types for that day          |
-| **Max Drawdown**| Intra-day peak-to-trough for each P&L type       |
-| **Max Run-Up**  | Intra-day trough-to-peak for each P&L type       |
+| Row              | Columns                                    |
+| ---------------- | ------------------------------------------ |
+| **Day Total**    | Sum of P&L for all 3 types for that day    |
+| **Max Drawdown** | Intra-day peak-to-trough for each P&L type |
+| **Max Run-Up**   | Intra-day trough-to-peak for each P&L type |
 
 ---
 
@@ -569,13 +569,13 @@ Each day's trade table has two footer rows:
 
 All trades can be edited directly on the page (no restart needed):
 
-| Action          | How                                                                      |
-| --------------- | ------------------------------------------------------------------------ |
-| Edit a row      | Click **✏ Edit** → modify fields inline → click **✓ Save**               |
-| Focus an input  | **Double-click** anywhere in the cell to focus the input inside it        |
-| Auto-calculate  | Change **Entry** or **Exit w/oSL** — all derived fields update instantly  |
-| Delete a row    | Click **✗** (red)                                                         |
-| Add a row       | Hover between rows → click **+ Add Row Here**                             |
+| Action         | How                                                                      |
+| -------------- | ------------------------------------------------------------------------ |
+| Edit a row     | Click **✏ Edit** → modify fields inline → click **✓ Save**               |
+| Focus an input | **Double-click** anywhere in the cell to focus the input inside it       |
+| Auto-calculate | Change **Entry** or **Exit w/oSL** — all derived fields update instantly |
+| Delete a row   | Click **✗** (red)                                                        |
+| Add a row      | Hover between rows → click **+ Add Row Here**                            |
 
 **✓ Save writes immediately to the JSON file on disk** — no separate "Save Changes" step. Trades are re-sorted by entry time after every save. Delete also saves immediately.
 

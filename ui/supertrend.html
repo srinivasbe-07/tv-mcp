@@ -390,10 +390,21 @@
         transition: opacity 0.15s;
         letter-spacing: 0.3px;
       }
-      .report-btn:hover   { opacity: 0.8; }
-      .report-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-      .btn-amber  { background: #451a03; color: #fbbf24; }
-      .btn-teal   { background: #042f2e; color: #2dd4bf; }
+      .report-btn:hover {
+        opacity: 0.8;
+      }
+      .report-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .btn-amber {
+        background: #451a03;
+        color: #fbbf24;
+      }
+      .btn-teal {
+        background: #042f2e;
+        color: #2dd4bf;
+      }
 
       /* ── Right Panel ── */
       .right {
@@ -602,18 +613,31 @@
         <!-- EOD Report -->
         <div class="card">
           <div class="sec">EOD Report</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <label style="font-size:11px;color:#6b7280;font-weight:600;">Date</label>
-            <input type="date" id="report-date"
-              style="background:#0f1117;border:1px solid #2a2d3a;color:#d1d5db;border-radius:5px;padding:3px 8px;font-size:11px;"
-              title="Leave blank for today">
-            <span style="font-size:10px;color:#4b5563;">(blank = today)</span>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+            <label style="font-size: 11px; color: #6b7280; font-weight: 600">Date</label>
+            <input
+              type="date"
+              id="report-date"
+              style="
+                background: #0f1117;
+                border: 1px solid #2a2d3a;
+                color: #d1d5db;
+                border-radius: 5px;
+                padding: 3px 8px;
+                font-size: 11px;
+              "
+              title="Leave blank for today"
+            />
+            <span style="font-size: 10px; color: #4b5563">(blank = today)</span>
           </div>
           <div class="report-btns">
             <button class="report-btn btn-amber" id="btn-report" onclick="runReport()">
               📊 Generate Report
             </button>
-            <button class="report-btn btn-teal" onclick="window.open('/supertrend-reports','_blank')">
+            <button
+              class="report-btn btn-teal"
+              onclick="window.open('/supertrend-reports', '_blank')"
+            >
               📋 View Reports
             </button>
           </div>
@@ -991,16 +1015,16 @@
       const btnReport = document.getElementById('btn-report');
 
       function reportLogClass(line) {
-        if (line.includes('✓'))                          return 'l-ok';
+        if (line.includes('✓')) return 'l-ok';
         if (line.includes('✗') || line.includes('[ERR]')) return 'l-err';
-        if (line.includes('[REPORT]'))                    return 'l-pos';
+        if (line.includes('[REPORT]')) return 'l-pos';
         return 'l-info';
       }
 
       function appendReportLog(line) {
         // Route report output into the main center log panel
-        const cls  = reportLogClass(line);
-        const row  = document.createElement('div');
+        const cls = reportLogClass(line);
+        const row = document.createElement('div');
         row.className = 'log-row';
         row.innerHTML = `<span class="log-t">REPORT</span><span class="${cls}">${escHtml(line)}</span>`;
         logPanel.appendChild(row);
@@ -1009,13 +1033,13 @@
       }
 
       function setReportRunning(running) {
-        btnReport.disabled    = running;
+        btnReport.disabled = running;
         btnReport.textContent = running ? '⏳ Running…' : '📊 Generate Report';
       }
 
       async function runReport() {
         const date = document.getElementById('report-date')?.value || '';
-        const res  = await fetch('/api/report/run', {
+        const res = await fetch('/api/report/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date }),
@@ -1025,9 +1049,9 @@
       }
 
       const esReport = new EventSource('/api/report/events');
-      esReport.addEventListener('log',    (e) => appendReportLog(JSON.parse(e.data).line));
+      esReport.addEventListener('log', (e) => appendReportLog(JSON.parse(e.data).line));
       esReport.addEventListener('status', (e) => setReportRunning(JSON.parse(e.data).running));
-      esReport.addEventListener('done',   ()  => window.open('/supertrend-reports', '_blank'));
+      esReport.addEventListener('done', () => window.open('/supertrend-reports', '_blank'));
       esReport.onerror = () => {};
 
       const es = new EventSource('/api/st/events');
