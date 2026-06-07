@@ -24,12 +24,13 @@ Then open **http://localhost:3000** in the browser.
 
 ### Pages
 
-| URL                                 | Purpose                                                  |
-| ----------------------------------- | -------------------------------------------------------- |
-| `http://localhost:3000`             | Dashboard — overview + start/stop all processes          |
-| `http://localhost:3000/pattern`     | Pattern Monitor — full config, log, candle feed          |
-| `http://localhost:3000/supertrend`  | Supertrend Monitor — ITM override, CE/PE position        |
-| `http://localhost:3000/test-alerts` | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts |
+| URL                                        | Purpose                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| `http://localhost:3000`                    | Dashboard — overview + start/stop all processes                  |
+| `http://localhost:3000/pattern`            | Pattern Monitor — full config, log, candle feed                  |
+| `http://localhost:3000/supertrend`         | Supertrend Monitor — ITM override, CE/PE position, generate EOD report |
+| `http://localhost:3000/test-alerts`        | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts         |
+| `http://localhost:3000/supertrend-reports` | **Trade Reports** — paper trade journal, P&L stats, filters      |
 
 ### Keys (still work when running from terminal directly)
 
@@ -363,6 +364,182 @@ The monitor claims one TradingView chart tab on first start, saves ID to `logs/s
 - Does not place orders — only manages TradingView alerts
 - Does not create alerts — the 8 alerts must already exist in TradingView
 - Does not manage the Supertrend indicator itself — that lives on your chart
+
+---
+
+## Supertrend Trade Reports (`/supertrend-reports`)
+
+A paper-trading journal. After each trading day, generate a report to capture option entry/exit prices; view all historical data month-wise with P&L stats. Use this at the end of each month to decide whether to go live the following month.
+
+### How to access
+
+```
+npm run ui   ← start the UI server first
+```
+
+Then open **http://localhost:3000/supertrend-reports** (or click **View Reports** on the Supertrend page).
+
+---
+
+### EOD Workflow (after market close)
+
+| Method          | Command / Action                                             |
+| --------------- | ------------------------------------------------------------ |
+| UI button       | Go to `http://localhost:3000/supertrend` → click **Generate Report** |
+| PowerShell      | `.\eod-report.ps1`                                           |
+| Node            | `node scripts/generate-daily-report.js`                      |
+| Specific date   | `.\eod-report.ps1 2026-06-07`                                |
+
+The script fetches the option entry/exit prices from TradingView for each trade logged that day, computes clamped exit values, and saves to `logs/daily-trades-YYYY-MM-DD.json`. The reports page auto-opens when generation finishes.
+
+---
+
+### Data Storage
+
+Each trading day is one JSON file: `logs/daily-trades-YYYY-MM-DD.json`
+
+```json
+{
+  "date": "2026-06-07",
+  "instrument": "NIFTY",
+  "trades": [
+    {
+      "id": 1,
+      "instrument": "NIFTY",
+      "entryTime": "09:32",
+      "lots": 10,
+      "lotSize": 65,
+      "entryPrice": 123.50,
+      "exitSL": 108.50,
+      "exitNSL": 95.00,
+      "tgtPts": 31.00,
+      "charges": 150
+    }
+  ]
+}
+```
+
+Files are never overwritten by the generator — delete the file to re-import for a date.
+
+---
+
+### Importing Historical Excel Data
+
+One-time import from `Daily_PL_Tracker.xlsx` (sheets: "ST Strategy" for May, "ST Strategy - June 2026" for June):
+
+```
+node scripts/import-excel-history.js
+```
+
+Requires Python + openpyxl (`pip install openpyxl`). Skips dates that already have a JSON file.
+
+---
+
+### Reports Page Layout
+
+- **Month tabs** at the top — one tab per calendar month with data
+- **Instrument filter** — All / NIFTY / SENSEX (shows/hides day blocks and recalculates summary)
+- **Time ranges** — define one or more time windows; trades outside all windows are excluded from stats
+- **Monthly summary cards** — one card per P&L type showing totals for the filtered data
+- **Day accordions** — expand each trading day to see the trade table
+
+---
+
+### Time Range Filter
+
+Multiple ranges can be active simultaneously. A trade is included if it falls within **any** defined range.
+
+| Action          | How                                              |
+| --------------- | ------------------------------------------------ |
+| Add a range     | Click **+ Add Range** → set From and To times    |
+| Remove a range  | Click **✕** on that range row                   |
+| Clear all       | Click **✕ Clear All** (appears when ≥1 range set) |
+
+Example: set 09:30–11:00 and 14:30–15:00 to see only opening and closing session trades.
+
+---
+
+### Trade Table Columns
+
+| Column        | What it shows                                                     |
+| ------------- | ----------------------------------------------------------------- |
+| Time          | Entry time (HH:MM)                                                |
+| Lots          | Number of lots traded                                             |
+| Entry         | Option entry price                                                |
+| Exit w/SL     | Exit price clamped to SL/target range (see below)                 |
+| Exit w/oSL    | Actual exit price, no clamping                                    |
+| Tgt Pts       | Points clamped to max target (see below)                          |
+| P&L w/SL ₹   | P&L using clamped exit — simulates disciplined SL + target        |
+| P&L w/oSL ₹  | P&L using actual exit — what actually happened                    |
+| P&L Tgt ₹    | P&L based on Tgt Pts — simulates taking full target every time    |
+
+P&L = (exit − entry) × lots × lotSize. Green = profit, red = loss.
+
+---
+
+### Clamping Logic
+
+Clamping prevents outlier exits from skewing the "disciplined" P&L columns.
+
+| Constant     | NIFTY | SENSEX | Meaning                                       |
+| ------------ | ----- | ------ | --------------------------------------------- |
+| SL           | 15    | 35     | Max loss per lot in option points              |
+| TARGET_G     | 50    | 100    | Max gain for exit price clamp (Exit w/SL col) |
+| TARGET_L     | 31    | 70     | Max gain for Tgt Pts clamp                    |
+| Lot size     | 65    | 20     | Qty per lot                                   |
+| Default lots | 10    | 15     | Used if lots not set in trade                 |
+
+- **exitSL** = `clamp(exitPrice, entry − SL, entry + TARGET_G)`
+- **tgtPts** = `clamp(exitPrice − entry, −SL, TARGET_L)`
+
+---
+
+### Monthly Summary Cards
+
+Three cards — one per P&L type (w/SL, w/oSL, Tgt):
+
+| Stat              | Meaning                                                          |
+| ----------------- | ---------------------------------------------------------------- |
+| Net P&L           | Sum of all day P&Ls for the filtered trades                      |
+| Net Capital       | ₹2,00,000 (initial) ± Net P&L                                    |
+| Win Rate          | % of trades with positive P&L                                    |
+| Max Drawdown      | Largest peak-to-trough cumulative P&L decline (worst losing run) |
+| Max Run-Up        | Largest trough-to-peak cumulative P&L gain (best winning run)    |
+
+Drawdown/Run-Up show the date of occurrence in brackets. These are calculated on the **filtered** data (instrument + time ranges applied).
+
+---
+
+### Daily Table Footer
+
+Each day's trade table has two footer rows:
+
+| Row             | Columns                                          |
+| --------------- | ------------------------------------------------ |
+| **Day Total**   | Sum of P&L for all 3 types for that day          |
+| **Max Drawdown**| Intra-day peak-to-trough for each P&L type       |
+| **Max Run-Up**  | Intra-day trough-to-peak for each P&L type       |
+
+---
+
+### Editing Trades
+
+All trades can be edited directly on the page (no restart needed):
+
+| Action       | How                                                          |
+| ------------ | ------------------------------------------------------------ |
+| Edit a row   | Click **✏ Edit** → modify fields inline → click **✓ Save**   |
+| Delete a row | Click **✗** (red)                                            |
+| Add a row    | Hover between rows → click **+ Add Row Here**                |
+| Save to disk | Click **💾 Save Changes** (appears when unsaved edits exist) |
+
+Edits are in memory until saved. The Save button persists changes to the JSON file on disk.
+
+---
+
+### Download Excel
+
+Click **↧ Download Excel** on any month tab to export all visible (filtered) trades to an `.xlsx` file. SheetJS is loaded on first click (CDN) — requires internet connection.
 
 ---
 

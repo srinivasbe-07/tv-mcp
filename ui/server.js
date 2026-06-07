@@ -36,6 +36,7 @@ app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html'))
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
 app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'pattern.html')));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
+app.get('/supertrend-reports', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend-reports.html')));
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -530,6 +531,104 @@ app.get('/api/pm/events', (req, res) => {
     }
   }, 400);
   req.on('close', () => clearInterval(iv));
+});
+
+// ── EOD Report ────────────────────────────────────────────────────
+const reportLog     = [];
+const reportClients = [];
+let   reportRunning = false;
+
+function pushReport(line) {
+  if (!line.trim()) return;
+  reportLog.push(line);
+  if (reportLog.length > 300) reportLog.shift();
+  const payload = JSON.stringify({ line });
+  reportClients.forEach((r) => r.write(`event: log\ndata: ${payload}\n\n`));
+}
+
+function broadcastReportStatus() {
+  const payload = JSON.stringify({ running: reportRunning });
+  reportClients.forEach((r) => r.write(`event: status\ndata: ${payload}\n\n`));
+}
+
+app.get('/api/report/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  reportLog.slice(-80).forEach((l) =>
+    res.write(`event: log\ndata: ${JSON.stringify({ line: l })}\n\n`)
+  );
+  res.write(`event: status\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
+  reportClients.push(res);
+  req.on('close', () => {
+    const i = reportClients.indexOf(res);
+    if (i >= 0) reportClients.splice(i, 1);
+  });
+});
+
+// Run generate-daily-report.js — JSON file is the permanent record
+app.post('/api/report/run', (_req, res) => {
+  if (reportRunning) return res.json({ ok: false, message: 'Already running' });
+  reportRunning = true;
+  broadcastReportStatus();
+  pushReport('[REPORT] Fetching today\'s trade prices from TradingView...');
+
+  const proc = spawn('node', ['scripts/generate-daily-report.js'], { cwd: ROOT });
+  proc.stdout.on('data', (d) =>
+    d.toString().split('\n').forEach((l) => l.trim() && pushReport(l))
+  );
+  proc.stderr.on('data', (d) =>
+    d.toString().split('\n').forEach((l) => l.trim() && pushReport(`[ERR] ${l.trim()}`))
+  );
+  proc.on('close', (code) => {
+    if (code === 0) {
+      pushReport('[REPORT] ✓ Done — opening report...');
+      // Signal the UI to open the reports page
+      reportClients.forEach((r) => r.write(`event: done\ndata: {}\n\n`));
+    } else {
+      pushReport(`[REPORT] ✗ Failed (exit ${code})`);
+    }
+    reportRunning = false;
+    broadcastReportStatus();
+  });
+
+  res.json({ ok: true });
+});
+
+// Return all daily-trades JSON files as one combined object keyed by date
+app.get('/api/report/data', (_req, res) => {
+  const logsDir = path.join(ROOT, 'logs');
+  let files;
+  try {
+    files = fs.readdirSync(logsDir).filter(f => f.match(/^daily-trades-\d{4}-\d{2}-\d{2}\.json$/));
+  } catch {
+    return res.json({});
+  }
+
+  const result = {};
+  for (const f of files) {
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(logsDir, f), 'utf8'));
+      result[data.date] = data;
+    } catch { /* skip corrupt files */ }
+  }
+  res.json(result);
+});
+
+// Save edits back to the correct daily-trades JSON file
+app.post('/api/report/save', (req, res) => {
+  const { date, trades } = req.body;
+  if (!date || !trades) return res.status(400).json({ ok: false, error: 'date and trades required' });
+
+  const filePath = path.join(ROOT, 'logs', `daily-trades-${date}.json`);
+  try {
+    const existing = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    existing.trades = trades;
+    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 const server = app.listen(PORT, () => {

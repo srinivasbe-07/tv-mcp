@@ -373,6 +373,28 @@
         min-height: 16px;
       }
 
+      /* EOD Report card */
+      .report-btns {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .report-btn {
+        flex: 1;
+        padding: 8px 6px;
+        border-radius: 7px;
+        border: none;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.15s;
+        letter-spacing: 0.3px;
+      }
+      .report-btn:hover   { opacity: 0.8; }
+      .report-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+      .btn-amber  { background: #451a03; color: #fbbf24; }
+      .btn-teal   { background: #042f2e; color: #2dd4bf; }
+
       /* ── Right Panel ── */
       .right {
         display: grid;
@@ -575,6 +597,19 @@
         <div class="card">
           <button class="save-btn" onclick="saveConfig()">SAVE ITM CONFIG</button>
           <div class="saved-msg" id="saved-msg"></div>
+        </div>
+
+        <!-- EOD Report -->
+        <div class="card">
+          <div class="sec">EOD Report</div>
+          <div class="report-btns">
+            <button class="report-btn btn-amber" id="btn-report" onclick="runReport()">
+              📊 Generate Report
+            </button>
+            <button class="report-btn btn-teal" onclick="window.open('/supertrend-reports','_blank')">
+              📋 View Reports
+            </button>
+          </div>
         </div>
 
         <!-- Position -->
@@ -944,6 +979,44 @@
           document.getElementById('s-spot-sub').textContent = `Last: ${tm[1]}`;
         }
       }
+
+      // ── EOD Report ────────────────────────────────────────────────
+      const btnReport = document.getElementById('btn-report');
+
+      function reportLogClass(line) {
+        if (line.includes('✓'))                          return 'l-ok';
+        if (line.includes('✗') || line.includes('[ERR]')) return 'l-err';
+        if (line.includes('[REPORT]'))                    return 'l-pos';
+        return 'l-info';
+      }
+
+      function appendReportLog(line) {
+        // Route report output into the main center log panel
+        const cls  = reportLogClass(line);
+        const row  = document.createElement('div');
+        row.className = 'log-row';
+        row.innerHTML = `<span class="log-t">REPORT</span><span class="${cls}">${escHtml(line)}</span>`;
+        logPanel.appendChild(row);
+        while (logPanel.children.length > 200) logPanel.removeChild(logPanel.firstChild);
+        logPanel.scrollTop = logPanel.scrollHeight;
+      }
+
+      function setReportRunning(running) {
+        btnReport.disabled    = running;
+        btnReport.textContent = running ? '⏳ Running…' : '📊 Generate Report';
+      }
+
+      async function runReport() {
+        const res  = await fetch('/api/report/run', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) appendReportLog(`[ERR] ${data.message || 'Failed to start'}`);
+      }
+
+      const esReport = new EventSource('/api/report/events');
+      esReport.addEventListener('log',    (e) => appendReportLog(JSON.parse(e.data).line));
+      esReport.addEventListener('status', (e) => setReportRunning(JSON.parse(e.data).running));
+      esReport.addEventListener('done',   ()  => window.open('/supertrend-reports', '_blank'));
+      esReport.onerror = () => {};
 
       const es = new EventSource('/api/st/events');
       es.addEventListener('log', (e) => appendLog(JSON.parse(e.data).line));
