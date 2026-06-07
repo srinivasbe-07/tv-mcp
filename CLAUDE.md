@@ -390,7 +390,7 @@ Then open **http://localhost:3000/supertrend-reports** (or click **View Reports*
 | Node            | `node scripts/generate-daily-report.js`                      |
 | Specific date   | `.\eod-report.ps1 2026-06-07`                                |
 
-The script fetches the option entry/exit prices from TradingView for each trade logged that day, computes clamped exit values, and saves to `logs/daily-trades-YYYY-MM-DD.json`. The reports page auto-opens when generation finishes.
+The script fetches the option entry/exit prices from TradingView for each trade logged that day, scrolls the chart to the target date to load historical bars, computes clamped exit values, auto-classifies the outcome (SL HIT / PINE SCRIPT SL), and saves to `logs/daily-trades-YYYY-MM-DD.json`. The reports page auto-opens when generation finishes.
 
 ---
 
@@ -406,18 +406,35 @@ Each trading day is one JSON file: `logs/daily-trades-YYYY-MM-DD.json`
     {
       "id": 1,
       "instrument": "NIFTY",
-      "entryTime": "09:32",
+      "side": "CE",
+      "entrySymbol": "NIFTY260609C23400",
+      "exitSymbol":  "NIFTY260609C23400",
+      "entryTime": "09:32:00",
+      "exitTime":  "10:15:00",
       "lots": 10,
       "lotSize": 65,
       "entryPrice": 123.50,
-      "exitSL": 108.50,
-      "exitNSL": 95.00,
-      "tgtPts": 31.00,
-      "charges": 150
+      "exitSL":   138.50,
+      "exitTgt":  154.50,
+      "exitNSL":  142.00,
+      "tgtPts":   31.00,
+      "maxReach": 35.25,
+      "notes":    "PINE SCRIPT SL"
     }
   ]
 }
 ```
+
+Fields auto-populated by the generator:
+
+| Field        | How set                                                                          |
+| ------------ | -------------------------------------------------------------------------------- |
+| `exitSL`     | `clamp(exitNSL, entry − SL, entry + TARGET_G)` — intraday bar scan for TARGET_G  |
+| `exitTgt`    | `entry + tgtPts`                                                                 |
+| `exitNSL`    | Raw exit price from TradingView at the alert-fire minute                         |
+| `tgtPts`     | `clamp(exitNSL − entry, −SL, TARGET_L)` — or TARGET_L if intraday bar hit it     |
+| `maxReach`   | Max `(bar.high − entry)` across all 1m bars during the trade (stored, not shown) |
+| `notes`      | `"SL HIT"` if loss ≥ SL pts; `"PINE SCRIPT SL"` if exit < entry but < SL        |
 
 Files are never overwritten by the generator — delete the file to re-import for a date.
 
@@ -439,23 +456,46 @@ Requires Python + openpyxl (`pip install openpyxl`). Skips dates that already ha
 
 - **Month tabs** at the top — one tab per calendar month with data
 - **Instrument filter** — All / NIFTY / SENSEX (shows/hides day blocks and recalculates summary)
+- **Date filter** — dropdown showing only dates that have trades; filters the month to one specific day
 - **Time ranges** — define one or more time windows; trades outside all windows are excluded from stats
+- **Notes filter** — checkboxes for SL HIT and PINE SCRIPT SL; Reach ≥ N input to find high-reach trades
 - **Monthly summary cards** — one card per P&L type showing totals for the filtered data
 - **Day accordions** — expand each trading day to see the trade table
 
 ---
 
-### Time Range Filter
+### Filters
+
+All filters combine with AND logic — a trade must satisfy every active filter to appear.
+
+#### Time Range Filter
 
 Multiple ranges can be active simultaneously. A trade is included if it falls within **any** defined range.
 
-| Action          | How                                              |
-| --------------- | ------------------------------------------------ |
-| Add a range     | Click **+ Add Range** → set From and To times    |
-| Remove a range  | Click **✕** on that range row                   |
-| Clear all       | Click **✕ Clear All** (appears when ≥1 range set) |
+| Action          | How                                                |
+| --------------- | -------------------------------------------------- |
+| Add a range     | Click **+ Add Range** → set From and To times      |
+| Remove a range  | Click **✕** on that range row                     |
+| Apply           | Click **▶ Apply** to update the table              |
+| Clear all       | Click **✕ Clear All**                              |
 
 Example: set 09:30–11:00 and 14:30–15:00 to see only opening and closing session trades.
+
+#### Notes Filter
+
+| Control            | What it filters                                              |
+| ------------------ | ------------------------------------------------------------ |
+| **SL HIT**         | Trades where loss ≥ SL threshold (15 pts NIFTY, 35 SENSEX)  |
+| **PINE SCRIPT SL** | Trades where exit < entry but loss < SL threshold            |
+| **REACH ≥ N**      | Trades where price reached N+ points above entry during trade|
+| **▶ Apply**        | Apply the current notes + reach filter                       |
+| **✕ Clear**        | Reset notes + reach filter                                   |
+
+`REACH ≥` works with both new data (numeric `maxReach` field) and old data (parses "price reach upto X points" from notes text).
+
+#### Date Filter
+
+Dropdown at the top of each month tab. Shows only dates that have at least one trade. Selecting a date hides all other days and recalculates the summary for that day only.
 
 ---
 
@@ -464,16 +504,19 @@ Example: set 09:30–11:00 and 14:30–15:00 to see only opening and closing ses
 | Column        | What it shows                                                     |
 | ------------- | ----------------------------------------------------------------- |
 | Time          | Entry time (HH:MM)                                                |
+| Symbol        | Option symbol at entry (e.g. `NIFTY260609C23400`)                 |
 | Lots          | Number of lots traded                                             |
 | Entry         | Option entry price                                                |
 | Exit w/SL     | Exit price clamped to SL/target range (see below)                 |
+| Exit w/Tgt    | `entry + tgtPts`                                                  |
 | Exit w/oSL    | Actual exit price, no clamping                                    |
 | Tgt Pts       | Points clamped to max target (see below)                          |
+| Notes         | Auto-classified outcome: SL HIT / PINE SCRIPT SL / blank          |
 | P&L w/SL ₹   | P&L using clamped exit — simulates disciplined SL + target        |
+| P&L w/Tgt ₹  | P&L based on Tgt Pts — simulates taking full target every time    |
 | P&L w/oSL ₹  | P&L using actual exit — what actually happened                    |
-| P&L Tgt ₹    | P&L based on Tgt Pts — simulates taking full target every time    |
 
-P&L = (exit − entry) × lots × lotSize. Green = profit, red = loss.
+P&L = (exit − entry) × lots × lotSize. Green = profit, red = loss. Trades sorted by entry time.
 
 ---
 
@@ -526,14 +569,24 @@ Each day's trade table has two footer rows:
 
 All trades can be edited directly on the page (no restart needed):
 
-| Action       | How                                                          |
-| ------------ | ------------------------------------------------------------ |
-| Edit a row   | Click **✏ Edit** → modify fields inline → click **✓ Save**   |
-| Delete a row | Click **✗** (red)                                            |
-| Add a row    | Hover between rows → click **+ Add Row Here**                |
-| Save to disk | Click **💾 Save Changes** (appears when unsaved edits exist) |
+| Action          | How                                                                      |
+| --------------- | ------------------------------------------------------------------------ |
+| Edit a row      | Click **✏ Edit** → modify fields inline → click **✓ Save**               |
+| Focus an input  | **Double-click** anywhere in the cell to focus the input inside it        |
+| Auto-calculate  | Change **Entry** or **Exit w/oSL** — all derived fields update instantly  |
+| Delete a row    | Click **✗** (red)                                                         |
+| Add a row       | Hover between rows → click **+ Add Row Here**                             |
 
-Edits are in memory until saved. The Save button persists changes to the JSON file on disk.
+**✓ Save writes immediately to the JSON file on disk** — no separate "Save Changes" step. Trades are re-sorted by entry time after every save. Delete also saves immediately.
+
+#### Auto-Calculation in Edit Mode
+
+When **Entry** price or **Exit w/oSL** changes, the following are recalculated in real-time:
+
+- **Exit w/SL** = `clamp(exitNSL, entry − SL, entry + TARGET_G)`
+- **Tgt Pts** = `clamp(exitNSL − entry, −SL, TARGET_L)`
+- **Exit w/Tgt** = `entry + tgtPts`
+- **P&L preview** (w/SL | w/Tgt | w/oSL) shown live in the P&L cell
 
 ---
 

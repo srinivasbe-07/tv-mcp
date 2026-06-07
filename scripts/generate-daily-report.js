@@ -70,18 +70,76 @@ const TARGET_L  = { NIFTY: 31,  SENSEX: 70  };   // max gain for tgtPts
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-function computeExitValues(instrument, entry, exitRaw) {
+// Compute Unix timestamps for 9:00 IST and 16:00 IST on a given date (IST = UTC+5:30)
+function dateToISTRange(dateStr) {
+  const baseS = Math.floor(new Date(`${dateStr}T00:00:00Z`).getTime() / 1000);
+  return {
+    from: baseS + 3.5 * 3600,   // 09:00 IST
+    to:   baseS + 10.5 * 3600,  // 16:00 IST
+  };
+}
+
+// Scroll the TradingView chart timescale to show the target date, so historical bars are loaded.
+async function scrollChartToDate(cdp, dateStr) {
+  const { from, to } = dateToISTRange(dateStr);
+  const result = await cdp.executeScript(`
+    (function() {
+      try {
+        const model = window.TradingViewApi
+          ?._activeChartWidgetWV?._value
+          ?._chartWidget?._modelWV?._value;
+        const ts = model?.timeScale?.();
+        if (ts?.setVisibleRange) {
+          ts.setVisibleRange({ from: ${from}, to: ${to} });
+          return 'ok-model';
+        }
+        const cw = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget;
+        if (cw?.setVisibleRange) {
+          cw.setVisibleRange({ from: ${from}, to: ${to} });
+          return 'ok-widget';
+        }
+        return 'no-api';
+      } catch(e) { return 'err: ' + e.message; }
+    })()
+  `);
+  return result?.result?.value ?? result;
+}
+
+// tradeBars: 1m bars between entry and exit, sorted oldest-first.
+// Scans each bar's high/low to check if SL or target was touched during the trade.
+// This correctly captures cases where price hit the target but Supertrend exit fired later at a lower price.
+function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
   if (entry === null || exitRaw === null) {
     return { exitSL: null, exitNSL: exitRaw, tgtPts: null };
   }
   const sl  = SL[instrument]  || 15;
   const tgG = TARGET_G[instrument] || 50;
   const tgL = TARGET_L[instrument] || 31;
-  const pts = exitRaw - entry;
+
+  // Exit w/SL: clamp actual exit to [entry-SL, entry+TARGET_G].
+  // No intraday SL scan — Supertrend exit is the source of truth for stops.
+  // Intraday scan only for TARGET_G: if price touched entry+50 during the trade, credit full target.
+  let exitSLPrice = clamp(exitRaw, entry - sl, entry + tgG);
+  for (const bar of tradeBars) {
+    if (bar.high >= entry + tgG) { exitSLPrice = entry + tgG; break; }
+  }
+
+  // Exit w/Tgt / TgtPts:
+  //   - If price touched entry+TARGET_L (31) intraday → tgtPts = TARGET_L (target achieved)
+  //   - Otherwise                                    → tgtPts = exitSL − entry (same discipline as exitSL)
+  // ExitTgt = entry + tgtPts  (mirrors the Excel formula: ExitTgt = Entry + TgtPts)
+  let tgtHit = false;
+  for (const bar of tradeBars) {
+    if (bar.high >= entry + tgL) { tgtHit = true; break; }
+  }
+  const tgtPts      = tgtHit ? tgL : parseFloat((exitSLPrice - entry).toFixed(2));
+  const exitTgtPrice = parseFloat((entry + tgtPts).toFixed(2));
+
   return {
-    exitSL:  parseFloat(clamp(exitRaw, entry - sl, entry + tgG).toFixed(2)),
+    exitSL:  parseFloat(exitSLPrice.toFixed(2)),
+    exitTgt: exitTgtPrice,
     exitNSL: parseFloat(exitRaw.toFixed(2)),
-    tgtPts:  parseFloat(clamp(pts, -sl, tgL).toFixed(2)),
+    tgtPts:  tgtPts,
   };
 }
 
@@ -165,12 +223,18 @@ function findPrice(bars, alertUnix) {
   return bestDiff <= 90 ? parseFloat(best.close) : null;
 }
 
-async function fetchBarsForSymbol(cdpChart, qualifiedSymbol) {
+async function fetchBarsForSymbol(cdp, cdpChart, qualifiedSymbol, targetDate) {
   await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
   await new Promise(r => setTimeout(r, 3000));
   await cdpChart.handle('chart_set_timeframe', { timeframe: '1' });
   await new Promise(r => setTimeout(r, 2000));
-  const result = await cdpChart.handle('data_get_ohlcv', { summary: false, limit: 400 });
+
+  // For past dates, scroll the chart to that date so TradingView loads historical bars.
+  const scrollResult = await scrollChartToDate(cdp, targetDate);
+  console.log(`  scroll to ${targetDate}: ${scrollResult}`);
+  await new Promise(r => setTimeout(r, 4000));  // wait for TV to fetch historical data
+
+  const result = await cdpChart.handle('data_get_ohlcv', { summary: false, limit: 2000 });
   const data   = JSON.parse(result?.content?.[0]?.text || '{}');
   return data.bars || [];
 }
@@ -222,7 +286,7 @@ async function main() {
     const instrument = sym.startsWith('BSX') ? 'SENSEX' : 'NIFTY';
     const qualified  = `${EXCHANGE[instrument]}:${sym}`;
     console.log(`\nFetching 1m bars for ${qualified}...`);
-    barsCache[sym] = await fetchBarsForSymbol(cdpChart, qualified);
+    barsCache[sym] = await fetchBarsForSymbol(cdp, cdpChart, qualified, today);
     console.log(`  ${barsCache[sym].length} bars loaded`);
   }
 
@@ -233,13 +297,44 @@ async function main() {
     const exitUnix  = istTimeToUnix(t.exitTime,  today);
     t.entryPrice = findPrice(barsCache[t.entrySymbol], entryUnix);
     t.exitPrice  = findPrice(barsCache[t.exitSymbol],  exitUnix);
-    const derived = computeExitValues(t.instrument, t.entryPrice, t.exitPrice);
+
+    // Bars between entry and exit (inclusive), sorted oldest-first — for intraday SL/target scan
+    const tradeBars = (barsCache[t.entrySymbol] || [])
+      .filter(b => b.time >= entryUnix - 60 && b.time <= exitUnix)
+      .sort((a, b) => a.time - b.time);
+
+    const derived = computeExitValues(t.instrument, t.entryPrice, t.exitPrice, tradeBars);
     t.exitSL  = derived.exitSL;
+    t.exitTgt = derived.exitTgt;
     t.exitNSL = derived.exitNSL;
     t.tgtPts  = derived.tgtPts;
+
+    // Max intraday points above entry during the trade (how far price moved favorably)
+    t.maxReach = (tradeBars.length > 0 && t.entryPrice !== null)
+      ? parseFloat(Math.max(0, ...tradeBars.map(b => parseFloat(b.high) - t.entryPrice)).toFixed(2))
+      : 0;
+
+    // Auto-classify outcome for notes:
+    //   SL HIT          → loss >= full SL threshold
+    //   price reach upto X points → maxReach >= 20 pts (price moved favourably before exit)
+    //   PINE SCRIPT SL  → small loss, reach < 20 (pine exited without notable move)
+    const REACH_THRESHOLD = 20;
+    let autoNotes = '';
+    if (t.entryPrice !== null && t.exitPrice !== null) {
+      const slPts = SL[t.instrument] || 15;
+      if (t.entryPrice - t.exitPrice >= slPts) {
+        autoNotes = 'SL HIT';
+      } else if (t.maxReach >= REACH_THRESHOLD) {
+        autoNotes = `price reach upto ${t.maxReach} points`;
+      } else if (t.exitPrice < t.entryPrice) {
+        autoNotes = 'PINE SCRIPT SL';
+      }
+    }
+    t.notes = autoNotes;
+
     const ep = t.entryPrice?.toFixed(2) ?? 'NOT FOUND';
     const xp = t.exitPrice?.toFixed(2)  ?? 'NOT FOUND';
-    console.log(`  ${t.side} ${t.entrySymbol}  entry=${ep}  exit=${xp}  exitSL=${t.exitSL ?? 'N/A'}  tgtPts=${t.tgtPts ?? 'N/A'}`);
+    console.log(`  ${t.side} ${t.entrySymbol}  entry=${ep}  exit=${xp}  exitSL=${t.exitSL ?? 'N/A'}  tgtPts=${t.tgtPts ?? 'N/A'}  reach=${t.maxReach}  notes=${t.notes||'—'}`);
   }
 
   await cdp.disconnect();
@@ -254,4 +349,17 @@ async function main() {
   if (missing > 0) console.warn(`  ${missing} trade(s) have missing prices — check TradingView chart data`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+// Only run when executed directly (not when imported for tests)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch(e => { console.error(e); process.exit(1); });
+}
+
+export {
+  dateToISTRange,
+  istTimeToUnix,
+  findPrice,
+  computeExitValues,
+  parseRaw,
+  classify,
+  parseTrades,
+};

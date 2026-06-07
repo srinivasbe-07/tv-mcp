@@ -602,6 +602,13 @@
         <!-- EOD Report -->
         <div class="card">
           <div class="sec">EOD Report</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <label style="font-size:11px;color:#6b7280;font-weight:600;">Date</label>
+            <input type="date" id="report-date"
+              style="background:#0f1117;border:1px solid #2a2d3a;color:#d1d5db;border-radius:5px;padding:3px 8px;font-size:11px;"
+              title="Leave blank for today">
+            <span style="font-size:10px;color:#4b5563;">(blank = today)</span>
+          </div>
           <div class="report-btns">
             <button class="report-btn btn-amber" id="btn-report" onclick="runReport()">
               📊 Generate Report
@@ -1007,7 +1014,12 @@
       }
 
       async function runReport() {
-        const res  = await fetch('/api/report/run', { method: 'POST' });
+        const date = document.getElementById('report-date')?.value || '';
+        const res  = await fetch('/api/report/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date }),
+        });
         const data = await res.json();
         if (!data.ok) appendReportLog(`[ERR] ${data.message || 'Failed to start'}`);
       }

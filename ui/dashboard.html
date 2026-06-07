@@ -1061,7 +1061,9 @@
 
       // ── Pattern SSE ───────────────────────────────────────────────────
       const patLogBody = document.getElementById('pat-log-body');
+      let patESConnected = false;
       const patES = new EventSource('/api/events');
+      patES.addEventListener('open', () => { patESConnected = true; });
       patES.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
       patES.addEventListener('config', (e) => applyPatternConfig(JSON.parse(e.data)));
       patES.addEventListener('log', (e) => {
@@ -1069,7 +1071,7 @@
         appendLog(patLogBody, line);
         parsePatternLine(line);
       });
-      patES.onerror = () => {};
+      patES.onerror = () => { patESConnected = false; };
 
       function parsePatternLine(line) {
         // Day levels: R=74223  S=73126
@@ -1153,6 +1155,9 @@
         const line = JSON.parse(e.data).line;
         if (stMonRunning || line.startsWith('[TV]') || line.startsWith('[UI]'))
           appendLog(stLogBody, line);
+        // Mirror TV/UI startup lines to the left panel when patES is not connected
+        if ((line.startsWith('[TV]') || line.startsWith('[UI]')) && !patESConnected)
+          appendLog(patLogBody, line);
         parseSTLine(line);
       });
       stES.onerror = () => {};

@@ -269,6 +269,53 @@
     }
     .time-clear-all:hover { border-color: #f87171; color: #f87171; }
 
+    /* note filter chips */
+    .note-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: 1px solid #2a2d3a;
+      background: #13151f;
+      font-size: 10px;
+      font-weight: 700;
+      color: #6b7280;
+      cursor: pointer;
+      user-select: none;
+    }
+    .note-chip input[type=checkbox] { accent-color: #a78bfa; cursor: pointer; }
+    .note-chip.active { border-color: #6d28d9; background: #1e1b4b; color: #a78bfa; }
+    .reach-input {
+      background: #13151f;
+      border: 1px solid #2a2d3a;
+      color: #d1d5db;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      width: 64px;
+      outline: none;
+    }
+    .reach-input:focus { border-color: #6d28d9; }
+    .date-filter-select {
+      background: #13151f;
+      border: 1px solid #2a2d3a;
+      color: #d1d5db;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+    }
+    .date-filter-select:focus { border-color: #6d28d9; }
+    .date-filter-select option { background: #1a1d27; }
+    .reach-label { font-size: 10px; color: #6b7280; font-weight: 700; }
+    .notes-cell { font-size: 10px; color: #9ca3af; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .notes-cell.sl-hit    { color: #f87171; }
+    .notes-cell.pine-sl   { color: #fb923c; }
+
     /* action buttons */
     .act-btn {
       background: none;
@@ -302,6 +349,17 @@
     }
     .edit-input.wide { width: 120px; }
     .edit-input.sm   { width: 52px; }
+    .edit-input.reach-pts { width: 52px; margin-left: 4px; text-align: left; }
+    .edit-select {
+      background: #0f1117;
+      border: 1px solid #3b3f55;
+      color: #e5e7eb;
+      border-radius: 4px;
+      padding: 3px 4px;
+      font-size: 11px;
+      cursor: pointer;
+      max-width: 130px;
+    }
 
     /* add row button between rows */
     .add-row-tr { opacity: 0; transition: opacity 0.15s; }
@@ -389,12 +447,7 @@
 <div id="month-bar" class="month-bar"></div>
 <div id="panels-container"></div>
 
-<div id="save-bar">
-  <span class="save-bar-msg">&#x26A0; Unsaved changes</span>
-  <span class="save-bar-spacer"></span>
-  <button class="save-bar-btn secondary" onclick="discardChanges()">Discard</button>
-  <button class="save-bar-btn primary"   onclick="saveChanges()">&#x1F4BE; Save to Record</button>
-</div>
+<div id="save-bar" style="display:none"></div>
 
 <script>
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -406,11 +459,13 @@ const INITIAL_CAPITAL = 200000;  // ₹2,00,000
 
 // ── State ────────────────────────────────────────────────────────────────────
 let allData      = {};   // { 'YYYY-MM-DD': { date, instrument, trades: [...] } }
-let dirtyDays    = new Set();
 let nextId       = 1000;
 let activeMonth  = null;
 let monthFilters     = {};   // { 'YYYY-MM': 'ALL' | 'NIFTY' | 'SENSEX' }
 let monthTimeFilters = {};   // { 'YYYY-MM': [{from: 'HH:MM', to: 'HH:MM'}, ...] }
+let monthNoteFilters = {};   // { 'YYYY-MM': { slHit: bool, pineSL: bool } }
+let monthReachFilter = {};   // { 'YYYY-MM': number | null }
+let monthDateFilter  = {};   // { 'YYYY-MM': 'YYYY-MM-DD' | null }
 
 // ── Load data ─────────────────────────────────────────────────────────────────
 async function loadData() {
@@ -487,13 +542,39 @@ function buildMonthHTML(monthKey, dates) {
           <button class="filter-btn active"  id="fb-${monthKey}-ALL"    onclick="applyFilter('${monthKey}','ALL')">All</button>
           <button class="filter-btn nifty"   id="fb-${monthKey}-NIFTY"  onclick="applyFilter('${monthKey}','NIFTY')">NIFTY</button>
           <button class="filter-btn sensex"  id="fb-${monthKey}-SENSEX" onclick="applyFilter('${monthKey}','SENSEX')">SENSEX</button>
+          <span style="font-size:10px;color:#6b7280;font-weight:700;margin-left:12px;">DATE</span>
+          <select class="date-filter-select" id="df-${monthKey}" onchange="applyDateFilter('${monthKey}', this.value)">
+            <option value="">All dates</option>
+            ${dates.filter(d => (allData[d]?.trades||[]).length > 0).map(d => {
+              const parts = d.split('-');
+              const dateObj = new Date(d + 'T00:00:00');
+              const dd  = String(dateObj.getDate()).padStart(2,'0');
+              const mon = MONTH_NAMES[dateObj.getMonth()];
+              return `<option value="${d}">${dd} ${mon}</option>`;
+            }).join('')}
+          </select>
         </div>
         <div class="time-section">
           <span class="time-section-label">TIME RANGES</span>
           <div class="time-ranges" id="tf-ranges-${monthKey}"></div>
           <button class="add-range-btn" onclick="addTimeRange('${monthKey}')">+ Add Range</button>
+          <button class="add-range-btn" id="tf-apply-${monthKey}" style="display:none"
+                  onclick="applyTimeRanges('${monthKey}')">&#x25BA; Apply</button>
           <button class="time-clear-all" id="tf-clear-${monthKey}" style="display:none"
-                  onclick="clearAllRanges('${monthKey}')">✕ Clear All</button>
+                  onclick="clearAllRanges('${monthKey}')">&#x2715; Clear All</button>
+        </div>
+        <div class="time-section">
+          <span class="time-section-label">NOTES</span>
+          <label class="note-chip" id="nc-${monthKey}-sl">
+            <input type="checkbox" id="nc-cb-${monthKey}-sl"> SL HIT
+          </label>
+          <label class="note-chip" id="nc-${monthKey}-pine">
+            <input type="checkbox" id="nc-cb-${monthKey}-pine"> PINE SCRIPT SL
+          </label>
+          <span class="reach-label" style="margin-left:8px;">REACH &ge;</span>
+          <input type="number" class="reach-input" id="rf-${monthKey}" min="0" step="1" placeholder="pts">
+          <button class="add-range-btn" onclick="applyNotesFilter('${monthKey}')">&#x25BA; Apply</button>
+          <button class="time-clear-all" id="nf-clear-${monthKey}" onclick="clearNotesFilter('${monthKey}')">&#x2715; Clear</button>
         </div>
       </div>
       <button class="dl-btn" onclick="downloadExcel('${monthKey}')">&#x2B07; Download Excel</button>
@@ -508,9 +589,14 @@ function buildMonthHTML(monthKey, dates) {
 function renderSummary(monthKey) {
   const filter = monthFilters[monthKey] || 'ALL';
   const months = groupByMonth();
+  const selectedDate = monthDateFilter[monthKey] || null;
   const dates  = (months[monthKey] || [])
     .map(d => allData[d]).filter(Boolean)
-    .filter(d => filter === 'ALL' || (d.instrument || '').toUpperCase() === filter);
+    .filter(d => {
+      const instrOk = filter === 'ALL' || (d.instrument || '').toUpperCase() === filter;
+      const dateOk  = !selectedDate || d.date === selectedDate;
+      return instrOk && dateOk;
+    });
   const el     = document.getElementById(`summary-${monthKey}`);
   if (!el) return;
 
@@ -524,12 +610,11 @@ function renderSummary(monthKey) {
   let totalTrades = 0;
   let winSL = 0, winNSL = 0, winTgt = 0;
 
-  const ranges = monthTimeFilters[monthKey] || [];
   const dayDates = [];
   for (const day of dates.sort((a,b) => a.date < b.date ? -1 : 1)) {
     let dSL = 0, dNSL = 0, dTgt = 0;
     const filteredTrades = (day.trades || []).filter(t =>
-      tradeInAnyRange(t.entryTime || t.time, ranges)
+      tradePassesFilters(t, monthKey)
     );
     for (const t of filteredTrades) {
       const tq = qty(day.instrument, t.lots);
@@ -620,7 +705,7 @@ function buildDayBlock(day) {
   const dateLabel = `${dd} ${mon} ${dateObj.getFullYear()} — ${weekDay}`;
 
   return `
-    <div class="day-block" id="dayblock-${dayKey}" data-instrument="${(day.instrument||'').toUpperCase()}">
+    <div class="day-block" id="dayblock-${dayKey}" data-instrument="${(day.instrument||'').toUpperCase()}" data-date="${day.date}">
       <div class="day-header open" onclick="toggleDay(this)">
         <span class="day-chevron">&#x25BA;</span>
         <span class="day-date">${dateLabel}</span>
@@ -633,14 +718,17 @@ function buildDayBlock(day) {
           <thead>
             <tr>
               <th>Time</th>
+              <th style="text-align:left">Symbol</th>
               <th>Lots</th>
               <th>Entry</th>
               <th>Exit w/SL</th>
+              <th>Exit w/Tgt</th>
               <th>Exit w/oSL</th>
               <th>Tgt Pts</th>
+              <th style="text-align:left">Notes</th>
               <th>P&amp;L w/SL &#x20B9;</th>
+              <th>P&amp;L w/Tgt &#x20B9;</th>
               <th>P&amp;L w/oSL &#x20B9;</th>
-              <th>P&amp;L Tgt &#x20B9;</th>
               <th style="text-align:center">Actions</th>
             </tr>
           </thead>
@@ -656,12 +744,15 @@ function renderDay(dateStr) {
   const dayKey = dateStr.replace(/-/g, '');
   const tbody  = document.getElementById(`tbody-${dayKey}`);
   if (!tbody || !day) return;
+  // Keep trades sorted by entry time at all times
+  (day.trades || []).sort((a, b) =>
+    (a.entryTime || a.time || '').localeCompare(b.entryTime || b.time || '')
+  );
   tbody.innerHTML = '';
 
   const monthKey = dateStr.slice(0, 7);
-  const ranges   = monthTimeFilters[monthKey] || [];
   const trades   = (day.trades || []).filter(t =>
-    tradeInAnyRange(t.entryTime || t.time, ranges)
+    tradePassesFilters(t, monthKey)
   );
 
   let totSL = 0, totNSL = 0, totTgt = 0;
@@ -670,16 +761,16 @@ function renderDay(dateStr) {
   trades.forEach((t, idx) => {
     const tq   = qty(day.instrument, t.lots);
     const pSL  = t.exitSL  !== null && t.entryPrice !== null ? Math.round((t.exitSL  - t.entryPrice) * tq) : null;
-    const pNSL = t.exitNSL !== null && t.entryPrice !== null ? Math.round((t.exitNSL - t.entryPrice) * tq) : null;
     const pTgt = t.tgtPts  !== null ? Math.round(t.tgtPts * tq) : null;
+    const pNSL = t.exitNSL !== null && t.entryPrice !== null ? Math.round((t.exitNSL - t.entryPrice) * tq) : null;
     if (pSL  !== null) { totSL  += pSL;  seriesSL.push(pSL);   }
-    if (pNSL !== null) { totNSL += pNSL; seriesNSL.push(pNSL); }
     if (pTgt !== null) { totTgt += pTgt; seriesTgt.push(pTgt); }
+    if (pNSL !== null) { totNSL += pNSL; seriesNSL.push(pNSL); }
 
     // Add-row button before this row
     const addTr = document.createElement('tr');
     addTr.className = 'add-row-tr';
-    addTr.innerHTML = `<td colspan="10" style="position:relative;height:6px;">
+    addTr.innerHTML = `<td colspan="13" style="position:relative;height:6px;">
       <button class="add-row-btn" onclick="insertRow('${dateStr}', ${idx})">+ Add Row Here</button>
     </td>`;
     tbody.appendChild(addTr);
@@ -688,14 +779,17 @@ function renderDay(dateStr) {
     tr.dataset.id = t.id;
     tr.innerHTML = `
       <td>${(t.entryTime||t.time||'').slice(0,5)}</td>
+      <td class="sym-text">${t.entrySymbol||'—'}</td>
       <td>${t.lots}</td>
       <td>${fmt(t.entryPrice)}</td>
       <td>${fmt(t.exitSL)}</td>
+      <td>${fmt(t.exitTgt ?? null)}</td>
       <td>${fmt(t.exitNSL)}</td>
       <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}</td>
+      <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes||''}">${t.notes||'—'}</td>
       <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}</td>
-      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}</td>
       <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}</td>
+      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}</td>
       <td style="text-align:center">
         <button class="act-btn" onclick="editRow('${dateStr}', '${t.id}', this)">&#x270F; Edit</button>
         <button class="act-btn del" onclick="deleteRow('${dateStr}', '${t.id}')">&#x2715;</button>
@@ -706,43 +800,43 @@ function renderDay(dateStr) {
   // Add-row at end
   const addTrEnd = document.createElement('tr');
   addTrEnd.className = 'add-row-tr';
-  addTrEnd.innerHTML = `<td colspan="10" style="position:relative;height:6px;">
+  addTrEnd.innerHTML = `<td colspan="13" style="position:relative;height:6px;">
     <button class="add-row-btn" onclick="insertRow('${dateStr}', ${trades.length})">+ Add Row Here</button>
   </td>`;
   tbody.appendChild(addTrEnd);
 
   // Totals + draw stats rows
   const { maxDown: dSL,  maxUp: uSL  } = calcDayPeaks(seriesSL);
-  const { maxDown: dNSL, maxUp: uNSL } = calcDayPeaks(seriesNSL);
   const { maxDown: dTgt, maxUp: uTgt } = calcDayPeaks(seriesTgt);
+  const { maxDown: dNSL, maxUp: uNSL } = calcDayPeaks(seriesNSL);
 
   const totTr = document.createElement('tr');
   totTr.className = 'total-row';
   totTr.innerHTML = `
-    <td colspan="6">Day Total</td>
+    <td colspan="9">Day Total</td>
     <td class="${pnlClass(totSL)}">${fmtRs(totSL)}</td>
-    <td class="${pnlClass(totNSL)}">${fmtRs(totNSL)}</td>
     <td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}</td>
+    <td class="${pnlClass(totNSL)}">${fmtRs(totNSL)}</td>
     <td></td>`;
   tbody.appendChild(totTr);
 
   const ddTr = document.createElement('tr');
   ddTr.className = 'total-row';
   ddTr.innerHTML = `
-    <td colspan="6" style="color:#fb923c;">Max Drawdown</td>
+    <td colspan="9" style="color:#fb923c;">Max Drawdown</td>
     <td class="c-orange">${dSL  < 0 ? fmtRs(dSL)  : '—'}</td>
-    <td class="c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td>
     <td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td>
+    <td class="c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td>
     <td></td>`;
   tbody.appendChild(ddTr);
 
   const duTr = document.createElement('tr');
   duTr.className = 'total-row';
   duTr.innerHTML = `
-    <td colspan="6" style="color:#4ade80;">Max Run-Up</td>
+    <td colspan="9" style="color:#4ade80;">Max Run-Up</td>
     <td class="c-green">${uSL  > 0 ? fmtRs(uSL)  : '—'}</td>
-    <td class="c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td>
     <td class="c-green">${uTgt > 0 ? fmtRs(uTgt) : '—'}</td>
+    <td class="c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td>
     <td></td>`;
   tbody.appendChild(duTr);
 
@@ -769,34 +863,120 @@ function editRow(dateStr, id, btn) {
   const day = allData[dateStr];
   const t   = (day.trades||[]).find(x => String(x.id) === String(id));
   if (!t) return;
+  const instr = day.instrument || t.instrument || 'NIFTY';
   const tr = btn.closest('tr');
+  tr.dataset.editInstr = instr;
+  const fc = (id) => `ondblclick="document.getElementById('${id}')?.focus()"`;
+
+  // Parse existing notes into select value + optional reach pts
+  const existingNotes = t.notes || '';
+  const nU = existingNotes.toUpperCase();
+  const notSel = nU.includes('PINE SCRIPT') ? 'PINE SCRIPT SL'
+               : nU.includes('SL HIT')      ? 'SL HIT'
+               : nU.includes('REACH')        ? 'reach'
+               : '';
+  const notPts = existingNotes.match(/(\d+(?:\.\d+)?)/)?.[1] || '';
+  const reachVisible = notSel === 'reach' ? '' : 'none';
+
+  const sel = (v) => notSel === v ? 'selected' : '';
+
   tr.innerHTML = `
-    <td><input class="edit-input sm"   id="e-time"   value="${(t.entryTime||t.time||'').slice(0,5)}"></td>
-    <td><input class="edit-input sm"   id="e-lots"   value="${t.lots}"   type="number"></td>
-    <td><input class="edit-input"      id="e-entry"  value="${t.entryPrice??''}"  type="number" step="0.05"></td>
-    <td><input class="edit-input"      id="e-exitSL" value="${t.exitSL??''}" type="number" step="0.05"></td>
-    <td><input class="edit-input"      id="e-exitNSL"value="${t.exitNSL??''}"type="number" step="0.05"></td>
-    <td><input class="edit-input"      id="e-tgt"    value="${t.tgtPts??''}" type="number" step="0.05"></td>
-    <td colspan="3" style="text-align:center;color:#6b7280;font-size:11px;">auto-calculated</td>
+    <td ${fc('e-time')}  ><input class="edit-input sm"   id="e-time"    value="${(t.entryTime||t.time||'').slice(0,5)}"></td>
+    <td ${fc('e-sym')}   ><input class="edit-input wide" id="e-sym"     value="${t.entrySymbol||''}"></td>
+    <td ${fc('e-lots')}  ><input class="edit-input sm"   id="e-lots"    value="${t.lots}"  type="number" oninput="recalcEditRow()"></td>
+    <td ${fc('e-entry')} ><input class="edit-input"      id="e-entry"   value="${t.entryPrice??''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-exitSL')}><input class="edit-input"      id="e-exitSL"  value="${t.exitSL??''}"  type="number" step="0.05"></td>
+    <td ${fc('e-exitTgt')}><input class="edit-input"     id="e-exitTgt" value="${t.exitTgt??''}" type="number" step="0.05"></td>
+    <td ${fc('e-exitNSL')}><input class="edit-input"     id="e-exitNSL" value="${t.exitNSL??''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-tgt')}   ><input class="edit-input"      id="e-tgt"     value="${t.tgtPts??''}"  type="number" step="0.05"></td>
+    <td>
+      <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
+        <option value="" ${sel('')}>—</option>
+        <option value="SL HIT" ${sel('SL HIT')}>SL HIT</option>
+        <option value="PINE SCRIPT SL" ${sel('PINE SCRIPT SL')}>PINE SCRIPT SL</option>
+        <option value="reach" ${sel('reach')}>price reach upto</option>
+      </select>
+      <input type="number" id="e-notes-pts" class="edit-input reach-pts"
+        min="0" step="0.5" placeholder="pts" value="${notPts}"
+        style="display:${reachVisible}" oninput="applyNotesType()">
+      <input type="hidden" id="e-notes" value="${existingNotes}">
+    </td>
+    <td colspan="3" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
     <td style="text-align:center">
       <button class="act-btn save"   onclick="saveRow('${dateStr}','${id}',this)">&#x2713; Save</button>
       <button class="act-btn cancel" onclick="renderDay('${dateStr}')">&#x2717;</button>
     </td>`;
   tr.querySelector('#e-entry').focus();
+  recalcEditRow();
 }
 
-function saveRow(dateStr, id, btn) {
+function applyNotesType() {
+  const sel    = document.getElementById('e-notes-sel');
+  const ptsEl  = document.getElementById('e-notes-pts');
+  const hidden = document.getElementById('e-notes');
+  if (!sel) return;
+  if (sel.value === 'reach') {
+    ptsEl.style.display = '';
+    hidden.value = ptsEl.value ? `price reach upto ${ptsEl.value} points` : '';
+  } else {
+    ptsEl.style.display = 'none';
+    hidden.value = sel.value;
+  }
+}
+
+function recalcEditRow() {
+  const entry   = parseFloat(document.getElementById('e-entry')?.value);
+  const exitNSL = parseFloat(document.getElementById('e-exitNSL')?.value);
+  const lots    = parseInt(document.getElementById('e-lots')?.value);
+  if (isNaN(entry) || isNaN(exitNSL)) return;
+
+  const tr    = document.getElementById('e-entry')?.closest('tr');
+  const instr = tr?.dataset?.editInstr || 'NIFTY';
+  const slPts = SL_PTS[instr]  || 15;
+  const tgG   = TGT_G[instr]   || 50;
+  const tgL   = TGT_L[instr]   || 31;
+  const lotSz = LOT_SIZES[instr] || 65;
+  const nLots = isNaN(lots) ? 10 : lots;
+
+  const exitSL  = parseFloat(Math.max(entry - slPts, Math.min(entry + tgG, exitNSL)).toFixed(2));
+  const tgtPts  = parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2));
+  const exitTgt = parseFloat((entry + tgtPts).toFixed(2));
+  const pSL     = Math.round((exitSL  - entry) * nLots * lotSz);
+  const pTgt    = Math.round((exitTgt - entry) * nLots * lotSz);
+  const pNSL    = Math.round((exitNSL - entry) * nLots * lotSz);
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('e-exitSL',  exitSL);
+  set('e-exitTgt', exitTgt);
+  set('e-tgt',     tgtPts);
+
+  const pnl = document.getElementById('e-pnl-cell');
+  if (pnl) {
+    const c = v => v >= 0 ? 'c-green' : 'c-red';
+    pnl.innerHTML =
+      `<span class="${c(pSL)}">${fmtRs(pSL)}</span>` +
+      `<span style="color:#374151"> | </span>` +
+      `<span class="${c(pTgt)}">${fmtRs(pTgt)}</span>` +
+      `<span style="color:#374151"> | </span>` +
+      `<span class="${c(pNSL)}">${fmtRs(pNSL)}</span>`;
+  }
+}
+
+async function saveRow(dateStr, id, btn) {
   const day = allData[dateStr];
   const t   = (day.trades||[]).find(x => String(x.id) === String(id));
   if (!t) return;
   t.entryTime   = document.getElementById('e-time').value.trim();
   t.time        = t.entryTime;
+  t.entrySymbol = document.getElementById('e-sym').value.trim();
   t.lots        = parseInt(document.getElementById('e-lots').value) || t.lots;
-  t.entryPrice  = parseFloat(document.getElementById('e-entry').value);
-  t.exitSL      = parseFloat(document.getElementById('e-exitSL').value);
-  t.exitNSL     = parseFloat(document.getElementById('e-exitNSL').value);
-  t.tgtPts      = parseFloat(document.getElementById('e-tgt').value);
-  markDirty(dateStr);
+  t.entryPrice  = parseFloat(document.getElementById('e-entry').value) || null;
+  t.exitSL      = parseFloat(document.getElementById('e-exitSL').value) || null;
+  t.exitTgt     = parseFloat(document.getElementById('e-exitTgt').value) || null;
+  t.exitNSL     = parseFloat(document.getElementById('e-exitNSL').value) || null;
+  t.tgtPts      = parseFloat(document.getElementById('e-tgt').value) || null;
+  t.notes       = document.getElementById('e-notes').value.trim();
+  await persistDay(dateStr);
   renderDay(dateStr);
   renderSummary(activeMonth);
 }
@@ -808,56 +988,40 @@ function insertRow(dateStr, atIndex) {
     id: nextId++, side: 'CE',
     entrySymbol: '', symbol: '', entryTime: '', time: '',
     lots: day.instrument === 'SENSEX' ? 15 : 10,
-    entryPrice: 0, exitPrice: 0, exitSL: 0, exitNSL: 0, tgtPts: 0
+    entryPrice: null, exitPrice: null, exitSL: null, exitNSL: null, tgtPts: null, notes: ''
   };
-  day.trades.splice(atIndex, 0, newTrade);
+  day.trades.push(newTrade);
   renderDay(dateStr);
-  markDirty(dateStr);
 
   const dayKey = dateStr.replace(/-/g,'');
   const tbody  = document.getElementById(`tbody-${dayKey}`);
+  // Find the row for the newly inserted trade by id
   const allTrs = [...tbody.querySelectorAll('tr:not(.add-row-tr):not(.total-row)')];
-  const newTr  = allTrs[atIndex];
+  const newTr  = allTrs[allTrs.length - 1];
   if (newTr) newTr.querySelector('.act-btn')?.click();
 }
 
-function deleteRow(dateStr, id) {
+async function deleteRow(dateStr, id) {
   const day = allData[dateStr];
   day.trades = day.trades.filter(t => String(t.id) !== String(id));
-  markDirty(dateStr);
+  await persistDay(dateStr);
   renderDay(dateStr);
   renderSummary(activeMonth);
 }
 
-// ── Dirty tracking ────────────────────────────────────────────────────────────
-function markDirty(dateStr) {
-  dirtyDays.add(dateStr);
-  document.getElementById('save-bar').style.display = 'flex';
-}
-
-function discardChanges() { location.reload(); }
-
-async function saveChanges() {
-  const btn = document.querySelector('#save-bar .save-bar-btn.primary');
-  btn.innerHTML = 'Saving...';
-  btn.disabled = true;
-  let ok = true;
-  for (const date of dirtyDays) {
-    try {
-      const r = await fetch('/api/report/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, trades: allData[date].trades })
-      });
-      if (!r.ok) { ok = false; showToast(`Save failed for ${date}`, true); }
-    } catch (e) { ok = false; showToast(e.message, true); }
-  }
-  btn.innerHTML = '💾 Save to Record';
-  btn.disabled = false;
-  if (ok) {
-    dirtyDays.clear();
-    document.getElementById('save-bar').style.display = 'none';
-    showToast('Saved to permanent record');
+// ── Persist to disk ───────────────────────────────────────────────────────────
+async function persistDay(dateStr) {
+  try {
+    const r = await fetch('/api/report/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: dateStr, trades: allData[dateStr].trades })
+    });
+    const j = await r.json();
+    if (j.ok) showToast('Saved');
+    else showToast('Save failed: ' + (j.error || 'unknown'), true);
+  } catch (e) {
+    showToast('Save error: ' + e.message, true);
   }
 }
 
@@ -1058,28 +1222,59 @@ function tradeInAnyRange(entryTime, ranges) {
   });
 }
 
+// Extract reach value: use maxReach field if present, else parse from notes text
+// e.g. "price reach upto 100 points" → 100
+function getEffectiveMaxReach(t) {
+  if (t.maxReach !== undefined && t.maxReach !== null) return t.maxReach;
+  const m = (t.notes || '').match(/reach\s+(?:up\s*to\s+)?(\d+(?:\.\d+)?)/i);
+  return m ? parseFloat(m[1]) : 0;
+}
+
+// Combined filter: time ranges AND notes type AND reach >= X
+function tradePassesFilters(t, monthKey) {
+  const ranges = monthTimeFilters[monthKey] || [];
+  if (!tradeInAnyRange(t.entryTime || t.time, ranges)) return false;
+
+  const nf = monthNoteFilters[monthKey] || {};
+  const anyNoteChecked = nf.slHit || nf.pineSL;
+  if (anyNoteChecked) {
+    const n = (t.notes || '').toUpperCase();
+    // Use includes() to match both "SL Hit" and "SL HIT", "Pine Script SL Hit" etc.
+    const pass = (nf.slHit  && n.includes('SL HIT') && !n.includes('PINE SCRIPT')) ||
+                 (nf.pineSL && n.includes('PINE SCRIPT'));
+    if (!pass) return false;
+  }
+
+  const minReach = monthReachFilter[monthKey];
+  if (minReach !== null && minReach !== undefined && minReach > 0) {
+    if (getEffectiveMaxReach(t) < minReach) return false;
+  }
+
+  return true;
+}
+
 function addTimeRange(monthKey) {
   if (!monthTimeFilters[monthKey]) monthTimeFilters[monthKey] = [];
   monthTimeFilters[monthKey].push({ from: '', to: '' });
   renderTimeRanges(monthKey);
-  // re-render days (new empty range = no extra filter yet, but refreshes UI)
-  renderMonthDays(monthKey);
 }
 
 function removeTimeRange(monthKey, idx) {
   if (!monthTimeFilters[monthKey]) return;
   monthTimeFilters[monthKey].splice(idx, 1);
   renderTimeRanges(monthKey);
-  renderMonthDays(monthKey);
 }
 
 function updateTimeRange(monthKey, idx, field, value) {
   if (!monthTimeFilters[monthKey]) monthTimeFilters[monthKey] = [];
   if (!monthTimeFilters[monthKey][idx]) monthTimeFilters[monthKey][idx] = { from: '', to: '' };
   monthTimeFilters[monthKey][idx][field] = value;
-  // Mark row active/inactive in UI
   renderTimeRangeActiveState(monthKey, idx);
+}
+
+function applyTimeRanges(monthKey) {
   renderMonthDays(monthKey);
+  renderSummary(monthKey);
 }
 
 function renderTimeRangeActiveState(monthKey, idx) {
@@ -1095,6 +1290,7 @@ function clearAllRanges(monthKey) {
   monthTimeFilters[monthKey] = [];
   renderTimeRanges(monthKey);
   renderMonthDays(monthKey);
+  renderSummary(monthKey);
 }
 
 function renderTimeRanges(monthKey) {
@@ -1113,7 +1309,61 @@ function renderTimeRanges(monthKey) {
       <button class="time-del-btn" onclick="removeTimeRange('${monthKey}', ${i})" title="Remove range">✕</button>
     </div>`).join('');
 
-  if (clearBtn) clearBtn.style.display = ranges.length > 0 ? '' : 'none';
+  const applyBtn = document.getElementById(`tf-apply-${monthKey}`);
+  if (applyBtn)  applyBtn.style.display  = ranges.length > 0 ? '' : 'none';
+  if (clearBtn)  clearBtn.style.display  = ranges.length > 0 ? '' : 'none';
+}
+
+// ── Notes / Reach filter ─────────────────────────────────────────────────────
+function notesClass(notes) {
+  if (!notes) return '';
+  const n = notes.toUpperCase();
+  if (n.includes('PINE SCRIPT')) return 'pine-sl';
+  if (n.includes('SL HIT'))      return 'sl-hit';
+  return '';
+}
+
+function applyNotesFilter(monthKey) {
+  if (!monthNoteFilters[monthKey]) monthNoteFilters[monthKey] = {};
+  const cbSL    = document.getElementById(`nc-cb-${monthKey}-sl`);
+  const cbPine  = document.getElementById(`nc-cb-${monthKey}-pine`);
+  const rfInput = document.getElementById(`rf-${monthKey}`);
+
+  monthNoteFilters[monthKey].slHit  = cbSL?.checked  || false;
+  monthNoteFilters[monthKey].pineSL = cbPine?.checked || false;
+
+  const v = parseFloat(rfInput?.value);
+  monthReachFilter[monthKey] = isNaN(v) ? null : v;
+
+  document.getElementById(`nc-${monthKey}-sl`)?.classList.toggle('active',   monthNoteFilters[monthKey].slHit);
+  document.getElementById(`nc-${monthKey}-pine`)?.classList.toggle('active', monthNoteFilters[monthKey].pineSL);
+
+  renderMonthDays(monthKey);
+  renderSummary(monthKey);
+}
+
+function clearNotesFilter(monthKey) {
+  monthNoteFilters[monthKey] = { slHit: false, pineSL: false };
+  monthReachFilter[monthKey] = null;
+
+  const cbSL    = document.getElementById(`nc-cb-${monthKey}-sl`);
+  const cbPine  = document.getElementById(`nc-cb-${monthKey}-pine`);
+  const rfInput = document.getElementById(`rf-${monthKey}`);
+  if (cbSL)    cbSL.checked = false;
+  if (cbPine)  cbPine.checked = false;
+  if (rfInput) rfInput.value = '';
+
+  document.getElementById(`nc-${monthKey}-sl`)?.classList.remove('active');
+  document.getElementById(`nc-${monthKey}-pine`)?.classList.remove('active');
+
+  renderMonthDays(monthKey);
+  renderSummary(monthKey);
+}
+
+// ── Date filter ───────────────────────────────────────────────────────────────
+function applyDateFilter(monthKey, dateStr) {
+  monthDateFilter[monthKey] = dateStr || null;
+  applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
 }
 
 // ── Instrument filter ─────────────────────────────────────────────────────────
@@ -1127,12 +1377,16 @@ function applyFilter(monthKey, filter) {
     btn.classList.toggle('active', f === filter);
   });
 
-  // Show/hide day blocks
+  // Show/hide day blocks (instrument + date filters)
+  const selectedDate = monthDateFilter[monthKey] || null;
   const panel = document.getElementById(`panel-${monthKey}`);
   if (panel) {
     panel.querySelectorAll('.day-block').forEach(block => {
-      const instr = block.dataset.instrument || '';
-      block.style.display = (filter === 'ALL' || instr === filter) ? '' : 'none';
+      const instr  = block.dataset.instrument || '';
+      const date   = block.dataset.date || '';
+      const instrOk = filter === 'ALL' || instr === filter;
+      const dateOk  = !selectedDate || date === selectedDate;
+      block.style.display = (instrOk && dateOk) ? '' : 'none';
     });
   }
 

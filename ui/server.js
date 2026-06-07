@@ -27,6 +27,7 @@ const _ST_LOG = path.join(ROOT, 'logs', 'monitor.log');
 const LAUNCH_TV_PS = path.join(ROOT, 'launch-tv.ps1');
 
 const app = express();
+app.use(express.json());
 const PORT = 3000;
 
 app.use(express.json());
@@ -46,8 +47,10 @@ let tvProc = null;
 let tvReady = false;
 
 // ── SSE clients ───────────────────────────────────────────────────
-let stClients = [];
-let stLog = [];
+let stClients  = [];
+let stLog      = [];
+let patClients = [];
+let patLog     = [];
 
 function broadcast(clients, event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -73,6 +76,14 @@ function pushST(line) {
   broadcast(stClients, 'log', { line: t });
 }
 
+function pushLog(line) {
+  const t = line.trim();
+  if (!t) return;
+  patLog.push(t);
+  if (patLog.length > 200) patLog.shift();
+  broadcast(patClients, 'log', { line: t });
+}
+
 function getStatus() {
   return {
     tv: tvReady ? 'running' : tvProc ? 'starting' : 'stopped',
@@ -81,7 +92,9 @@ function getStatus() {
 }
 
 function broadcastStatus() {
-  broadcast(stClients, 'status', getStatus());
+  const s = getStatus();
+  broadcast(stClients,  'status', s);
+  broadcast(patClients, 'status', s);
 }
 
 function broadcastPosition(pos) {
@@ -166,11 +179,26 @@ app.get('/api/st/events', (req, res) => {
   });
 });
 
+// ── SSE — Pattern Monitor / TV startup (left panel) ──────────────
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  patLog.slice(-50).forEach(line =>
+    res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`)
+  );
+  res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
+  patClients.push(res);
+  req.on('close', () => { patClients = patClients.filter(c => c !== res); });
+});
+
 // ── TradingView ───────────────────────────────────────────────────
 app.post('/api/tv/start', (_req, res) => {
   if (tvReady) return res.json({ ok: true, message: 'Already running' });
   if (tvProc) return res.json({ ok: false, message: 'Already starting' });
 
+  pushLog('[UI] Starting TradingView...');
   pushST('[UI] Starting TradingView...');
 
   tvProc = spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', LAUNCH_TV_PS], {
@@ -179,6 +207,7 @@ app.post('/api/tv/start', (_req, res) => {
   tvProc.stdout.on('data', (d) => {
     const line = d.toString().trim();
     if (!line) return;
+    pushLog(`[TV] ${line}`);
     pushST(`[TV] ${line}`);
     if (line.includes('CDP is ready') || line.includes('already running')) {
       tvReady = true;
@@ -186,11 +215,15 @@ app.post('/api/tv/start', (_req, res) => {
     }
   });
   tvProc.stderr.on('data', (d) => {
-    pushST(`[TV] ${d}`);
+    const line = d.toString().trim();
+    if (!line) return;
+    pushLog(`[TV] ${line}`);
+    pushST(`[TV] ${line}`);
   });
   tvProc.on('close', (code) => {
     tvProc = null;
     if (code !== 0) tvReady = false;
+    pushLog(`[TV] Script exited (${code})`);
     pushST(`[TV] Script exited (${code})`);
     broadcastStatus();
   });
@@ -567,13 +600,19 @@ app.get('/api/report/events', (req, res) => {
 });
 
 // Run generate-daily-report.js — JSON file is the permanent record
-app.post('/api/report/run', (_req, res) => {
+app.post('/api/report/run', (req, res) => {
   if (reportRunning) return res.json({ ok: false, message: 'Already running' });
   reportRunning = true;
   broadcastReportStatus();
-  pushReport('[REPORT] Fetching today\'s trade prices from TradingView...');
 
-  const proc = spawn('node', ['scripts/generate-daily-report.js'], { cwd: ROOT });
+  const date    = (req.body?.date || '').trim();
+  const dateArg = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+  const label   = dateArg || 'today';
+  pushReport(`[REPORT] Fetching trade prices for ${label} from TradingView...`);
+
+  const args = ['scripts/generate-daily-report.js'];
+  if (dateArg) args.push(dateArg);
+  const proc = spawn('node', args, { cwd: ROOT });
   proc.stdout.on('data', (d) =>
     d.toString().split('\n').forEach((l) => l.trim() && pushReport(l))
   );
@@ -622,9 +661,14 @@ app.post('/api/report/save', (req, res) => {
 
   const filePath = path.join(ROOT, 'logs', `daily-trades-${date}.json`);
   try {
-    const existing = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    existing.trades = trades;
-    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2));
+    let record;
+    try {
+      record = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch {
+      record = { date, instrument: 'NIFTY' };
+    }
+    record.trades = trades;
+    fs.writeFileSync(filePath, JSON.stringify(record, null, 2));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
