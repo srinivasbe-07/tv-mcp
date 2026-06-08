@@ -46,7 +46,7 @@ function checkMarketClosed() {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const LOGS_DIR = path.join(ROOT, 'logs');
+const LOGS_DIR = path.join(ROOT, 'logs', 'supertrend', '1min');
 const POSITION_FILE = path.join(ROOT, 'config', 'position.json');
 const SUPERTREND_TAB = path.join(LOGS_DIR, 'supertrend-tab.json');
 

@@ -707,6 +707,134 @@
         background: #2a2d3a;
         border-radius: 2px;
       }
+
+      /* ── Strategy tabs ── */
+      .strategy-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 20px 0;
+        border-bottom: 1px solid #2a2d3a;
+        background: #1a1d27;
+      }
+      .strat-tab {
+        padding: 7px 22px;
+        border-radius: 8px 8px 0 0;
+        border: 1px solid #2a2d3a;
+        border-bottom: none;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        background: #0f1117;
+        color: #6b7280;
+        transition: all 0.15s;
+        margin-bottom: -1px;
+      }
+      .strat-tab.active {
+        background: #1a1d27;
+        color: #a78bfa;
+        border-color: #4b5563;
+        border-bottom-color: #1a1d27;
+      }
+      .strat-tab:hover:not(.active) {
+        color: #d1d5db;
+        border-color: #3b3f55;
+      }
+
+      /* ── Consolidated summary strip ── */
+      .consolidated-strip {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        padding: 10px 20px;
+        background: #12141e;
+        border-bottom: 1px solid #2a2d3a;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .cs-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #6b7280;
+        text-transform: uppercase;
+        margin-right: 10px;
+      }
+      .cs-card {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #1a1d27;
+        border: 1px solid #2a2d3a;
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-size: 11px;
+      }
+      .cs-card-lbl {
+        color: #6b7280;
+        font-weight: 600;
+      }
+      .cs-card-val {
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .cs-divider {
+        width: 1px;
+        height: 20px;
+        background: #2a2d3a;
+        margin: 0 4px;
+      }
+
+      /* ── New Day button (3min) ── */
+      .new-day-btn {
+        background: #1e3a5f;
+        border: 1px solid #1d4ed8;
+        color: #93c5fd;
+        border-radius: 6px;
+        padding: 5px 14px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        margin-left: auto;
+      }
+      .new-day-btn:hover { background: #1d4ed8; color: #fff; }
+      .new-day-form {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: #12141e;
+        border-bottom: 1px solid #2a2d3a;
+      }
+      .new-day-form label { font-size: 11px; color: #9ca3af; }
+      .new-day-form input[type=date], .new-day-form select {
+        background: #0f1117;
+        border: 1px solid #3b3f55;
+        color: #e5e7eb;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .new-day-form .go-btn {
+        background: #16a34a;
+        border: none;
+        color: #fff;
+        border-radius: 5px;
+        padding: 5px 14px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .new-day-form .go-btn:hover { background: #15803d; }
+      .new-day-form .cancel-btn {
+        background: transparent;
+        border: 1px solid #4b5563;
+        color: #9ca3af;
+        border-radius: 5px;
+        padding: 5px 10px;
+        font-size: 11px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -719,7 +847,49 @@
       <div class="spacer"></div>
     </header>
 
-    <div id="month-bar" class="month-bar"></div>
+    <!-- Strategy tabs -->
+    <div class="strategy-bar">
+      <button class="strat-tab active" id="stab-1min" onclick="switchStrategy('1min')">1 Min</button>
+      <button class="strat-tab"        id="stab-3min" onclick="switchStrategy('3min')">3 Min</button>
+    </div>
+
+    <!-- Consolidated summary strip -->
+    <div class="consolidated-strip" id="consolidated-strip">
+      <span class="cs-label">This Month</span>
+      <div class="cs-card">
+        <span class="cs-card-lbl">1 Min</span>
+        <span class="cs-card-val" id="cs-1min">—</span>
+      </div>
+      <div class="cs-divider"></div>
+      <div class="cs-card">
+        <span class="cs-card-lbl">3 Min</span>
+        <span class="cs-card-val" id="cs-3min">—</span>
+      </div>
+      <div class="cs-divider"></div>
+      <div class="cs-card">
+        <span class="cs-card-lbl">Combined</span>
+        <span class="cs-card-val" id="cs-combined">—</span>
+      </div>
+    </div>
+
+    <!-- New Day form (3min only) -->
+    <div class="new-day-form" id="new-day-form" style="display:none">
+      <label>Date</label>
+      <input type="date" id="new-day-date">
+      <label>Instrument</label>
+      <select id="new-day-instr">
+        <option value="NIFTY">NIFTY</option>
+        <option value="SENSEX">SENSEX</option>
+      </select>
+      <button class="go-btn" onclick="createNewDay()">+ Create</button>
+      <button class="cancel-btn" onclick="hideNewDayForm()">Cancel</button>
+    </div>
+
+    <div id="month-bar" class="month-bar">
+      <div id="new-day-btn-wrap" style="display:none;padding:16px 20px 0;width:100%">
+        <button class="new-day-btn" onclick="showNewDayForm()">+ Add Trade Day</button>
+      </div>
+    </div>
     <div id="panels-container"></div>
 
     <div id="save-bar" style="display: none"></div>
@@ -733,31 +903,121 @@
       const INITIAL_CAPITAL = 200000; // ₹2,00,000
 
       // ── State ────────────────────────────────────────────────────────────────────
-      let allData = {}; // { 'YYYY-MM-DD': { date, instrument, trades: [...] } }
+      let allData = {}; // active strategy's data
+      let allData1min = {};
+      let allData3min = {};
+      let activeStrategy = '1min';
       let nextId = 1000;
       let activeMonth = null;
-      let monthFilters = {}; // { 'YYYY-MM': 'ALL' | 'NIFTY' | 'SENSEX' }
-      let monthTimeFilters = {}; // { 'YYYY-MM': [{from: 'HH:MM', to: 'HH:MM'}, ...] }
-      let monthNoteFilters = {}; // { 'YYYY-MM': { slHit: bool, pineSL: bool } }
-      let monthReachFilter = {}; // { 'YYYY-MM': number | null }
-      let monthDateFilter = {}; // { 'YYYY-MM': 'YYYY-MM-DD' | null }
+      let monthFilters = {};
+      let monthTimeFilters = {};
+      let monthNoteFilters = {};
+      let monthReachFilter = {};
+      let monthDateFilter = {};
+
+      function apiDataUrl()  { return activeStrategy === '3min' ? '/api/3min-report/data'  : '/api/report/data'; }
+      function apiSaveUrl()  { return activeStrategy === '3min' ? '/api/3min-report/save'  : '/api/report/save'; }
 
       // ── Load data ─────────────────────────────────────────────────────────────────
       async function loadData() {
         try {
-          const res = await fetch('/api/report/data');
-          allData = await res.json();
-          // Assign stable IDs to trades that came from JSON without one
-          for (const day of Object.values(allData)) {
-            for (const t of day.trades || []) {
-              if (t.id == null) t.id = nextId++;
+          const [r1, r3] = await Promise.all([
+            fetch('/api/report/data').then(r => r.json()),
+            fetch('/api/3min-report/data').then(r => r.json()),
+          ]);
+          allData1min = r1;
+          allData3min = r3;
+          for (const store of [allData1min, allData3min]) {
+            for (const day of Object.values(store)) {
+              for (const t of day.trades || []) {
+                if (t.id == null) t.id = nextId++;
+              }
             }
           }
+          allData = activeStrategy === '3min' ? allData3min : allData1min;
+          renderConsolidatedSummary();
           renderPage();
         } catch (e) {
           document.getElementById('panels-container').innerHTML =
             `<div class="empty-msg">Failed to load report data: ${e.message}</div>`;
         }
+      }
+
+      // ── Strategy switch ───────────────────────────────────────────────────────────
+      function switchStrategy(s) {
+        activeStrategy = s;
+        allData = s === '3min' ? allData3min : allData1min;
+        document.getElementById('stab-1min').classList.toggle('active', s === '1min');
+        document.getElementById('stab-3min').classList.toggle('active', s === '3min');
+        document.getElementById('new-day-btn-wrap').style.display = s === '3min' ? 'block' : 'none';
+        hideNewDayForm();
+        activeMonth = null;
+        monthFilters = {};
+        monthTimeFilters = {};
+        monthNoteFilters = {};
+        monthReachFilter = {};
+        monthDateFilter = {};
+        renderPage();
+      }
+
+      // ── Consolidated summary strip ────────────────────────────────────────────────
+      function calcNetPnl(store) {
+        const now = new Date();
+        const curMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        let net = 0;
+        for (const day of Object.values(store)) {
+          if (!day.date || !day.date.startsWith(curMonth)) continue;
+          for (const t of day.trades || []) {
+            if (t.tgtPts !== null && t.tgtPts !== undefined) {
+              const tq = qty(day.instrument, t.lots);
+              net += t.tgtPts * tq;
+            }
+          }
+        }
+        return Math.round(net);
+      }
+
+      function renderConsolidatedSummary() {
+        const n1 = calcNetPnl(allData1min);
+        const n3 = calcNetPnl(allData3min);
+        const nc = n1 + n3;
+        const fmt = (v) => {
+          const s = v >= 0 ? '+' : '';
+          const color = v >= 0 ? '#4ade80' : '#f87171';
+          return `<span style="color:${color}">${s}${fmtRs(v)}</span>`;
+        };
+        document.getElementById('cs-1min').innerHTML = fmt(n1);
+        document.getElementById('cs-3min').innerHTML = fmt(n3);
+        document.getElementById('cs-combined').innerHTML = fmt(nc);
+      }
+
+      // ── New Day (3min) ────────────────────────────────────────────────────────────
+      function showNewDayForm() {
+        const today = new Date();
+        const ds = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        document.getElementById('new-day-date').value = ds;
+        document.getElementById('new-day-form').style.display = 'flex';
+      }
+      function hideNewDayForm() {
+        document.getElementById('new-day-form').style.display = 'none';
+      }
+      async function createNewDay() {
+        const date = document.getElementById('new-day-date').value;
+        const instr = document.getElementById('new-day-instr').value;
+        if (!date) return;
+        if (allData[date]) {
+          hideNewDayForm();
+          const [y, m] = date.split('-');
+          switchMonth(`${y}-${m}`);
+          return;
+        }
+        allData[date] = { date, instrument: instr, trades: [] };
+        await persistDay(date);
+        hideNewDayForm();
+        activeMonth = null;
+        renderPage();
+        const [y, m] = date.split('-');
+        switchMonth(`${y}-${m}`);
       }
 
       // ── Group dates by month ──────────────────────────────────────────────────────
@@ -1381,13 +1641,13 @@
       // ── Persist to disk ───────────────────────────────────────────────────────────
       async function persistDay(dateStr) {
         try {
-          const r = await fetch('/api/report/save', {
+          const r = await fetch(apiSaveUrl(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date: dateStr, trades: allData[dateStr].trades }),
+            body: JSON.stringify({ date: dateStr, trades: allData[dateStr].trades, instrument: allData[dateStr].instrument }),
           });
           const j = await r.json();
-          if (j.ok) showToast('Saved');
+          if (j.ok) { showToast('Saved'); renderConsolidatedSummary(); }
           else showToast('Save failed: ' + (j.error || 'unknown'), true);
         } catch (e) {
           showToast('Save error: ' + e.message, true);

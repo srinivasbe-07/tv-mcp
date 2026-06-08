@@ -644,46 +644,65 @@ app.post('/api/report/run', (req, res) => {
   res.json({ ok: true });
 });
 
-// Return all daily-trades JSON files as one combined object keyed by date
-app.get('/api/report/data', (_req, res) => {
-  const logsDir = path.join(ROOT, 'logs');
+const DIR_1MIN = path.join(ROOT, 'logs', 'supertrend', '1min');
+const DIR_3MIN = path.join(ROOT, 'logs', 'supertrend', '3min');
+
+function readTradesDir(dir) {
   let files;
   try {
     files = fs
-      .readdirSync(logsDir)
+      .readdirSync(dir)
       .filter((f) => f.match(/^daily-trades-\d{4}-\d{2}-\d{2}\.json$/));
   } catch {
-    return res.json({});
+    return {};
   }
-
   const result = {};
   for (const f of files) {
     try {
-      const data = JSON.parse(fs.readFileSync(path.join(logsDir, f), 'utf8'));
+      const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
       result[data.date] = data;
-    } catch {
-      /* skip corrupt files */
-    }
+    } catch { /* skip corrupt */ }
   }
-  res.json(result);
-});
+  return result;
+}
 
-// Save edits back to the correct daily-trades JSON file
+function saveTradesFile(dir, date, trades, instrument) {
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, `daily-trades-${date}.json`);
+  let record;
+  try {
+    record = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    record = { date, instrument: instrument || 'NIFTY' };
+  }
+  record.trades = trades;
+  fs.writeFileSync(filePath, JSON.stringify(record, null, 2));
+}
+
+// 1-min report endpoints
+app.get('/api/report/data', (_req, res) => res.json(readTradesDir(DIR_1MIN)));
+
 app.post('/api/report/save', (req, res) => {
   const { date, trades } = req.body;
   if (!date || !trades)
     return res.status(400).json({ ok: false, error: 'date and trades required' });
-
-  const filePath = path.join(ROOT, 'logs', `daily-trades-${date}.json`);
   try {
-    let record;
-    try {
-      record = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    } catch {
-      record = { date, instrument: 'NIFTY' };
-    }
-    record.trades = trades;
-    fs.writeFileSync(filePath, JSON.stringify(record, null, 2));
+    saveTradesFile(DIR_1MIN, date, trades);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// 3-min report endpoints
+app.get('/api/3min-report/data', (_req, res) => res.json(readTradesDir(DIR_3MIN)));
+
+app.post('/api/3min-report/save', (req, res) => {
+  const { date, trades, instrument } = req.body;
+  if (!date || !trades)
+    return res.status(400).json({ ok: false, error: 'date and trades required' });
+  try {
+    saveTradesFile(DIR_3MIN, date, trades, instrument);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const LOGS_DIR = path.join(ROOT, 'logs');
+const LOGS_DIR = path.join(ROOT, 'logs', 'supertrend', '1min');
 const XLSX_SRC = 'C:\\Users\\ksrin\\OneDrive\\Trading\\Daily_PL_Tracker.xlsx';
 const XLSX_TEMP = 'C:\\Temp\\pl_temp.xlsx';
 
