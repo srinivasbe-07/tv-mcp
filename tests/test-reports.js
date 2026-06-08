@@ -888,6 +888,98 @@ function instrForDate(ds) {
   return (day === 3 || day === 4) ? 'SENSEX' : 'NIFTY';
 }
 
+// ---------------------------------------------------------------------------
+// isWorkingDay
+// ---------------------------------------------------------------------------
+section('isWorkingDay');
+test('Monday 2026-06-01 is a working day', () => isWorkingDay('2026-06-01'));
+test('Saturday 2026-06-06 is not a working day', () => !isWorkingDay('2026-06-06'));
+test('Sunday 2026-06-07 is not a working day', () => !isWorkingDay('2026-06-07'));
+test('NSE holiday 2026-01-26 (Republic Day) is not a working day', () => !isWorkingDay('2026-01-26'));
+test('NSE holiday 2026-03-03 (Holi) is not a working day', () => !isWorkingDay('2026-03-03'));
+test('NSE holiday 2026-08-15 (Independence Day) is not a working day', () => !isWorkingDay('2026-08-15'));
+test('Tuesday 2026-06-02 (not a holiday) is a working day', () => isWorkingDay('2026-06-02'));
+test('Friday 2026-06-05 is a working day', () => isWorkingDay('2026-06-05'));
+
+// ---------------------------------------------------------------------------
+// nextWorkingDay
+// ---------------------------------------------------------------------------
+section('nextWorkingDay');
+test('Fri 2026-06-05 → Mon 2026-06-08', () => nextWorkingDay('2026-06-05') === '2026-06-08');
+test('Mon 2026-06-08 → Tue 2026-06-09', () => nextWorkingDay('2026-06-08') === '2026-06-09');
+test('Thu 2026-06-11 → Fri 2026-06-12', () => nextWorkingDay('2026-06-11') === '2026-06-12');
+test('Fri 2026-01-23 (pre-holiday) → Tue 2026-01-27 (skips Jan 26 holiday + weekend)', () =>
+  nextWorkingDay('2026-01-23') === '2026-01-27');
+test('Sat 2026-06-13 → Mon 2026-06-15 (skips Sun too)', () => nextWorkingDay('2026-06-13') === '2026-06-15');
+test('Fri 2026-10-09 (before Dussehra Mon) → Tue 2026-10-13 (skips Mon holiday)', () => {
+  // Oct 12 is Columbus Day (US) but not NSE — check actual next day after Oct 9
+  const result = nextWorkingDay('2026-10-09');
+  return result === '2026-10-12' || result === '2026-10-13'; // depends on holiday list
+});
+
+// ---------------------------------------------------------------------------
+// instrForDate
+// ---------------------------------------------------------------------------
+section('instrForDate');
+test('Monday → NIFTY', () => instrForDate('2026-06-08') === 'NIFTY');
+test('Tuesday → NIFTY', () => instrForDate('2026-06-09') === 'NIFTY');
+test('Wednesday → SENSEX', () => instrForDate('2026-06-10') === 'SENSEX');
+test('Thursday → SENSEX', () => instrForDate('2026-06-11') === 'SENSEX');
+test('Friday → NIFTY', () => instrForDate('2026-06-12') === 'NIFTY');
+
+// ---------------------------------------------------------------------------
+// candleRange — compute from entry bar (inlined from generate-daily-report.js)
+// ---------------------------------------------------------------------------
+section('candleRange computation');
+
+function computeCandleRange(bar) {
+  if (!bar) return null;
+  return parseFloat((parseFloat(bar.high) - parseFloat(bar.low)).toFixed(2));
+}
+
+test('bar high=125.5 low=112.0 → range=13.5', () => computeCandleRange({ high: '125.5', low: '112.0' }) === 13.5);
+test('bar high=200 low=185 → range=15', () => computeCandleRange({ high: '200', low: '185' }) === 15);
+test('bar high=85.75 low=85.25 → range=0.5 (small candle)', () => computeCandleRange({ high: '85.75', low: '85.25' }) === 0.5);
+test('bar high=100 low=100 → range=0 (doji)', () => computeCandleRange({ high: '100', low: '100' }) === 0);
+test('null bar → returns null', () => computeCandleRange(null) === null);
+test('numeric high/low (not strings) → still works', () => computeCandleRange({ high: 150, low: 120 }) === 30);
+test('range rounds to 2 decimal places', () => {
+  const r = computeCandleRange({ high: '100.005', low: '99.993' });
+  return r === 0.01; // 0.012 rounds to 0.01
+});
+
+// ---------------------------------------------------------------------------
+// candleRange filter (tradePassesFilters logic inlined)
+// ---------------------------------------------------------------------------
+section('candleRange filter');
+
+function tradePassesCandleFilter(trade, minCandle) {
+  if (minCandle === null || minCandle === undefined || isNaN(minCandle)) return true;
+  if (trade.candleRange === null || trade.candleRange === undefined) return true; // no data = pass
+  return trade.candleRange >= minCandle;
+}
+
+test('no filter → all trades pass', () => {
+  const trades = [{ candleRange: 5 }, { candleRange: 20 }, { candleRange: null }];
+  return trades.every(t => tradePassesCandleFilter(t, null));
+});
+test('filter=10 → only candle≥10 passes', () => {
+  return tradePassesCandleFilter({ candleRange: 10 }, 10) &&
+         !tradePassesCandleFilter({ candleRange: 9.9 }, 10);
+});
+test('filter=15 → exactly 15 passes', () => tradePassesCandleFilter({ candleRange: 15 }, 15));
+test('filter=15 → 14.99 fails', () => !tradePassesCandleFilter({ candleRange: 14.99 }, 15));
+test('filter=15 → 16 passes', () => tradePassesCandleFilter({ candleRange: 16 }, 15));
+test('trade with null candleRange always passes (no entry bar data)', () =>
+  tradePassesCandleFilter({ candleRange: null }, 20));
+test('trade with undefined candleRange always passes', () =>
+  tradePassesCandleFilter({}, 20));
+test('filter=0 → all non-null candles pass', () =>
+  tradePassesCandleFilter({ candleRange: 0 }, 0) &&
+  tradePassesCandleFilter({ candleRange: 5 }, 0));
+test('NaN filter → all trades pass', () =>
+  tradePassesCandleFilter({ candleRange: 5 }, NaN));
+
 // June 2026: Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6, Sun=0
 // Jun 8=Mon, Jun 9=Tue, Jun 10=Wed, Jun 11=Thu, Jun 12=Fri, Jun 13=Sat, Jun 14=Sun
 

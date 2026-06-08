@@ -335,6 +335,12 @@ async function main() {
           )
         : 0;
 
+    // Entry candle full range (high − low of the bar at entry time)
+    const entryBar = tradeBars[0];
+    t.candleRange = entryBar
+      ? parseFloat((parseFloat(entryBar.high) - parseFloat(entryBar.low)).toFixed(2))
+      : null;
+
     // Auto-classify outcome for notes (priority order):
     //   price reach upto X points → maxReach >= 20 (highest priority — notable move regardless of exit)
     //   SL HIT          → loss >= full SL threshold and reach < 20

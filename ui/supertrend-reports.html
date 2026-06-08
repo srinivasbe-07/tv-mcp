@@ -238,6 +238,50 @@
         margin-left: auto;
       }
 
+      .day-note-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        background: #0d0f18;
+        border-bottom: 1px solid #2a2d3a;
+      }
+      .day-note-bar .note-text {
+        flex: 1;
+        font-size: 12px;
+        color: #9ca3af;
+        font-style: italic;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .day-note-bar .note-text.empty {
+        color: #4b5563;
+      }
+      .day-note-bar input.note-input {
+        flex: 1;
+        background: #1a1d27;
+        border: 1px solid #3b3f55;
+        border-radius: 4px;
+        color: #e5e7eb;
+        font-size: 12px;
+        padding: 4px 8px;
+        outline: none;
+      }
+      .day-note-bar input.note-input:focus {
+        border-color: #6366f1;
+      }
+      .note-edit-btn {
+        font-size: 11px;
+        padding: 2px 8px;
+        background: #1a1d27;
+        border: 1px solid #3b3f55;
+        border-radius: 4px;
+        color: #9ca3af;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .note-edit-btn:hover { border-color: #6366f1; color: #e5e7eb; }
+
       .day-body {
         display: none;
         border: 1px solid #3b3f55;
@@ -914,6 +958,7 @@
       let monthTimeFilters = {};
       let monthNoteFilters = {};
       let monthReachFilter = {};
+      let monthCandleFilter = {};
       let monthDateFilter = {};
 
       function apiDataUrl()  { return activeStrategy === '3min' ? '/api/3min-report/data'  : '/api/report/data'; }
@@ -959,6 +1004,7 @@
         monthTimeFilters = {};
         monthNoteFilters = {};
         monthReachFilter = {};
+        monthCandleFilter = {};
         monthDateFilter = {};
         renderPage();
       }
@@ -1167,6 +1213,8 @@
           </label>
           <span class="reach-label" style="margin-left:8px;">REACH &ge;</span>
           <input type="number" class="reach-input" id="rf-${monthKey}" min="0" step="1" placeholder="pts">
+          <span class="reach-label" style="margin-left:8px;">CANDLE &ge;</span>
+          <input type="number" class="reach-input" id="cf-${monthKey}" min="0" step="0.5" placeholder="pts">
           <button class="add-range-btn" onclick="applyNotesFilter('${monthKey}')">&#x25BA; Apply</button>
           <button class="time-clear-all" id="nf-clear-${monthKey}" onclick="clearNotesFilter('${monthKey}')">&#x2715; Clear</button>
         </div>
@@ -1341,6 +1389,10 @@
         <span class="day-pnl" id="day-pnl-${dayKey}"></span>
       </div>
       <div class="day-body open">
+        <div class="day-note-bar" id="note-bar-${dayKey}">
+          <span class="note-text${day.note ? '' : ' empty'}" id="note-text-${dayKey}">${day.note ? escHtml(day.note) : 'Add a day note…'}</span>
+          <button class="note-edit-btn" onclick="editDayNote('${dateStr}');event.stopPropagation()">&#x270E; Edit</button>
+        </div>
         <table>
           <thead>
             <tr>
@@ -1352,6 +1404,7 @@
               <th>Exit w/Tgt</th>
               <th>Exit w/oSL</th>
               <th>Tgt Pts</th>
+              <th>Candle</th>
               <th style="text-align:left">Notes</th>
               <th>P&amp;L w/SL &#x20B9;</th>
               <th>P&amp;L w/Tgt &#x20B9;</th>
@@ -1430,6 +1483,7 @@
       <td>${fmt(t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[day.instrument] || 31)).toFixed(2)) : null)}</td>
       <td>${fmt(t.exitNSL)}</td>
       <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}</td>
+      <td style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
       <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}</td>
       <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}</td>
       <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}</td>
@@ -1536,6 +1590,7 @@
     <td ${fc('e-exitTgt')}><input class="edit-input"     id="e-exitTgt" value="${t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[instr] || 31)).toFixed(2)) : ''}" type="number" step="0.05"></td>
     <td ${fc('e-exitNSL')}><input class="edit-input"     id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
     <td ${fc('e-tgt')}   ><input class="edit-input"      id="e-tgt"     value="${t.tgtPts ?? ''}"  type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-candle')}><input class="edit-input"     id="e-candle"  value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
     <td>
       <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
         <option value="" ${sel('')}>—</option>
@@ -1631,6 +1686,8 @@
         t.exitTgt = parseFloat(document.getElementById('e-exitTgt').value) || null;
         t.exitNSL = parseFloat(document.getElementById('e-exitNSL').value) || null;
         t.tgtPts = parseFloat(document.getElementById('e-tgt').value) || null;
+        const cr = parseFloat(document.getElementById('e-candle').value);
+        t.candleRange = isNaN(cr) ? null : cr;
         t.notes = document.getElementById('e-notes').value.trim();
         await persistDay(dateStr);
         renderDay(dateStr);
@@ -1653,6 +1710,7 @@
           exitSL: null,
           exitNSL: null,
           tgtPts: null,
+          candleRange: null,
           notes: '',
         };
         day.trades.push(newTrade);
@@ -1674,13 +1732,49 @@
         renderSummary(activeMonth);
       }
 
+      // ── Day note ──────────────────────────────────────────────────────────────────
+      function editDayNote(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const bar = document.getElementById(`note-bar-${dayKey}`);
+        if (!bar) return;
+        const current = allData[dateStr]?.note || '';
+        bar.innerHTML = `
+          <input class="note-input" id="note-input-${dayKey}" type="text" value="${escHtml(current)}" placeholder="Day note (market condition, strategy notes, etc.)" maxlength="300" />
+          <button class="note-edit-btn" onclick="saveDayNote('${dateStr}')">&#x2713; Save</button>
+          <button class="note-edit-btn" onclick="cancelDayNote('${dateStr}')">&#x2717;</button>`;
+        document.getElementById(`note-input-${dayKey}`)?.focus();
+      }
+
+      async function saveDayNote(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const inp = document.getElementById(`note-input-${dayKey}`);
+        const note = inp ? inp.value.trim() : '';
+        allData[dateStr].note = note;
+        await persistDay(dateStr);
+        refreshNoteBar(dateStr);
+      }
+
+      function cancelDayNote(dateStr) {
+        refreshNoteBar(dateStr);
+      }
+
+      function refreshNoteBar(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const bar = document.getElementById(`note-bar-${dayKey}`);
+        if (!bar) return;
+        const note = allData[dateStr]?.note || '';
+        bar.innerHTML = `
+          <span class="note-text${note ? '' : ' empty'}" id="note-text-${dayKey}">${note ? escHtml(note) : 'Add a day note…'}</span>
+          <button class="note-edit-btn" onclick="editDayNote('${dateStr}');event.stopPropagation()">&#x270E; Edit</button>`;
+      }
+
       // ── Persist to disk ───────────────────────────────────────────────────────────
       async function persistDay(dateStr) {
         try {
           const r = await fetch(apiSaveUrl(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date: dateStr, trades: allData[dateStr].trades, instrument: allData[dateStr].instrument }),
+            body: JSON.stringify({ date: dateStr, trades: allData[dateStr].trades, instrument: allData[dateStr].instrument, note: allData[dateStr].note || '' }),
           });
           const j = await r.json();
           if (j.ok) { showToast('Saved'); renderConsolidatedSummary(); }
@@ -1773,6 +1867,10 @@
         if (!dateStr) return '';
         const d = new Date(dateStr + 'T00:00:00');
         return `${String(d.getDate()).padStart(2, '0')} ${MONTH_NAMES[d.getMonth()]}`;
+      }
+
+      function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       }
 
       function fmtRs(v) {
@@ -1990,6 +2088,11 @@
           if (getEffectiveMaxReach(t) < minReach) return false;
         }
 
+        const minCandle = monthCandleFilter[monthKey];
+        if (minCandle !== null && minCandle !== undefined && minCandle > 0) {
+          if ((t.candleRange ?? 0) < minCandle) return false;
+        }
+
         return true;
       }
 
@@ -2073,12 +2176,16 @@
         const cbSL = document.getElementById(`nc-cb-${monthKey}-sl`);
         const cbPine = document.getElementById(`nc-cb-${monthKey}-pine`);
         const rfInput = document.getElementById(`rf-${monthKey}`);
+        const cfInput = document.getElementById(`cf-${monthKey}`);
 
         monthNoteFilters[monthKey].slHit = cbSL?.checked || false;
         monthNoteFilters[monthKey].pineSL = cbPine?.checked || false;
 
         const v = parseFloat(rfInput?.value);
         monthReachFilter[monthKey] = isNaN(v) ? null : v;
+
+        const cv = parseFloat(cfInput?.value);
+        monthCandleFilter[monthKey] = isNaN(cv) ? null : cv;
 
         document
           .getElementById(`nc-${monthKey}-sl`)
@@ -2094,13 +2201,16 @@
       function clearNotesFilter(monthKey) {
         monthNoteFilters[monthKey] = { slHit: false, pineSL: false };
         monthReachFilter[monthKey] = null;
+        monthCandleFilter[monthKey] = null;
 
         const cbSL = document.getElementById(`nc-cb-${monthKey}-sl`);
         const cbPine = document.getElementById(`nc-cb-${monthKey}-pine`);
         const rfInput = document.getElementById(`rf-${monthKey}`);
+        const cfInput = document.getElementById(`cf-${monthKey}`);
         if (cbSL) cbSL.checked = false;
         if (cbPine) cbPine.checked = false;
         if (rfInput) rfInput.value = '';
+        if (cfInput) cfInput.value = '';
 
         document.getElementById(`nc-${monthKey}-sl`)?.classList.remove('active');
         document.getElementById(`nc-${monthKey}-pine`)?.classList.remove('active');

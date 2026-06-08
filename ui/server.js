@@ -677,7 +677,7 @@ function readTradesDir(dir) {
   return result;
 }
 
-function saveTradesFile(dir, date, trades, instrument) {
+function saveTradesFile(dir, date, trades, instrument, note) {
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `daily-trades-${date}.json`);
   let record;
@@ -687,6 +687,7 @@ function saveTradesFile(dir, date, trades, instrument) {
     record = { date, instrument: instrument || 'NIFTY' };
   }
   record.trades = trades;
+  if (note !== undefined) record.note = note || '';
   fs.writeFileSync(filePath, JSON.stringify(record, null, 2));
 }
 
@@ -694,11 +695,11 @@ function saveTradesFile(dir, date, trades, instrument) {
 app.get('/api/report/data', (_req, res) => res.json(readTradesDir(DIR_1MIN)));
 
 app.post('/api/report/save', (req, res) => {
-  const { date, trades } = req.body;
+  const { date, trades, note } = req.body;
   if (!date || !trades)
     return res.status(400).json({ ok: false, error: 'date and trades required' });
   try {
-    saveTradesFile(DIR_1MIN, date, trades);
+    saveTradesFile(DIR_1MIN, date, trades, undefined, note);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -709,11 +710,11 @@ app.post('/api/report/save', (req, res) => {
 app.get('/api/3min-report/data', (_req, res) => res.json(readTradesDir(DIR_3MIN)));
 
 app.post('/api/3min-report/save', (req, res) => {
-  const { date, trades, instrument } = req.body;
+  const { date, trades, instrument, note } = req.body;
   if (!date || !trades)
     return res.status(400).json({ ok: false, error: 'date and trades required' });
   try {
-    saveTradesFile(DIR_3MIN, date, trades, instrument);
+    saveTradesFile(DIR_3MIN, date, trades, instrument, note);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
