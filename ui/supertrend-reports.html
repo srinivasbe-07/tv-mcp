@@ -885,11 +885,12 @@
       <button class="cancel-btn" onclick="hideNewDayForm()">Cancel</button>
     </div>
 
-    <div id="month-bar" class="month-bar">
-      <div id="new-day-btn-wrap" style="display:none;padding:16px 20px 0;width:100%">
-        <button class="new-day-btn" onclick="showNewDayForm()">+ Add Trade Day</button>
-      </div>
+    <!-- Add Trade Day button (3min only) — lives outside month-bar so renderPage() never wipes it -->
+    <div id="new-day-btn-wrap" style="display:none;padding:12px 20px 0;">
+      <button class="new-day-btn" onclick="showNewDayForm()">+ Add Trade Day</button>
     </div>
+
+    <div id="month-bar" class="month-bar"></div>
     <div id="panels-container"></div>
 
     <div id="save-bar" style="display: none"></div>
