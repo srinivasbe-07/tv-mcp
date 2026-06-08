@@ -23,6 +23,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 const ST_CONFIG = path.join(ROOT, 'config', 'monitor-config.json');
 const POSITION_FILE = path.join(ROOT, 'config', 'position.json');
+const NSE_HOLIDAYS_FILE = path.join(ROOT, 'config', 'nse-holidays.json');
 const _ST_LOG = path.join(ROOT, 'logs', 'monitor.log');
 const LAUNCH_TV_PS = path.join(ROOT, 'launch-tv.ps1');
 
@@ -646,6 +647,16 @@ app.post('/api/report/run', (req, res) => {
 
 const DIR_1MIN = path.join(ROOT, 'logs', 'supertrend', '1min');
 const DIR_3MIN = path.join(ROOT, 'logs', 'supertrend', '3min');
+
+// NSE holidays config
+app.get('/api/holidays', (_req, res) => {
+  try {
+    const data = JSON.parse(fs.readFileSync(NSE_HOLIDAYS_FILE, 'utf8'));
+    res.json(data);
+  } catch {
+    res.json({});
+  }
+});
 
 function readTradesDir(dir) {
   let files;

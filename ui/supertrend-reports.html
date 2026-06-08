@@ -922,10 +922,12 @@
       // ── Load data ─────────────────────────────────────────────────────────────────
       async function loadData() {
         try {
-          const [r1, r3] = await Promise.all([
+          const [r1, r3, holidays] = await Promise.all([
             fetch('/api/report/data').then(r => r.json()),
             fetch('/api/3min-report/data').then(r => r.json()),
+            fetch('/api/holidays').then(r => r.json()),
           ]);
+          NSE_HOLIDAYS = new Set(Object.values(holidays).flat());
           allData1min = r1;
           allData3min = r3;
           for (const store of [allData1min, allData3min]) {
@@ -993,11 +995,7 @@
       }
 
       // ── Working day helpers ───────────────────────────────────────────────────────
-      const NSE_HOLIDAYS = new Set([
-        '2026-01-15','2026-01-26','2026-03-03','2026-03-26','2026-03-31',
-        '2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26',
-        '2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25',
-      ]);
+      let NSE_HOLIDAYS = new Set(); // populated from /api/holidays on load
 
       function isWorkingDay(ds) {
         const day = new Date(ds + 'T00:00:00Z').getUTCDay();
