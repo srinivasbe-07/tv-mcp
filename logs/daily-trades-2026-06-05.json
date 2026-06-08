@@ -12,14 +12,14 @@
       "lots": 10,
       "lotSize": 65,
       "entryPrice": 225,
-      "exitPrice": 198.8,
+      "exitPrice": 131,
       "exitSL": 210,
       "exitNSL": 198.8,
       "tgtPts": -15,
       "maxReach": 0,
       "notes": "price reach upto 21 points",
       "time": "10:09",
-      "exitTgt": 210
+      "exitTgt": 256
     },
     {
       "instrument": "NIFTY",
@@ -48,14 +48,14 @@
       "exitTime": "11:18:00",
       "lots": 10,
       "lotSize": 65,
-      "entryPrice": 232.2,
-      "exitPrice": 224.35,
-      "exitSL": 224.35,
-      "exitTgt": 263.2,
-      "exitNSL": 224.35,
+      "entryPrice": 23453.9,
+      "exitPrice": 23439.9,
+      "exitSL": 23439.9,
+      "exitTgt": 23484.9,
+      "exitNSL": 23439.9,
       "tgtPts": 31,
-      "maxReach": 32.05,
-      "notes": "price reach upto 32.05 points"
+      "maxReach": 40.9,
+      "notes": "price reach upto 40.9 points"
     },
     {
       "instrument": "NIFTY",
@@ -69,7 +69,7 @@
       "entryPrice": 163.15,
       "exitPrice": 153.15,
       "exitSL": 153.15,
-      "exitTgt": 153.15,
+      "exitTgt": 194.15,
       "exitNSL": 153.15,
       "tgtPts": -10,
       "maxReach": 0,
@@ -105,7 +105,7 @@
       "entryPrice": 205.75,
       "exitPrice": 200.85,
       "exitSL": 200.85,
-      "exitTgt": 200.85,
+      "exitTgt": 236.75,
       "exitNSL": 200.85,
       "tgtPts": -4.9,
       "maxReach": 0.85,
@@ -127,7 +127,7 @@
       "exitNSL": 207.45,
       "tgtPts": 31,
       "maxReach": 31,
-      "notes": "SL HIT"
+      "notes": "price reach upto 31 points"
     }
   ]
 }

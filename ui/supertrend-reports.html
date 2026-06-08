@@ -1239,7 +1239,7 @@
     <td ${fc('e-exitSL')}><input class="edit-input"      id="e-exitSL"  value="${t.exitSL ?? ''}"  type="number" step="0.05"></td>
     <td ${fc('e-exitTgt')}><input class="edit-input"     id="e-exitTgt" value="${t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[instr] || 31)).toFixed(2)) : ''}" type="number" step="0.05"></td>
     <td ${fc('e-exitNSL')}><input class="edit-input"     id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
-    <td ${fc('e-tgt')}   ><input class="edit-input"      id="e-tgt"     value="${t.tgtPts ?? ''}"  type="number" step="0.05"></td>
+    <td ${fc('e-tgt')}   ><input class="edit-input"      id="e-tgt"     value="${t.tgtPts ?? ''}"  type="number" step="0.05" oninput="recalcEditRow()"></td>
     <td>
       <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
         <option value="" ${sel('')}>—</option>
@@ -1292,8 +1292,12 @@
         const exitSL = parseFloat(
           Math.max(entry - slPts, Math.min(entry + tgG, exitNSL)).toFixed(2)
         );
-        const tgtPts = parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2));
         const exitTgt = parseFloat((entry + tgL).toFixed(2));
+        // Read tgtPts from the input — user controls it; fall back to calculation only if empty
+        const tgtRaw = parseFloat(document.getElementById('e-tgt')?.value);
+        const tgtPts = isNaN(tgtRaw)
+          ? parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2))
+          : tgtRaw;
         const pSL = Math.round((exitSL - entry) * nLots * lotSz);
         const pTgt = Math.round(tgtPts * nLots * lotSz);
         const pNSL = Math.round((exitNSL - entry) * nLots * lotSz);
@@ -1304,7 +1308,7 @@
         };
         set('e-exitSL', exitSL);
         set('e-exitTgt', exitTgt);
-        set('e-tgt', tgtPts);
+        // e-tgt is NOT set here — user edits it directly
 
         const pnl = document.getElementById('e-pnl-cell');
         if (pnl) {
