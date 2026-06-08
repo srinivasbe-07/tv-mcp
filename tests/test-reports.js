@@ -223,6 +223,51 @@ test('SENSEX bar hits TARGET_L=70 → tgtPts=70', () => {
   return tgtPts === 70;
 });
 
+section('computeExitValues — target hit intraday but exit was a loss (key bug case)');
+test('bar hits TARGET_L, exit is a loss → tgtPts = TARGET_L (not negative)', () => {
+  // Real scenario: price ran to target then reversed; Supertrend exit fired at a loss
+  // Bar touched entry+31, but exitNSL < entry → tgtPts must be 31, not negative
+  const bars = [{ high: 232 }]; // 200+31=231, bar.high=232 ≥ 231
+  const { tgtPts } = computeExitValues('NIFTY', 200, 190, bars);
+  return tgtPts === 31;
+});
+test('real-world PE 10:37 (entry=197, exitNSL=192.5, maxReach=42) → tgtPts=31', () => {
+  // maxReach 42 means a bar hit at least 239 (197+42), well above target 228 (197+31)
+  const bars = [{ high: 239 }, { high: 210 }, { high: 192.5 }];
+  const { tgtPts } = computeExitValues('NIFTY', 197, 192.5, bars);
+  return tgtPts === 31;
+});
+test('exitTgt still entry+31 when bar hit target but exit was loss', () => {
+  const bars = [{ high: 232 }];
+  const { exitTgt } = computeExitValues('NIFTY', 200, 185, bars);
+  return exitTgt === 231; // always entry + TARGET_L
+});
+test('exitNSL = raw loss price even when target was hit intraday', () => {
+  const bars = [{ high: 232 }];
+  const { exitNSL } = computeExitValues('NIFTY', 200, 185, bars);
+  return exitNSL === 185;
+});
+test('bar hits TARGET_L exactly (not above) → tgtHit = true, tgtPts = 31', () => {
+  const bars = [{ high: 231 }]; // exactly entry+31=231
+  const { tgtPts } = computeExitValues('NIFTY', 200, 190, bars);
+  return tgtPts === 31;
+});
+test('second bar hits target (first bar misses) → tgtPts = 31', () => {
+  const bars = [{ high: 225 }, { high: 232 }, { high: 215 }];
+  const { tgtPts } = computeExitValues('NIFTY', 200, 195, bars);
+  return tgtPts === 31;
+});
+test('no bar hits target, actual exit is loss → tgtPts = clamped loss', () => {
+  const bars = [{ high: 225 }]; // 225 < 231 = entry+31, target NOT hit
+  const { tgtPts } = computeExitValues('NIFTY', 200, 190, bars);
+  return tgtPts === -10; // exitSL=190, tgtPts=190-200=-10
+});
+test('SENSEX: bar hits TARGET_L=70 but exit at loss → tgtPts=70', () => {
+  const bars = [{ high: 571 }]; // 500+70=570
+  const { tgtPts } = computeExitValues('SENSEX', 500, 460, bars);
+  return tgtPts === 70;
+});
+
 // ---------------------------------------------------------------------------
 // auto-classification of notes (maxReach + autoNotes logic, inlined)
 // ---------------------------------------------------------------------------
@@ -709,6 +754,67 @@ test('pSL uses clamped exit, not raw', () =>
   recalc('NIFTY', 200, 180, 10).pSL === Math.round((185 - 200) * 10 * 65)); // floor at 185
 test('SENSEX 70pt gain, 15 lots, 20 lotSize → pNSL = +21000', () =>
   recalc('SENSEX', 500, 570, 15).pNSL === 21000);
+
+// ---------------------------------------------------------------------------
+// recalcEditRow — new behaviour: tgtPts from user input, not recalculated
+// Mirrors the fixed UI logic where e-tgt is user-controlled.
+// ---------------------------------------------------------------------------
+function recalcWithUserTgt(instr, entry, exitNSL, lots, userTgtPts) {
+  const slPts = SL_PTS[instr] || 15;
+  const tgG = TGT_G[instr] || 50;
+  const tgL = TGT_L[instr] || 31;
+  const lotSz = LOT_SIZES[instr] || 65;
+  const exitSL = parseFloat(Math.max(entry - slPts, Math.min(entry + tgG, exitNSL)).toFixed(2));
+  const exitTgt = parseFloat((entry + tgL).toFixed(2));
+  // Read tgtPts from input; fall back to calculation only if null/NaN
+  const tgtPts =
+    userTgtPts !== null && userTgtPts !== undefined && !isNaN(userTgtPts)
+      ? userTgtPts
+      : parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2));
+  const pTgt = Math.round(tgtPts * lots * lotSz);
+  const pNSL = Math.round((exitNSL - entry) * lots * lotSz);
+  return { exitSL, tgtPts, exitTgt, pTgt, pNSL };
+}
+
+section('recalcEditRow — user-provided tgtPts (new behaviour)');
+test('user sets tgtPts=31, exit is loss → pTgt uses 31 not recalculated loss', () => {
+  // Before fix: changing entry would recalc tgtPts=-4.5; after fix: stays at 31
+  const { tgtPts, pTgt } = recalcWithUserTgt('NIFTY', 197, 192.5, 10, 31);
+  return tgtPts === 31 && pTgt === 31 * 10 * 65; // 20150
+});
+test('user sets tgtPts=31 → pTgt = 20150 even though exit was a loss', () => {
+  const { pTgt } = recalcWithUserTgt('NIFTY', 200, 185, 10, 31);
+  return pTgt === 20150;
+});
+test('user sets tgtPts=-15 (SL hit) → pTgt = -9750', () => {
+  const { pTgt } = recalcWithUserTgt('NIFTY', 200, 185, 10, -15);
+  return pTgt === -9750;
+});
+test('userTgtPts null (empty field) → falls back to clamp(exitNSL-entry)', () => {
+  const { tgtPts } = recalcWithUserTgt('NIFTY', 200, 210, 10, null);
+  return tgtPts === 10; // clamp(210-200, -15, 31)
+});
+test('userTgtPts null + big loss → falls back to -SL = -15', () => {
+  const { tgtPts } = recalcWithUserTgt('NIFTY', 200, 170, 10, null);
+  return tgtPts === -15;
+});
+test('exitTgt always entry+TARGET_L regardless of userTgtPts', () => {
+  const { exitTgt } = recalcWithUserTgt('NIFTY', 200, 185, 10, 31);
+  return exitTgt === 231;
+});
+test('exitSL recalculated from entry+exitNSL even when userTgtPts provided', () => {
+  // exitSL = clamp(185, 200-15, 200+50) = 185
+  const { exitSL } = recalcWithUserTgt('NIFTY', 200, 185, 10, 31);
+  return exitSL === 185;
+});
+test('pNSL always uses actual exitNSL (not affected by userTgtPts)', () => {
+  const { pNSL } = recalcWithUserTgt('NIFTY', 200, 185, 10, 31);
+  return pNSL === Math.round((185 - 200) * 10 * 65); // -9750
+});
+test('SENSEX user sets tgtPts=70 → pTgt = 70 * 15 * 20 = 21000', () => {
+  const { pTgt } = recalcWithUserTgt('SENSEX', 500, 460, 15, 70);
+  return pTgt === 21000;
+});
 
 // ---------------------------------------------------------------------------
 // entry time sort (renderDay behaviour)
