@@ -992,11 +992,48 @@
         document.getElementById('cs-combined').innerHTML = fmt(nc);
       }
 
+      // ── Working day helpers ───────────────────────────────────────────────────────
+      const NSE_HOLIDAYS = new Set([
+        '2026-01-15','2026-01-26','2026-03-03','2026-03-26','2026-03-31',
+        '2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26',
+        '2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25',
+      ]);
+
+      function isWorkingDay(ds) {
+        const day = new Date(ds + 'T00:00:00Z').getUTCDay();
+        return day !== 0 && day !== 6 && !NSE_HOLIDAYS.has(ds);
+      }
+
+      function nextWorkingDay(fromDs) {
+        const d = new Date(fromDs + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + 1);
+        while (true) {
+          const ds = d.toISOString().slice(0, 10);
+          if (isWorkingDay(ds)) return ds;
+          d.setUTCDate(d.getUTCDate() + 1);
+        }
+      }
+
+      function instrForDate(ds) {
+        const day = new Date(ds + 'T00:00:00Z').getUTCDay();
+        return (day === 3 || day === 4) ? 'SENSEX' : 'NIFTY'; // Wed/Thu = SENSEX
+      }
+
       // ── New Day (3min) ────────────────────────────────────────────────────────────
       function showNewDayForm() {
-        const today = new Date();
-        const ds = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-        document.getElementById('new-day-date').value = ds;
+        // Start from latest existing 3-min date, or yesterday if no data yet
+        const dates = Object.keys(allData3min).sort();
+        let base;
+        if (dates.length > 0) {
+          base = dates[dates.length - 1];
+        } else {
+          const y = new Date(); y.setDate(y.getDate() - 1);
+          base = y.toISOString().slice(0, 10);
+        }
+        const next = nextWorkingDay(base);
+        const instr = instrForDate(next);
+        document.getElementById('new-day-date').value = next;
+        document.getElementById('new-day-instr').value = instr;
         document.getElementById('new-day-form').style.display = 'flex';
       }
       function hideNewDayForm() {
