@@ -17,6 +17,11 @@ import {
   parseTrades,
 } from '../scripts/generate-daily-report.js';
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname2 = path.dirname(fileURLToPath(import.meta.url));
+
 // ---------------------------------------------------------------------------
 // Minimal test runner (same style as test-monitor.js)
 // ---------------------------------------------------------------------------
@@ -852,6 +857,85 @@ test('same entryTime → stable (order preserved)', () => {
   ];
   const sorted = sortTrades(trades);
   return sorted[0].id === 1 && sorted[1].id === 2;
+});
+
+// ---------------------------------------------------------------------------
+// Working day helpers (inlined from supertrend-reports.html)
+// Holiday list loaded from config/nse-holidays.json — same source as UI
+// ---------------------------------------------------------------------------
+const holidayJson = JSON.parse(
+  fs.readFileSync(path.join(__dirname2, '../config/nse-holidays.json'), 'utf8')
+);
+const NSE_HOLIDAYS_TEST = new Set(Object.values(holidayJson).flat());
+
+function isWorkingDay(ds) {
+  const day = new Date(ds + 'T00:00:00Z').getUTCDay();
+  return day !== 0 && day !== 6 && !NSE_HOLIDAYS_TEST.has(ds);
+}
+
+function nextWorkingDay(fromDs) {
+  const d = new Date(fromDs + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  while (true) {
+    const ds = d.toISOString().slice(0, 10);
+    if (isWorkingDay(ds)) return ds;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+}
+
+function instrForDate(ds) {
+  const day = new Date(ds + 'T00:00:00Z').getUTCDay();
+  return (day === 3 || day === 4) ? 'SENSEX' : 'NIFTY';
+}
+
+// June 2026: Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6, Sun=0
+// Jun 8=Mon, Jun 9=Tue, Jun 10=Wed, Jun 11=Thu, Jun 12=Fri, Jun 13=Sat, Jun 14=Sun
+
+section('isWorkingDay');
+test('Monday Jun 8 2026 → working day', () => isWorkingDay('2026-06-08') === true);
+test('Tuesday Jun 9 2026 → working day', () => isWorkingDay('2026-06-09') === true);
+test('Saturday Jun 13 2026 → not working', () => isWorkingDay('2026-06-13') === false);
+test('Sunday Jun 14 2026 → not working', () => isWorkingDay('2026-06-14') === false);
+test('NSE holiday Jun 26 2026 (Friday) → not working', () => isWorkingDay('2026-06-26') === false);
+test('NSE holiday Jan 26 2026 (Monday) → not working', () => isWorkingDay('2026-01-26') === false);
+test('Normal Friday Jun 12 2026 → working day', () => isWorkingDay('2026-06-12') === true);
+
+section('nextWorkingDay');
+test('from Mon Jun 8 → Tue Jun 9', () => nextWorkingDay('2026-06-08') === '2026-06-09');
+test('from Tue Jun 9 → Wed Jun 10', () => nextWorkingDay('2026-06-09') === '2026-06-10');
+test('from Fri Jun 12 → skips Sat+Sun → Mon Jun 15', () => nextWorkingDay('2026-06-12') === '2026-06-15');
+test('from Thu Jun 25 → skips Fri holiday (Jun 26) + Sat + Sun → Mon Jun 29', () =>
+  nextWorkingDay('2026-06-25') === '2026-06-29');
+test('from Fri Jun 26 (holiday) → skips Sat + Sun → Mon Jun 29', () =>
+  nextWorkingDay('2026-06-26') === '2026-06-29');
+test('month boundary: from Tue Jun 30 → Wed Jul 1', () =>
+  nextWorkingDay('2026-06-30') === '2026-07-01');
+test('from Sun Jun 14 → Mon Jun 15 (not re-advance an already-skipped weekend)', () =>
+  nextWorkingDay('2026-06-14') === '2026-06-15');
+test('from Thu Mar 26 2026 (holiday) → skips Fri Mar 27 ... → Mon Mar 30', () => {
+  // Mar 26 = holiday (Holi), Mar 27 = Fri, Mar 28 = Sat, Mar 29 = Sun → Mar 30 Mon
+  // But Mar 31 is also holiday — so next after Mar 26 is Mar 27 (normal Fri)
+  // Wait: Mar 26 is holiday. nextWorkingDay(Mar 26) checks Mar 27.
+  // Mar 27 2026 = Friday, not holiday → working day
+  return nextWorkingDay('2026-03-26') === '2026-03-27';
+});
+test('from Wed Mar 25 2026 → Thu Mar 26 is holiday → skips to Fri Mar 27', () =>
+  nextWorkingDay('2026-03-25') === '2026-03-27');
+
+section('instrForDate');
+test('Monday Jun 8 → NIFTY', () => instrForDate('2026-06-08') === 'NIFTY');
+test('Tuesday Jun 9 → NIFTY', () => instrForDate('2026-06-09') === 'NIFTY');
+test('Wednesday Jun 10 → SENSEX', () => instrForDate('2026-06-10') === 'SENSEX');
+test('Thursday Jun 11 → SENSEX', () => instrForDate('2026-06-11') === 'SENSEX');
+test('Friday Jun 12 → NIFTY', () => instrForDate('2026-06-12') === 'NIFTY');
+test('Mon/Tue/Fri all map to NIFTY', () => {
+  return instrForDate('2026-06-08') === 'NIFTY'  // Mon
+      && instrForDate('2026-06-09') === 'NIFTY'  // Tue
+      && instrForDate('2026-06-12') === 'NIFTY'; // Fri
+});
+test('Wed/Thu both map to SENSEX', () => {
+  return instrForDate('2026-06-10') === 'SENSEX'  // Wed
+      && instrForDate('2026-06-11') === 'SENSEX'; // Thu
 });
 
 // ---------------------------------------------------------------------------
