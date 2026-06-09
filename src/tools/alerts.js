@@ -124,7 +124,6 @@ export class AlertTools {
       .executeScript(
         `(async function() {
           const hasItems = () => !!document.querySelector('[data-name="alert-item-name"]');
-          if (hasItems()) return;
 
           const btn = document.querySelector('[data-name="alerts"]');
           if (!btn) return;
@@ -139,28 +138,30 @@ export class AlertTools {
             return txt === 'alerts' || txt.startsWith('alert') || txt === 'log';
           });
 
+          const findAlertsTab = () => visibleTabs().find(t => {
+            const txt = (t.textContent || t.innerText || '').trim().toLowerCase();
+            return txt === 'alerts' || txt.startsWith('alert');
+          });
+
           // Step 1: Bring Alerts panel into focus if it isn't already.
           // Covers: panel closed, panel collapsed, another panel is open.
           if (!alertsPanelActive()) {
             btn.click();
             for (let i = 0; i < 16; i++) {
               await new Promise(r => setTimeout(r, 250));
-              if (hasItems() || alertsPanelActive()) break;
+              if (alertsPanelActive()) break;
             }
           }
 
-          // Step 2: Click the Alerts tab (always — harmless if already active)
-          if (!hasItems()) {
-            const alertsTab = visibleTabs().find(t => {
-              const txt = (t.textContent || t.innerText || '').trim().toLowerCase();
-              return txt === 'alerts' || txt.startsWith('alert');
-            });
-            if (alertsTab) {
-              alertsTab.click();
-              for (let i = 0; i < 12; i++) {
-                await new Promise(r => setTimeout(r, 250));
-                if (hasItems()) break;
-              }
+          // Step 2: Always click the Alerts tab — guards against being stuck on the Log tab
+          // after ALERT_HISTORY_SCRIPT reads history, or after a chart symbol switch causes
+          // TV to re-render the panel in a different state.
+          const alertsTab = findAlertsTab();
+          if (alertsTab) {
+            alertsTab.click();
+            for (let i = 0; i < 12; i++) {
+              await new Promise(r => setTimeout(r, 250));
+              if (hasItems()) break;
             }
           }
 
@@ -174,12 +175,9 @@ export class AlertTools {
               await new Promise(r => setTimeout(r, 250));
               if (hasItems()) break;
             }
-            const alertsTab = visibleTabs().find(t => {
-              const txt = (t.textContent || t.innerText || '').trim().toLowerCase();
-              return txt === 'alerts' || txt.startsWith('alert');
-            });
-            if (alertsTab) {
-              alertsTab.click();
+            const tab = findAlertsTab();
+            if (tab) {
+              tab.click();
               for (let i = 0; i < 8; i++) {
                 await new Promise(r => setTimeout(r, 250));
                 if (hasItems()) break;
