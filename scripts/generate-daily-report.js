@@ -297,7 +297,9 @@ async function fetchBarsForSymbol(cdp, cdpChart, qualifiedSymbol, fromUnix, toUn
     // Check bars within the trade window (allow 2-min tolerance for the signal candle)
     const windowBars = bars.filter((b) => b.time >= fromUnix - 120 && b.time <= toUnix + 60);
     if (windowBars.length > 0) {
-      console.log(`  ${bars.length} bars loaded (${windowBars.length} in trade window) after attempt ${attempt}`);
+      console.log(
+        `  ${bars.length} bars loaded (${windowBars.length} in trade window) after attempt ${attempt}`
+      );
       return bars;
     }
     console.log(`  attempt ${attempt}: 0 bars in trade window, retrying…`);
@@ -365,12 +367,12 @@ async function main() {
   const symWindows = {};
   for (const t of allTrades) {
     const entryUnix = istTimeToUnix(t.entryTime, today);
-    const exitUnix  = istTimeToUnix(t.exitTime,  today);
+    const exitUnix = istTimeToUnix(t.exitTime, today);
     for (const sym of [t.entrySymbol, t.exitSymbol]) {
       if (!symWindows[sym]) symWindows[sym] = { from: entryUnix - 120, to: exitUnix };
       else {
         symWindows[sym].from = Math.min(symWindows[sym].from, entryUnix - 120);
-        symWindows[sym].to   = Math.max(symWindows[sym].to,   exitUnix);
+        symWindows[sym].to = Math.max(symWindows[sym].to, exitUnix);
       }
     }
   }
@@ -417,14 +419,19 @@ async function main() {
     // Alert fires at next candle open (e.g. alert at 10:46:01 → signal candle = 10:45 bar).
     // Signal bar.time ≈ entryUnix - 60, same target findPrice uses — search all bars, not tradeBars.
     const sigTarget = entryUnix - 60;
-    let signalBar = null, sigBestDiff = Infinity;
+    let signalBar = null,
+      sigBestDiff = Infinity;
     for (const bar of barsCache[t.entrySymbol] || []) {
       const diff = Math.abs(bar.time - sigTarget);
-      if (diff < sigBestDiff) { sigBestDiff = diff; signalBar = bar; }
+      if (diff < sigBestDiff) {
+        sigBestDiff = diff;
+        signalBar = bar;
+      }
     }
-    t.candleRange = signalBar && sigBestDiff <= 90
-      ? parseFloat((parseFloat(signalBar.high) - parseFloat(signalBar.low)).toFixed(2))
-      : null;
+    t.candleRange =
+      signalBar && sigBestDiff <= 90
+        ? parseFloat((parseFloat(signalBar.high) - parseFloat(signalBar.low)).toFixed(2))
+        : null;
 
     // Auto-classify outcome for notes (priority order):
     //   price reach upto X points → maxReach >= 20 (highest priority — notable move regardless of exit)
