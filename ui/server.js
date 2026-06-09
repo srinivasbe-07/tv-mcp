@@ -41,6 +41,8 @@ app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-a
 app.get('/supertrend-reports', (_req, res) =>
   res.sendFile(path.join(__dirname, 'supertrend-reports.html'))
 );
+app.get('/1min-reports', (_req, res) => res.sendFile(path.join(__dirname, '1min-reports.html')));
+app.get('/3min-reports', (_req, res) => res.sendFile(path.join(__dirname, '3min-reports.html')));
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -661,9 +663,7 @@ app.get('/api/holidays', (_req, res) => {
 function readTradesDir(dir) {
   let files;
   try {
-    files = fs
-      .readdirSync(dir)
-      .filter((f) => f.match(/^daily-trades-\d{4}-\d{2}-\d{2}\.json$/));
+    files = fs.readdirSync(dir).filter((f) => f.match(/^daily-trades-\d{4}-\d{2}-\d{2}\.json$/));
   } catch {
     return {};
   }
@@ -672,7 +672,9 @@ function readTradesDir(dir) {
     try {
       const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
       result[data.date] = data;
-    } catch { /* skip corrupt */ }
+    } catch {
+      /* skip corrupt */
+    }
   }
   return result;
 }

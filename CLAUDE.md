@@ -318,16 +318,16 @@ Step 10 Save position.json
 
 ### Alert Update Behaviour by Position State
 
-| State                      | CE alerts                           | PE alerts                           |
-| -------------------------- | ----------------------------------- | ----------------------------------- |
-| CE=closed, PE=closed       | ✓ Updated on ATM shift              | ✓ Updated on ATM shift              |
-| CE=open, PE=closed         | ✗ Skipped — trade running           | ✓ Updated on ATM shift              |
-| CE=closed, PE=open         | ✓ Updated on ATM shift              | ✗ Skipped — trade running           |
-| CE=open, PE=open           | ✗ Skipped — trade running           | ✗ Skipped — trade running           |
-| CE just closed             | ✓ Force sync to current strike      | (PE continues normally)             |
-| PE just closed             | (CE continues normally)             | ✓ Force sync to current strike      |
-| CE prev update failed      | ✓ Retry next tick (every 60s until success) | (PE continues normally)      |
-| PE prev update failed      | (CE continues normally)             | ✓ Retry next tick (every 60s until success) |
+| State                 | CE alerts                                   | PE alerts                                   |
+| --------------------- | ------------------------------------------- | ------------------------------------------- |
+| CE=closed, PE=closed  | ✓ Updated on ATM shift                      | ✓ Updated on ATM shift                      |
+| CE=open, PE=closed    | ✗ Skipped — trade running                   | ✓ Updated on ATM shift                      |
+| CE=closed, PE=open    | ✓ Updated on ATM shift                      | ✗ Skipped — trade running                   |
+| CE=open, PE=open      | ✗ Skipped — trade running                   | ✗ Skipped — trade running                   |
+| CE just closed        | ✓ Force sync to current strike              | (PE continues normally)                     |
+| PE just closed        | (CE continues normally)                     | ✓ Force sync to current strike              |
+| CE prev update failed | ✓ Retry next tick (every 60s until success) | (PE continues normally)                     |
+| PE prev update failed | (CE continues normally)                     | ✓ Retry next tick (every 60s until success) |
 
 A running trade's alerts **never move** — they stay on the exact entry strike.
 When the trade exits, alerts are synced to current ITM strike immediately.

@@ -889,7 +889,9 @@ async function main() {
         } else {
           // Started late during market hours: reset CE/PE but allow fresh-start scan
           // to re-derive open trades from TV alert history
-          log(`[STATE] New day market hours (${todayIST()}) — CE/PE reset, re-deriving from history`);
+          log(
+            `[STATE] New day market hours (${todayIST()}) — CE/PE reset, re-deriving from history`
+          );
         }
         saveState();
       }
@@ -977,7 +979,12 @@ async function main() {
       // 4. Update CE alerts — skip if CE trade is running (don't move alerts mid-trade)
       if (state.CE === 'closed') {
         if (needsUpdate || CEjustClosed || retryNextTick.CE) {
-          if (CEjustClosed && !needsUpdate && !retryNextTick.CE && state.lastCEStrike === ceStrike) {
+          if (
+            CEjustClosed &&
+            !needsUpdate &&
+            !retryNextTick.CE &&
+            state.lastCEStrike === ceStrike
+          ) {
             log(`CE exit sync skipped — strike unchanged (${ceStrike})`);
           } else {
             if (retryNextTick.CE) log(`Retrying CE alerts → strike: ${ceStrike}`);
@@ -1005,7 +1012,12 @@ async function main() {
       // 5. Update PE alerts — skip if PE trade is running (don't move alerts mid-trade)
       if (state.PE === 'closed') {
         if (needsUpdate || PEjustClosed || retryNextTick.PE) {
-          if (PEjustClosed && !needsUpdate && !retryNextTick.PE && state.lastPEStrike === peStrike) {
+          if (
+            PEjustClosed &&
+            !needsUpdate &&
+            !retryNextTick.PE &&
+            state.lastPEStrike === peStrike
+          ) {
             log(`PE exit sync skipped — strike unchanged (${peStrike})`);
           } else {
             // Brief stop at spot between CE and PE so the panel scroll position resets.

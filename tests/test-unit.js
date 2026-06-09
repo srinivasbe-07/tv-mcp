@@ -161,7 +161,9 @@ assert('12:00 Sun = closed', isMarketHoursAt(12, 0, 0) === false);
 assert('09:15 Fri = open', isMarketHoursAt(9, 15, 5) === true);
 
 // --- NSE holiday list — loaded from config/nse-holidays.json (single source of truth) ---
-const holidayData = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/nse-holidays.json'), 'utf8'));
+const holidayData = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../config/nse-holidays.json'), 'utf8')
+);
 const NSE_2026 = new Set(holidayData['2026'] || []);
 
 // --- Holiday-aware expiry ---

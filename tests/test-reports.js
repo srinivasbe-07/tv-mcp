@@ -15,6 +15,7 @@ import {
   parseRaw,
   classify,
   parseTrades,
+  parseOpenTrades,
 } from '../scripts/generate-daily-report.js';
 
 import fs from 'fs';
@@ -475,6 +476,69 @@ test('SENSEX trade pair classified correctly', () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseOpenTrades — entries without matching exit get EOD exit at 15:26
+// ---------------------------------------------------------------------------
+section('parseOpenTrades — EOD exit for open trades');
+test('entry without exit → returned as open trade', () => {
+  const snap = [makeItem(CE_ENTRY, 'NIFTY260609C23400', '09:15:00')];
+  return parseOpenTrades(snap).length === 1;
+});
+test('open trade exitTime = 15:26:00', () => {
+  const snap = [makeItem(PE_ENTRY, 'NIFTY260609P23300', '13:33:00')];
+  return parseOpenTrades(snap)[0].exitTime === '15:26:00';
+});
+test('open trade exitSymbol = entrySymbol (no change at EOD)', () => {
+  const snap = [makeItem(PE_ENTRY, 'NIFTY260609P23300', '13:33:00')];
+  const t = parseOpenTrades(snap)[0];
+  return t.entrySymbol === 'NIFTY260609P23300' && t.exitSymbol === 'NIFTY260609P23300';
+});
+test('open trade entryTime preserved', () => {
+  const snap = [makeItem(PE_ENTRY, 'NIFTY260609P23300', '13:33:01')];
+  return parseOpenTrades(snap)[0].entryTime === '13:33:01';
+});
+test('completed trade not returned as open', () => {
+  const snap = [
+    makeItem(CE_EXIT, 'NIFTY260609C23400', '10:00:00'),
+    makeItem(CE_ENTRY, 'NIFTY260609C23400', '09:15:00'),
+  ];
+  return parseOpenTrades(snap).length === 0;
+});
+test('only the last entry per side is tracked as open', () => {
+  const snap = [
+    makeItem(PE_EXIT, 'NIFTY260609P23300', '11:00:00'),
+    makeItem(PE_ENTRY, 'NIFTY260609P23300', '10:30:00'),
+    makeItem(PE_ENTRY, 'NIFTY260609P23500', '09:15:00'),
+  ];
+  const open = parseOpenTrades(snap);
+  // PE exited at 11:00 (clearing the 10:30 entry), so nothing is open
+  return open.length === 0;
+});
+test('CE and PE both open → both returned', () => {
+  const snap = [
+    makeItem(PE_ENTRY, 'NIFTY260609P23300', '14:00:00'),
+    makeItem(CE_ENTRY, 'NIFTY260609C23400', '13:00:00'),
+  ];
+  return parseOpenTrades(snap).length === 2;
+});
+test('startId offset applied correctly', () => {
+  const snap = [makeItem(PE_ENTRY, 'NIFTY260609P23300', '14:00:00')];
+  return parseOpenTrades(snap, 6)[0].id === 6;
+});
+test('combined parseTrades + parseOpenTrades gives all trades', () => {
+  const snap = [
+    makeItem(CE_EXIT, 'NIFTY260609C23400', '10:00:00'),
+    makeItem(CE_ENTRY, 'NIFTY260609C23400', '09:15:00'),
+    makeItem(PE_ENTRY, 'NIFTY260609P23300', '14:00:00'), // still open
+  ];
+  const completed = parseTrades(snap);
+  const open = parseOpenTrades(snap, completed.length + 1);
+  return completed.length === 1 && open.length === 1 && completed.length + open.length === 2;
+});
+test('no open trades when snapshot is empty', () => {
+  return parseOpenTrades([]).length === 0;
+});
+
+// ---------------------------------------------------------------------------
 // Client-side logic (inlined from supertrend-reports.html)
 // ---------------------------------------------------------------------------
 console.log('\n=== supertrend-reports.html client logic (inlined) ===');
@@ -885,7 +949,7 @@ function nextWorkingDay(fromDs) {
 
 function instrForDate(ds) {
   const day = new Date(ds + 'T00:00:00Z').getUTCDay();
-  return (day === 3 || day === 4) ? 'SENSEX' : 'NIFTY';
+  return day === 3 || day === 4 ? 'SENSEX' : 'NIFTY';
 }
 
 // ---------------------------------------------------------------------------
@@ -895,9 +959,11 @@ section('isWorkingDay');
 test('Monday 2026-06-01 is a working day', () => isWorkingDay('2026-06-01'));
 test('Saturday 2026-06-06 is not a working day', () => !isWorkingDay('2026-06-06'));
 test('Sunday 2026-06-07 is not a working day', () => !isWorkingDay('2026-06-07'));
-test('NSE holiday 2026-01-26 (Republic Day) is not a working day', () => !isWorkingDay('2026-01-26'));
+test('NSE holiday 2026-01-26 (Republic Day) is not a working day', () =>
+  !isWorkingDay('2026-01-26'));
 test('NSE holiday 2026-03-03 (Holi) is not a working day', () => !isWorkingDay('2026-03-03'));
-test('NSE holiday 2026-08-15 (Independence Day) is not a working day', () => !isWorkingDay('2026-08-15'));
+test('NSE holiday 2026-08-15 (Independence Day) is not a working day', () =>
+  !isWorkingDay('2026-08-15'));
 test('Tuesday 2026-06-02 (not a holiday) is a working day', () => isWorkingDay('2026-06-02'));
 test('Friday 2026-06-05 is a working day', () => isWorkingDay('2026-06-05'));
 
@@ -910,7 +976,8 @@ test('Mon 2026-06-08 → Tue 2026-06-09', () => nextWorkingDay('2026-06-08') ===
 test('Thu 2026-06-11 → Fri 2026-06-12', () => nextWorkingDay('2026-06-11') === '2026-06-12');
 test('Fri 2026-01-23 (pre-holiday) → Tue 2026-01-27 (skips Jan 26 holiday + weekend)', () =>
   nextWorkingDay('2026-01-23') === '2026-01-27');
-test('Sat 2026-06-13 → Mon 2026-06-15 (skips Sun too)', () => nextWorkingDay('2026-06-13') === '2026-06-15');
+test('Sat 2026-06-13 → Mon 2026-06-15 (skips Sun too)', () =>
+  nextWorkingDay('2026-06-13') === '2026-06-15');
 test('Fri 2026-10-09 (before Dussehra Mon) → Tue 2026-10-13 (skips Mon holiday)', () => {
   // Oct 12 is Columbus Day (US) but not NSE — check actual next day after Oct 9
   const result = nextWorkingDay('2026-10-09');
@@ -928,7 +995,8 @@ test('Thursday → SENSEX', () => instrForDate('2026-06-11') === 'SENSEX');
 test('Friday → NIFTY', () => instrForDate('2026-06-12') === 'NIFTY');
 
 // ---------------------------------------------------------------------------
-// candleRange — compute from entry bar (inlined from generate-daily-report.js)
+// candleRange — high−low of the SIGNAL candle (bar that closed + triggered alert,
+// one bar BEFORE the alert fires). e.g. alert at 10:46:01 → signal bar = 10:45.
 // ---------------------------------------------------------------------------
 section('candleRange computation');
 
@@ -937,12 +1005,17 @@ function computeCandleRange(bar) {
   return parseFloat((parseFloat(bar.high) - parseFloat(bar.low)).toFixed(2));
 }
 
-test('bar high=125.5 low=112.0 → range=13.5', () => computeCandleRange({ high: '125.5', low: '112.0' }) === 13.5);
-test('bar high=200 low=185 → range=15', () => computeCandleRange({ high: '200', low: '185' }) === 15);
-test('bar high=85.75 low=85.25 → range=0.5 (small candle)', () => computeCandleRange({ high: '85.75', low: '85.25' }) === 0.5);
-test('bar high=100 low=100 → range=0 (doji)', () => computeCandleRange({ high: '100', low: '100' }) === 0);
+test('bar high=125.5 low=112.0 → range=13.5', () =>
+  computeCandleRange({ high: '125.5', low: '112.0' }) === 13.5);
+test('bar high=200 low=185 → range=15', () =>
+  computeCandleRange({ high: '200', low: '185' }) === 15);
+test('bar high=85.75 low=85.25 → range=0.5 (small candle)', () =>
+  computeCandleRange({ high: '85.75', low: '85.25' }) === 0.5);
+test('bar high=100 low=100 → range=0 (doji)', () =>
+  computeCandleRange({ high: '100', low: '100' }) === 0);
 test('null bar → returns null', () => computeCandleRange(null) === null);
-test('numeric high/low (not strings) → still works', () => computeCandleRange({ high: 150, low: 120 }) === 30);
+test('numeric high/low (not strings) → still works', () =>
+  computeCandleRange({ high: 150, low: 120 }) === 30);
 test('range rounds to 2 decimal places', () => {
   const r = computeCandleRange({ high: '100.005', low: '99.993' });
   return r === 0.01; // 0.012 rounds to 0.01
@@ -961,24 +1034,23 @@ function tradePassesCandleFilter(trade, minCandle) {
 
 test('no filter → all trades pass', () => {
   const trades = [{ candleRange: 5 }, { candleRange: 20 }, { candleRange: null }];
-  return trades.every(t => tradePassesCandleFilter(t, null));
+  return trades.every((t) => tradePassesCandleFilter(t, null));
 });
 test('filter=10 → only candle≥10 passes', () => {
-  return tradePassesCandleFilter({ candleRange: 10 }, 10) &&
-         !tradePassesCandleFilter({ candleRange: 9.9 }, 10);
+  return (
+    tradePassesCandleFilter({ candleRange: 10 }, 10) &&
+    !tradePassesCandleFilter({ candleRange: 9.9 }, 10)
+  );
 });
 test('filter=15 → exactly 15 passes', () => tradePassesCandleFilter({ candleRange: 15 }, 15));
 test('filter=15 → 14.99 fails', () => !tradePassesCandleFilter({ candleRange: 14.99 }, 15));
 test('filter=15 → 16 passes', () => tradePassesCandleFilter({ candleRange: 16 }, 15));
 test('trade with null candleRange always passes (no entry bar data)', () =>
   tradePassesCandleFilter({ candleRange: null }, 20));
-test('trade with undefined candleRange always passes', () =>
-  tradePassesCandleFilter({}, 20));
+test('trade with undefined candleRange always passes', () => tradePassesCandleFilter({}, 20));
 test('filter=0 → all non-null candles pass', () =>
-  tradePassesCandleFilter({ candleRange: 0 }, 0) &&
-  tradePassesCandleFilter({ candleRange: 5 }, 0));
-test('NaN filter → all trades pass', () =>
-  tradePassesCandleFilter({ candleRange: 5 }, NaN));
+  tradePassesCandleFilter({ candleRange: 0 }, 0) && tradePassesCandleFilter({ candleRange: 5 }, 0));
+test('NaN filter → all trades pass', () => tradePassesCandleFilter({ candleRange: 5 }, NaN));
 
 // June 2026: Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6, Sun=0
 // Jun 8=Mon, Jun 9=Tue, Jun 10=Wed, Jun 11=Thu, Jun 12=Fri, Jun 13=Sat, Jun 14=Sun
@@ -995,7 +1067,8 @@ test('Normal Friday Jun 12 2026 → working day', () => isWorkingDay('2026-06-12
 section('nextWorkingDay');
 test('from Mon Jun 8 → Tue Jun 9', () => nextWorkingDay('2026-06-08') === '2026-06-09');
 test('from Tue Jun 9 → Wed Jun 10', () => nextWorkingDay('2026-06-09') === '2026-06-10');
-test('from Fri Jun 12 → skips Sat+Sun → Mon Jun 15', () => nextWorkingDay('2026-06-12') === '2026-06-15');
+test('from Fri Jun 12 → skips Sat+Sun → Mon Jun 15', () =>
+  nextWorkingDay('2026-06-12') === '2026-06-15');
 test('from Thu Jun 25 → skips Fri holiday (Jun 26) + Sat + Sun → Mon Jun 29', () =>
   nextWorkingDay('2026-06-25') === '2026-06-29');
 test('from Fri Jun 26 (holiday) → skips Sat + Sun → Mon Jun 29', () =>
@@ -1021,13 +1094,17 @@ test('Wednesday Jun 10 → SENSEX', () => instrForDate('2026-06-10') === 'SENSEX
 test('Thursday Jun 11 → SENSEX', () => instrForDate('2026-06-11') === 'SENSEX');
 test('Friday Jun 12 → NIFTY', () => instrForDate('2026-06-12') === 'NIFTY');
 test('Mon/Tue/Fri all map to NIFTY', () => {
-  return instrForDate('2026-06-08') === 'NIFTY'  // Mon
-      && instrForDate('2026-06-09') === 'NIFTY'  // Tue
-      && instrForDate('2026-06-12') === 'NIFTY'; // Fri
+  return (
+    instrForDate('2026-06-08') === 'NIFTY' && // Mon
+    instrForDate('2026-06-09') === 'NIFTY' && // Tue
+    instrForDate('2026-06-12') === 'NIFTY'
+  ); // Fri
 });
 test('Wed/Thu both map to SENSEX', () => {
-  return instrForDate('2026-06-10') === 'SENSEX'  // Wed
-      && instrForDate('2026-06-11') === 'SENSEX'; // Thu
+  return (
+    instrForDate('2026-06-10') === 'SENSEX' && // Wed
+    instrForDate('2026-06-11') === 'SENSEX'
+  ); // Thu
 });
 
 // ---------------------------------------------------------------------------

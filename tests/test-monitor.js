@@ -460,10 +460,7 @@ test('fresh-start: CE entry most recent (no exit) → CE=open', () => {
 });
 test('fresh-start: both sides — CE entry + PE exit most recent → CE=open PE=closed', () => {
   const s = makeFreshState();
-  processHistoryForPositionChanges(
-    [{ name: CE_ENTRY }, { name: PE_EXIT }, { name: PE_ENTRY }],
-    s
-  );
+  processHistoryForPositionChanges([{ name: CE_ENTRY }, { name: PE_EXIT }, { name: PE_ENTRY }], s);
   return s.CE === 'open' && s.PE === 'closed';
 });
 test('fresh-start: snapshot populated to top-30 after scan', () => {
