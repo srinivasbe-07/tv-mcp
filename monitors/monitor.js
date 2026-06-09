@@ -235,10 +235,13 @@ export function todayIST() {
  *      first force tick, preventing old history from being replayed.
  *
  * B. Market-hours start (monitor started late, isMarketHours = true):
- *    → CE/PE loaded as-is from position.json.
+ *    → CE/PE loaded as-is from position.json (starting point only).
  *    → lastLogSnapshot is deleted so processHistoryForPositionChanges runs the
- *      fresh-start scan on the first tick, re-deriving position from TV alert history.
- *    → This correctly recovers a running trade that opened before the monitor started.
+ *      fresh-start scan when called.
+ *    → Immediately after CDP connects, ALERT_HISTORY_SCRIPT is run and
+ *      processHistoryForPositionChanges re-derives CE/PE from TV alert history.
+ *      saveState() is called right away — position.json is correct before the
+ *      first tick and before waitForAlertsReady completes.
  *
  * C. Continuous running, new calendar day (no restart):
  *    → loadState is NOT called. The tick detects isNewDay (todayIST !== state.lastDate).
@@ -767,6 +770,30 @@ async function main() {
 
   const cdpAlerts = new AlertTools(cdp);
   const cdpChart = new ChartTools(cdp);
+
+  // ── Market-hours restart: re-derive CE/PE from TV alert history immediately ──
+  // loadState() loaded CE/PE from file which may be stale (monitor was down when
+  // an alert fired). Read history now so position.json is correct before the first
+  // tick — don't wait for waitForAlertsReady which can take up to 120s.
+  if (isMarketHours()) {
+    log('[STATE] Market hours restart — reading TV alert history to re-derive position...');
+    try {
+      const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
+      const historyItems =
+        historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
+      if (historyItems.length > 0) {
+        processHistoryForPositionChanges(historyItems, state);
+        saveState();
+        log(
+          `[STATE] Position re-derived: CE=${state.CE.toUpperCase()} PE=${state.PE.toUpperCase()}`
+        );
+      } else {
+        log('[STATE] No alert history found — keeping loaded state');
+      }
+    } catch (e) {
+      log(`[STATE] Could not read alert history on startup: ${e.message}`);
+    }
+  }
 
   // ── Wait for Alerts panel to sync from cloud after TV restart ────────────
   // Polls alert_list every 5s until all 4 supertrend alerts for today's

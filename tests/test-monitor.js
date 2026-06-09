@@ -572,6 +572,58 @@ test('diff: boundary item not found, CE entry at index 6 → not processed', () 
 });
 
 // ---------------------------------------------------------------------------
+// Market-hours restart: early history read re-derives CE/PE before first tick.
+// Simulates: loadState() loaded stale state, CDP connects, history is read
+// immediately via processHistoryForPositionChanges (fresh-start scan).
+// ---------------------------------------------------------------------------
+section('market-hours restart — early history read re-derives position');
+
+test('market restart: stale PE=open corrected to closed when exit is newest history item', () => {
+  const s = { CE: 'closed', PE: 'open', lastLogSnapshot: [] };
+  const history = [
+    { name: PE_EXIT, symbol: '' },
+    { name: PE_ENTRY, symbol: '' },
+  ];
+  processHistoryForPositionChanges(history, s);
+  return s.PE === 'closed';
+});
+
+test('market restart: stale CE=open corrected to closed when exit is newest history item', () => {
+  const s = { CE: 'open', PE: 'closed', lastLogSnapshot: [] };
+  const history = [
+    { name: CE_EXIT, symbol: '' },
+    { name: CE_ENTRY, symbol: '' },
+  ];
+  processHistoryForPositionChanges(history, s);
+  return s.CE === 'closed';
+});
+
+test('market restart: CE=open preserved when entry is newest (trade still running)', () => {
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: [] };
+  const history = [{ name: CE_ENTRY, symbol: '' }];
+  processHistoryForPositionChanges(history, s);
+  return s.CE === 'open';
+});
+
+test('market restart: both sides re-derived correctly from mixed history', () => {
+  // CE exited, PE still open
+  const s = { CE: 'open', PE: 'closed', lastLogSnapshot: [] };
+  const history = [
+    { name: PE_ENTRY, symbol: '' },
+    { name: CE_EXIT, symbol: '' },
+    { name: CE_ENTRY, symbol: '' },
+  ];
+  processHistoryForPositionChanges(history, s);
+  return s.CE === 'closed' && s.PE === 'open';
+});
+
+test('market restart: empty history leaves state unchanged', () => {
+  const s = { CE: 'open', PE: 'open', lastLogSnapshot: [] };
+  processHistoryForPositionChanges([], s);
+  return s.CE === 'open' && s.PE === 'open';
+});
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 const total = pass + fail;

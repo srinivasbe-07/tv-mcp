@@ -338,11 +338,15 @@ When the trade exits, alerts are synced to current ITM strike immediately.
 
 ```
 1. Connect to dedicated chart tab (logs/supertrend-tab.json)
-2. Poll alert_list every 5s until all 4 today-instrument alerts visible (up to 120s)
+2. Position reset (before first tick):
+   └── Pre/off-market start → CE/PE forced to 'closed' (no trades outside market hours)
+   └── Market-hours start   → read TV alert history immediately, re-derive CE/PE,
+                              save to position.json — no waiting for first tick
+3. Poll alert_list every 5s until all 4 today-instrument alerts visible (up to 120s)
    → prevents "not found" failures when TV just restarted and alerts haven't synced
-3. First force tick → update CE + PE alerts immediately (bypasses 90s cooldown)
-4. Verify status → re-activate any stopped alerts
-5. Enter 60s poll loop
+4. First force tick → update CE + PE alerts immediately (bypasses 120s cooldown)
+5. Verify status → re-activate any stopped alerts
+6. Enter 60s poll loop
 ```
 
 ---
