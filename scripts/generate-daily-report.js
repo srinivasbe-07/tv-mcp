@@ -84,8 +84,7 @@ function dateToISTRange(dateStr) {
 }
 
 // Scroll the TradingView chart timescale to show the target date, so historical bars are loaded.
-async function scrollChartToDate(cdp, dateStr) {
-  const { from, to } = dateToISTRange(dateStr);
+async function scrollChartToRange(cdp, fromUnix, toUnix) {
   const result = await cdp.executeScript(`
     (function() {
       try {
@@ -94,12 +93,12 @@ async function scrollChartToDate(cdp, dateStr) {
           ?._chartWidget?._modelWV?._value;
         const ts = model?.timeScale?.();
         if (ts?.setVisibleRange) {
-          ts.setVisibleRange({ from: ${from}, to: ${to} });
+          ts.setVisibleRange({ from: ${fromUnix}, to: ${toUnix} });
           return 'ok-model';
         }
         const cw = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget;
         if (cw?.setVisibleRange) {
-          cw.setVisibleRange({ from: ${from}, to: ${to} });
+          cw.setVisibleRange({ from: ${fromUnix}, to: ${toUnix} });
           return 'ok-widget';
         }
         return 'no-api';
@@ -206,6 +205,43 @@ function parseTrades(snapshot) {
   return trades;
 }
 
+// Return entries that fired but never had a matching exit (still open at EOD).
+// These get assigned 15:26:00 IST as their exit time (last usable bar before close).
+function parseOpenTrades(snapshot, startId = 1) {
+  const items = [...snapshot].reverse();
+  const pending = {};
+
+  for (const item of items) {
+    const meta = classify(item.name);
+    if (!meta) continue;
+    const { symbol, time } = parseRaw(item.raw);
+    const { instrument, side, event } = meta;
+    if (event === 'entry') {
+      pending[side] = { instrument, symbol, entryTime: time };
+    } else if (event === 'exit') {
+      pending[side] = null;
+    }
+  }
+
+  const EOD_EXIT = '15:26:00';
+  let idSeq = startId;
+  return Object.entries(pending)
+    .filter(([, v]) => v)
+    .map(([side, info]) => ({
+      id: idSeq++,
+      instrument: info.instrument,
+      side,
+      entrySymbol: info.symbol,
+      exitSymbol: info.symbol,
+      entryTime: info.entryTime,
+      exitTime: EOD_EXIT,
+      lots: LOTS[info.instrument],
+      lotSize: LOT_SIZES[info.instrument],
+      entryPrice: null,
+      exitPrice: null,
+    }));
+}
+
 // Convert "HH:MM:SS" IST to Unix seconds (UTC) for a given YYYY-MM-DD date.
 function istTimeToUnix(timeStr, dateStr) {
   const [h, m, s] = timeStr.split(':').map(Number);
@@ -237,20 +273,38 @@ function findPrice(bars, alertUnix) {
   return bestDiff <= 90 ? parseFloat(best.close) : null;
 }
 
-async function fetchBarsForSymbol(cdp, cdpChart, qualifiedSymbol, targetDate) {
+// Open the option chart and scroll to the exact time window of the trades.
+// fromUnix/toUnix = earliest entry and latest exit across all trades on this symbol.
+async function fetchBarsForSymbol(cdp, cdpChart, qualifiedSymbol, fromUnix, toUnix) {
   await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
   await new Promise((r) => setTimeout(r, 3000));
   await cdpChart.handle('chart_set_timeframe', { timeframe: '1' });
   await new Promise((r) => setTimeout(r, 2000));
 
-  // For past dates, scroll the chart to that date so TradingView loads historical bars.
-  const scrollResult = await scrollChartToDate(cdp, targetDate);
-  console.log(`  scroll to ${targetDate}: ${scrollResult}`);
-  await new Promise((r) => setTimeout(r, 4000)); // wait for TV to fetch historical data
+  // Scroll to the trade window with 30-min padding on each side.
+  // This loads the exact candles around entry/exit rather than the full day.
+  const padded = { from: fromUnix - 1800, to: toUnix + 1800 };
+  const scrollResult = await scrollChartToRange(cdp, padded.from, padded.to);
+  console.log(`  scroll to trade window: ${scrollResult}`);
 
-  const result = await cdpChart.handle('data_get_ohlcv', { summary: false, limit: 2000 });
-  const data = JSON.parse(result?.content?.[0]?.text || '{}');
-  return data.bars || [];
+  // Poll until bars in the trade window are loaded (up to 20s, retry every 2s).
+  let bars = [];
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const result = await cdpChart.handle('data_get_ohlcv', { summary: false, limit: 2000 });
+    const data = JSON.parse(result?.content?.[0]?.text || '{}');
+    bars = data.bars || [];
+    // Check bars within the trade window (allow 2-min tolerance for the signal candle)
+    const windowBars = bars.filter((b) => b.time >= fromUnix - 120 && b.time <= toUnix + 60);
+    if (windowBars.length > 0) {
+      console.log(`  ${bars.length} bars loaded (${windowBars.length} in trade window) after attempt ${attempt}`);
+      return bars;
+    }
+    console.log(`  attempt ${attempt}: 0 bars in trade window, retrying…`);
+    await scrollChartToRange(cdp, padded.from, padded.to);
+  }
+  console.warn(`  WARNING: no bars in trade window after 10 attempts`);
+  return bars;
 }
 
 async function main() {
@@ -269,14 +323,24 @@ async function main() {
   }
 
   const trades = parseTrades(snapshot);
-  if (trades.length === 0) {
+  const openTrades = parseOpenTrades(snapshot, trades.length + 1);
+  if (openTrades.length > 0) {
+    console.log(`Open trades (EOD exit at 15:26): ${openTrades.length}`);
+    for (const t of openTrades) {
+      console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → EOD`);
+    }
+  }
+  const allTrades = [...trades, ...openTrades];
+
+  if (allTrades.length === 0) {
     console.log('No complete trade pairs found in position.json');
     process.exit(0);
   }
 
-  console.log(`Trades found: ${trades.length}`);
-  for (const t of trades) {
-    console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${t.exitTime}`);
+  console.log(`\nTrades found: ${allTrades.length}`);
+  for (const t of allTrades) {
+    const exitLabel = openTrades.includes(t) ? `${t.exitTime} (EOD)` : t.exitTime;
+    console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${exitLabel}`);
   }
 
   // Connect to TradingView using supertrend tab
@@ -297,20 +361,34 @@ async function main() {
   }
   const cdpChart = new ChartTools(cdp);
 
-  // Fetch 1m OHLCV for each unique option symbol (cache to avoid redundant chart switches)
-  const allSymbols = [...new Set(trades.flatMap((t) => [t.entrySymbol, t.exitSymbol]))];
+  // Build per-symbol time windows: earliest entry (−2 bars for signal candle) → latest exit
+  const symWindows = {};
+  for (const t of allTrades) {
+    const entryUnix = istTimeToUnix(t.entryTime, today);
+    const exitUnix  = istTimeToUnix(t.exitTime,  today);
+    for (const sym of [t.entrySymbol, t.exitSymbol]) {
+      if (!symWindows[sym]) symWindows[sym] = { from: entryUnix - 120, to: exitUnix };
+      else {
+        symWindows[sym].from = Math.min(symWindows[sym].from, entryUnix - 120);
+        symWindows[sym].to   = Math.max(symWindows[sym].to,   exitUnix);
+      }
+    }
+  }
+
+  // Fetch 1m OHLCV for each unique option symbol — scroll to its exact trade window
+  const allSymbols = [...new Set(allTrades.flatMap((t) => [t.entrySymbol, t.exitSymbol]))];
   const barsCache = {};
   for (const sym of allSymbols) {
     const instrument = sym.startsWith('BSX') ? 'SENSEX' : 'NIFTY';
     const qualified = `${EXCHANGE[instrument]}:${sym}`;
+    const { from, to } = symWindows[sym];
     console.log(`\nFetching 1m bars for ${qualified}...`);
-    barsCache[sym] = await fetchBarsForSymbol(cdp, cdpChart, qualified, today);
-    console.log(`  ${barsCache[sym].length} bars loaded`);
+    barsCache[sym] = await fetchBarsForSymbol(cdp, cdpChart, qualified, from, to);
   }
 
   // Look up entry and exit prices from OHLCV
   console.log('\nPrice lookup:');
-  for (const t of trades) {
+  for (const t of allTrades) {
     const entryUnix = istTimeToUnix(t.entryTime, today);
     const exitUnix = istTimeToUnix(t.exitTime, today);
     t.entryPrice = findPrice(barsCache[t.entrySymbol], entryUnix);
@@ -335,10 +413,17 @@ async function main() {
           )
         : 0;
 
-    // Entry candle full range (high − low of the bar at entry time)
-    const entryBar = tradeBars[0];
-    t.candleRange = entryBar
-      ? parseFloat((parseFloat(entryBar.high) - parseFloat(entryBar.low)).toFixed(2))
+    // Signal candle range (high − low of the bar that CLOSED and triggered the alert).
+    // Alert fires at next candle open (e.g. alert at 10:46:01 → signal candle = 10:45 bar).
+    // Signal bar.time ≈ entryUnix - 60, same target findPrice uses — search all bars, not tradeBars.
+    const sigTarget = entryUnix - 60;
+    let signalBar = null, sigBestDiff = Infinity;
+    for (const bar of barsCache[t.entrySymbol] || []) {
+      const diff = Math.abs(bar.time - sigTarget);
+      if (diff < sigBestDiff) { sigBestDiff = diff; signalBar = bar; }
+    }
+    t.candleRange = signalBar && sigBestDiff <= 90
+      ? parseFloat((parseFloat(signalBar.high) - parseFloat(signalBar.low)).toFixed(2))
       : null;
 
     // Auto-classify outcome for notes (priority order):
@@ -369,11 +454,11 @@ async function main() {
   await cdp.disconnect();
 
   // Write JSON report
-  const output = { date: today, instrument: position.lastInstrument || 'NIFTY', trades };
+  const output = { date: today, instrument: position.lastInstrument || 'NIFTY', trades: allTrades };
   const outFile = path.join(LOGS_DIR, `daily-trades-${today}.json`);
   fs.writeFileSync(outFile, JSON.stringify(output, null, 2));
 
-  const missing = trades.filter((t) => t.entryPrice === null || t.exitPrice === null).length;
+  const missing = allTrades.filter((t) => t.entryPrice === null || t.exitPrice === null).length;
   console.log(`\nSaved → ${outFile}`);
   if (missing > 0)
     console.warn(`  ${missing} trade(s) have missing prices — check TradingView chart data`);
@@ -395,4 +480,5 @@ export {
   parseRaw,
   classify,
   parseTrades,
+  parseOpenTrades,
 };
