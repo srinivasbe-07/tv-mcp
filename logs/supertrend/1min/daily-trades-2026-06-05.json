@@ -19,14 +19,16 @@
       "maxReach": 0,
       "notes": "price reach upto 21 points",
       "time": "10:09",
-      "exitTgt": 256
+      "exitTgt": 256,
+      "id": 1000,
+      "candleRange": 11.3
     },
     {
       "instrument": "NIFTY",
       "side": "PE",
       "entrySymbol": "NIFTY260609P23500",
       "exitSymbol": "NIFTY260609P23500",
-      "entryTime": "10:37:01",
+      "entryTime": "10:37",
       "exitTime": "10:59:01",
       "lots": 10,
       "lotSize": 65,
@@ -37,14 +39,17 @@
       "exitNSL": 192.5,
       "tgtPts": 31,
       "maxReach": 42,
-      "notes": "price reach upto 42 points"
+      "notes": "price reach upto 42 points",
+      "id": 1001,
+      "time": "10:37",
+      "candleRange": 23.05
     },
     {
       "instrument": "NIFTY",
       "side": "CE",
       "entrySymbol": "NIFTY260609C23350",
       "exitSymbol": "NIFTY260609C23350",
-      "entryTime": "11:05:00",
+      "entryTime": "11:05",
       "exitTime": "11:18:00",
       "lots": 10,
       "lotSize": 65,
@@ -55,14 +60,17 @@
       "exitNSL": 23439.9,
       "tgtPts": 31,
       "maxReach": 40.9,
-      "notes": "price reach upto 40.9 points"
+      "notes": "price reach upto 40.9 points",
+      "id": 1002,
+      "time": "11:05",
+      "candleRange": 14.7
     },
     {
       "instrument": "NIFTY",
       "side": "PE",
       "entrySymbol": "NIFTY260609P23450",
       "exitSymbol": "NIFTY260609P23450",
-      "entryTime": "12:38:01",
+      "entryTime": "12:38",
       "exitTime": "12:39:01",
       "lots": 10,
       "lotSize": 65,
@@ -73,32 +81,38 @@
       "exitNSL": 153.15,
       "tgtPts": -10,
       "maxReach": 0,
-      "notes": "PINE SCRIPT SL"
+      "notes": "PINE SCRIPT SL",
+      "id": 1003,
+      "time": "12:38",
+      "candleRange": 10.95
     },
     {
       "instrument": "NIFTY",
       "side": "PE",
       "entrySymbol": "NIFTY260609P23450",
       "exitSymbol": "NIFTY260609P23450",
-      "entryTime": "12:43:01",
+      "entryTime": "12:43",
       "exitTime": "14:00:00",
       "lots": 10,
       "lotSize": 65,
       "entryPrice": 160.6,
       "exitPrice": 197.8,
-      "exitSL": 210.6,
+      "exitSL": 197.8,
       "exitTgt": 191.6,
       "exitNSL": 197.8,
       "tgtPts": 31,
       "maxReach": 77.7,
-      "notes": "price reach upto 77.7 points"
+      "notes": "price reach upto 77.7 points",
+      "id": 1004,
+      "time": "12:43",
+      "candleRange": 8.45
     },
     {
       "instrument": "NIFTY",
       "side": "CE",
       "entrySymbol": "NIFTY260609C23300",
       "exitSymbol": "NIFTY260609C23300",
-      "entryTime": "14:31:00",
+      "entryTime": "14:31",
       "exitTime": "14:32:00",
       "lots": 10,
       "lotSize": 65,
@@ -109,14 +123,17 @@
       "exitNSL": 200.85,
       "tgtPts": -4.9,
       "maxReach": 0.85,
-      "notes": "PINE SCRIPT SL"
+      "notes": "PINE SCRIPT SL",
+      "id": 1005,
+      "time": "14:31",
+      "candleRange": 10.75
     },
     {
       "instrument": "NIFTY",
       "side": "CE",
       "entrySymbol": "NIFTY260609C23300",
       "exitSymbol": "NIFTY260609C23300",
-      "entryTime": "14:44:00",
+      "entryTime": "14:44",
       "exitTime": "14:58:00",
       "lots": 10,
       "lotSize": 65,
@@ -127,7 +144,11 @@
       "exitNSL": 207.45,
       "tgtPts": 31,
       "maxReach": 31,
-      "notes": "price reach upto 31 points"
+      "notes": "price reach upto 31 points",
+      "id": 1006,
+      "time": "14:44",
+      "candleRange": 35.05
     }
-  ]
+  ],
+  "note": "10:37 candle size is is 23 can take from bottom. 14:44 with candle size is 33 try from bottom will loss."
 }

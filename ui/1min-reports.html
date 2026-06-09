@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>1-Min Strategy Reports</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #d1d5db; min-height: 100vh; }
+      header { background: #1a1d27; border-bottom: 1px solid #2a2d3a; padding: 0 20px; height: 52px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+      .logo { font-size: 14px; font-weight: 700; color: #fff; }
+      .logo span { color: #a78bfa; }
+      .nav-link { font-size: 11px; color: #6b7280; text-decoration: none; padding: 4px 8px; border-radius: 5px; border: 1px solid #2a2d3a; }
+      .nav-link:hover { color: #d1d5db; border-color: #4b5563; }
+      .divider { width: 1px; height: 24px; background: #2a2d3a; }
+      .hdr-title { font-size: 13px; font-weight: 700; color: #4ade80; }
+      .spacer { flex: 1; }
+      .month-bar { display: flex; gap: 6px; padding: 16px 20px 0; flex-wrap: wrap; }
+      .month-tab { padding: 7px 18px; border-radius: 8px 8px 0 0; border: 1px solid #2a2d3a; border-bottom: none; font-size: 12px; font-weight: 600; cursor: pointer; background: #13151f; color: #6b7280; transition: all 0.15s; }
+      .month-tab:hover { color: #d1d5db; }
+      .month-tab.active { background: #1a1d27; color: #a78bfa; border-color: #3b3f55; }
+      .month-panel { display: none; padding: 0 20px 80px; background: #1a1d27; border: 1px solid #2a2d3a; border-top: none; margin: 0 20px; border-radius: 0 8px 8px 8px; }
+      .month-panel.active { display: block; }
+      .summary { display: grid; grid-template-columns: 160px repeat(3, 1fr); gap: 12px; padding: 16px 0 20px; }
+      .scard { background: #0f1117; border: 1px solid #2a2d3a; border-radius: 10px; padding: 12px 16px; }
+      .scard-lbl { font-size: 10px; color: #6b7280; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
+      .scard-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .scard-sub { font-size: 10px; color: #6b7280; margin-top: 3px; }
+      .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #1f2937; }
+      .stat-row:last-child { border-bottom: none; }
+      .stat-key { font-size: 10px; color: #6b7280; font-weight: 600; }
+      .stat-val { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .stat-sub { font-size: 9px; color: #4b5563; margin-top: 1px; text-align: right; }
+      .c-green { color: #4ade80; } .c-red { color: #f87171; } .c-yellow { color: #facc15; }
+      .c-purple { color: #a78bfa; } .c-white { color: #f9fafb; } .c-gray { color: #6b7280; } .c-orange { color: #fb923c; }
+      .day-block { margin-bottom: 10px; }
+      .day-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; cursor: pointer; user-select: none; transition: border-color 0.15s; }
+      .day-header:hover { border-color: #4b5563; }
+      .day-header.open { border-radius: 8px 8px 0 0; border-color: #3b3f55; }
+      .day-chevron { font-size: 10px; color: #6b7280; transition: transform 0.2s; }
+      .day-header.open .day-chevron { transform: rotate(90deg); }
+      .day-date { font-size: 13px; font-weight: 700; color: #e5e7eb; }
+      .day-badge { font-size: 10px; color: #6b7280; background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 4px; padding: 2px 7px; }
+      .day-pnl { font-size: 12px; font-weight: 700; margin-left: auto; }
+      .day-note-bar { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: #0d0f18; border-bottom: 1px solid #2a2d3a; }
+      .day-note-bar .note-text { flex: 1; font-size: 12px; color: #9ca3af; font-style: italic; white-space: pre-wrap; word-break: break-word; }
+      .day-note-bar .note-text.empty { color: #4b5563; }
+      .day-note-bar input.note-input { flex: 1; background: #1a1d27; border: 1px solid #3b3f55; border-radius: 4px; color: #e5e7eb; font-size: 12px; padding: 4px 8px; outline: none; }
+      .day-note-bar input.note-input:focus { border-color: #6366f1; }
+      .note-edit-btn { font-size: 11px; padding: 2px 8px; background: #1a1d27; border: 1px solid #3b3f55; border-radius: 4px; color: #9ca3af; cursor: pointer; white-space: nowrap; }
+      .note-edit-btn:hover { border-color: #6366f1; color: #e5e7eb; }
+      .day-body { display: none; border: 1px solid #3b3f55; border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
+      .day-body.open { display: block; }
+      table { width: 100%; border-collapse: collapse; }
+      thead th { background: #13151f; font-size: 10px; font-weight: 700; color: #6b7280; letter-spacing: 0.6px; text-transform: uppercase; padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2d3a; white-space: nowrap; }
+      thead th:first-child { text-align: left; }
+      tbody tr { border-bottom: 1px solid #1f2937; transition: background 0.1s; }
+      tbody tr:hover { background: #1a1d27; }
+      tbody td { padding: 8px 10px; font-size: 12px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      tbody td:first-child { text-align: left; }
+      .side-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+      .side-ce { background: #052e16; color: #4ade80; } .side-pe { background: #450a0a; color: #fca5a5; }
+      .sym-text { font-size: 11px; color: #9ca3af; font-family: 'Consolas', monospace; }
+      .total-row td { background: #13151f; font-weight: 700; font-size: 11px; color: #9ca3af; border-top: 1px solid #374151; padding: 9px 10px; }
+      .total-row td:first-child { color: #6b7280; text-align: left; }
+      .filter-bar { display: flex; gap: 6px; padding: 14px 0 0; align-items: center; }
+      .filter-btn { padding: 4px 14px; border-radius: 6px; border: 1px solid #2a2d3a; background: #13151f; color: #6b7280; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+      .filter-btn:hover { border-color: #4b5563; color: #d1d5db; }
+      .filter-btn.active { background: #1e1b4b; border-color: #6d28d9; color: #a78bfa; }
+      .filter-btn.nifty.active { background: #052e16; border-color: #166534; color: #4ade80; }
+      .filter-btn.sensex.active { background: #1e3a5f; border-color: #1d4ed8; color: #93c5fd; }
+      .time-section { display: flex; align-items: flex-start; gap: 8px; padding: 10px 0 4px; flex-wrap: wrap; }
+      .time-section-label { font-size: 10px; color: #6b7280; font-weight: 700; padding-top: 5px; white-space: nowrap; }
+      .time-ranges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .time-range-row { display: flex; align-items: center; gap: 4px; background: #13151f; border: 1px solid #2a2d3a; border-radius: 6px; padding: 3px 8px; }
+      .time-range-row.active { border-color: #6d28d9; background: #1e1b4b; }
+      .time-input { background: transparent; border: none; color: #d1d5db; font-size: 11px; font-weight: 600; width: 76px; outline: none; cursor: pointer; }
+      .time-sep { font-size: 10px; color: #4b5563; }
+      .time-del-btn { background: none; border: none; color: #4b5563; font-size: 12px; cursor: pointer; padding: 0 2px; line-height: 1; }
+      .time-del-btn:hover { color: #f87171; }
+      .add-range-btn { padding: 4px 10px; border-radius: 6px; border: 1px dashed #374151; background: none; color: #6b7280; font-size: 10px; font-weight: 700; cursor: pointer; }
+      .add-range-btn:hover { border-color: #6d28d9; color: #a78bfa; }
+      .time-clear-all { padding: 4px 10px; border-radius: 6px; border: 1px solid #374151; background: none; color: #6b7280; font-size: 10px; font-weight: 700; cursor: pointer; }
+      .time-clear-all:hover { border-color: #f87171; color: #f87171; }
+      .note-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 6px; border: 1px solid #2a2d3a; background: #13151f; font-size: 10px; font-weight: 700; color: #6b7280; cursor: pointer; user-select: none; }
+      .note-chip input[type='checkbox'] { accent-color: #a78bfa; cursor: pointer; }
+      .note-chip.active { border-color: #6d28d9; background: #1e1b4b; color: #a78bfa; }
+      .reach-input { background: #13151f; border: 1px solid #2a2d3a; color: #d1d5db; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 600; width: 64px; outline: none; }
+      .reach-input:focus { border-color: #6d28d9; }
+      .date-filter-select { background: #13151f; border: 1px solid #2a2d3a; color: #d1d5db; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; outline: none; cursor: pointer; }
+      .date-filter-select:focus { border-color: #6d28d9; }
+      .date-filter-select option { background: #1a1d27; }
+      .reach-label { font-size: 10px; color: #6b7280; font-weight: 700; }
+      .notes-cell { font-size: 10px; color: #9ca3af; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .notes-cell.sl-hit { color: #f87171; }
+      .notes-cell.pine-sl { color: #fb923c; }
+      .act-btn { background: none; border: 1px solid #2a2d3a; color: #6b7280; border-radius: 4px; padding: 3px 7px; font-size: 10px; cursor: pointer; transition: all 0.15s; margin-left: 3px; }
+      .act-btn:hover { border-color: #4b5563; color: #d1d5db; }
+      .act-btn.save { border-color: #166534; color: #4ade80; }
+      .act-btn.save:hover { background: #052e16; }
+      .act-btn.cancel { border-color: #7f1d1d; color: #f87171; }
+      .act-btn.cancel:hover { background: #450a0a; }
+      .act-btn.del { border-color: #7f1d1d; color: #f87171; }
+      .edit-input { background: #0f1117; border: 1px solid #3b3f55; color: #e5e7eb; border-radius: 4px; padding: 3px 6px; font-size: 11px; width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
+      .edit-input.wide { width: 120px; }
+      .edit-input.sm { width: 52px; }
+      .edit-input.reach-pts { width: 52px; margin-left: 4px; text-align: left; }
+      .edit-select { background: #0f1117; border: 1px solid #3b3f55; color: #e5e7eb; border-radius: 4px; padding: 3px 4px; font-size: 11px; cursor: pointer; max-width: 130px; }
+      .add-row-tr { opacity: 0; transition: opacity 0.15s; }
+      tbody:hover .add-row-tr { opacity: 1; }
+      .add-row-tr td { padding: 0; height: 6px; position: relative; }
+      .add-row-btn { position: absolute; left: 50%; top: -8px; transform: translateX(-50%); background: #1e3a5f; border: 1px solid #1d4ed8; color: #93c5fd; border-radius: 10px; padding: 1px 10px; font-size: 10px; font-weight: 700; cursor: pointer; white-space: nowrap; z-index: 5; }
+      .add-row-btn:hover { background: #1d4ed8; color: #fff; }
+      .dl-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 14px; background: #052e16; border: 1px solid #166534; color: #4ade80; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+      .dl-btn:hover { background: #14532d; border-color: #22c55e; }
+      .empty-msg { text-align: center; padding: 60px; color: #374151; font-size: 14px; }
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 2px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">Supertrend<span>Monitor</span></div>
+      <a class="nav-link" href="/supertrend-reports">&#x2190; Reports</a>
+      <a class="nav-link" href="/">&#x2190; Dashboard</a>
+      <div class="divider"></div>
+      <div class="hdr-title">&#x23F1; 1-Min Strategy Reports</div>
+      <div class="spacer"></div>
+    </header>
+
+    <div id="month-bar" class="month-bar"></div>
+    <div id="panels-container"></div>
+    <div id="save-bar" style="display:none"></div>
+
+    <script>
+      const DATA_URL = '/api/report/data';
+      const SAVE_URL = '/api/report/save';
+
+      const LOT_SIZES = { NIFTY: 65, SENSEX: 20 };
+      const SL_PTS    = { NIFTY: 15, SENSEX: 35 };
+      const TGT_G     = { NIFTY: 50, SENSEX: 100 };
+      const TGT_L     = { NIFTY: 31, SENSEX: 70 };
+      const INITIAL_CAPITAL = 200000;
+
+      let allData = {};
+      let nextId = 1000;
+      let activeMonth = null;
+      let monthFilters = {};
+      let monthTimeFilters = {};
+      let monthNoteFilters = {};
+      let monthReachFilter = {};
+      let monthCandleFilter = {};
+      let monthDateFilter = {};
+      let NSE_HOLIDAYS = new Set();
+
+      async function loadData() {
+        try {
+          const [data, holidays] = await Promise.all([
+            fetch(DATA_URL).then(r => r.json()),
+            fetch('/api/holidays').then(r => r.json()),
+          ]);
+          NSE_HOLIDAYS = new Set(Object.values(holidays).flat());
+          allData = data;
+          for (const day of Object.values(allData)) {
+            for (const t of day.trades || []) {
+              if (t.id == null) t.id = nextId++;
+            }
+          }
+          renderPage();
+        } catch (e) {
+          document.getElementById('panels-container').innerHTML =
+            `<div class="empty-msg">Failed to load data: ${e.message}</div>`;
+        }
+      }
+
+      function groupByMonth() {
+        const months = {};
+        for (const date of Object.keys(allData).sort().reverse()) {
+          const [y, m] = date.split('-');
+          const key = `${y}-${m}`;
+          if (!months[key]) months[key] = [];
+          months[key].push(date);
+        }
+        return months;
+      }
+
+      const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      function monthLabel(key) {
+        const [y, m] = key.split('-');
+        return `${MONTH_NAMES[parseInt(m) - 1]} ${y}`;
+      }
+
+      function renderPage() {
+        const months = groupByMonth();
+        const keys = Object.keys(months);
+        const bar = document.getElementById('month-bar');
+        const con = document.getElementById('panels-container');
+        bar.innerHTML = '';
+        con.innerHTML = '';
+        if (keys.length === 0) {
+          con.innerHTML = '<div class="empty-msg">No trade records found. Run "Generate Report" after market close.</div>';
+          return;
+        }
+        if (!activeMonth || !months[activeMonth]) activeMonth = keys[0];
+        keys.forEach((key) => {
+          const tab = document.createElement('div');
+          tab.className = 'month-tab' + (key === activeMonth ? ' active' : '');
+          tab.textContent = monthLabel(key);
+          tab.onclick = () => switchMonth(key);
+          bar.appendChild(tab);
+          const panel = document.createElement('div');
+          panel.className = 'month-panel' + (key === activeMonth ? ' active' : '');
+          panel.id = `panel-${key}`;
+          panel.innerHTML = buildMonthHTML(key, months[key]);
+          con.appendChild(panel);
+        });
+      }
+
+      function buildMonthHTML(monthKey, dates) {
+        const tradeDays = dates.map((d) => allData[d]).filter(Boolean);
+        if (!monthFilters[monthKey]) monthFilters[monthKey] = 'ALL';
+        return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:14px 0 0;flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:0;">
+        <div class="filter-bar" style="flex-wrap:wrap;gap:6px;">
+          <span style="font-size:10px;color:#6b7280;font-weight:700;margin-right:2px;">INSTRUMENT</span>
+          <button class="filter-btn active"  id="fb-${monthKey}-ALL"    onclick="applyFilter('${monthKey}','ALL')">All</button>
+          <button class="filter-btn nifty"   id="fb-${monthKey}-NIFTY"  onclick="applyFilter('${monthKey}','NIFTY')">NIFTY</button>
+          <button class="filter-btn sensex"  id="fb-${monthKey}-SENSEX" onclick="applyFilter('${monthKey}','SENSEX')">SENSEX</button>
+          <span style="font-size:10px;color:#6b7280;font-weight:700;margin-left:12px;">DATE</span>
+          <select class="date-filter-select" id="df-${monthKey}" onchange="applyDateFilter('${monthKey}', this.value)">
+            <option value="">All dates</option>
+            ${dates.filter((d) => (allData[d]?.trades || []).length > 0).map((d) => {
+              const dateObj = new Date(d + 'T00:00:00');
+              const dd = String(dateObj.getDate()).padStart(2, '0');
+              const mon = MONTH_NAMES[dateObj.getMonth()];
+              return `<option value="${d}">${dd} ${mon}</option>`;
+            }).join('')}
+          </select>
+        </div>
+        <div class="time-section">
+          <span class="time-section-label">TIME RANGES</span>
+          <div class="time-ranges" id="tf-ranges-${monthKey}"></div>
+          <button class="add-range-btn" onclick="addTimeRange('${monthKey}')">+ Add Range</button>
+          <button class="add-range-btn" id="tf-apply-${monthKey}" style="display:none" onclick="applyTimeRanges('${monthKey}')">&#x25BA; Apply</button>
+          <button class="time-clear-all" id="tf-clear-${monthKey}" style="display:none" onclick="clearAllRanges('${monthKey}')">&#x2715; Clear All</button>
+        </div>
+        <div class="time-section">
+          <span class="time-section-label">NOTES</span>
+          <label class="note-chip" id="nc-${monthKey}-sl"><input type="checkbox" id="nc-cb-${monthKey}-sl"> SL HIT</label>
+          <label class="note-chip" id="nc-${monthKey}-pine"><input type="checkbox" id="nc-cb-${monthKey}-pine"> PINE SCRIPT SL</label>
+          <span class="reach-label" style="margin-left:8px;">REACH &ge;</span>
+          <input type="number" class="reach-input" id="rf-${monthKey}" min="0" step="1" placeholder="pts">
+          <span class="reach-label" style="margin-left:8px;">CANDLE &ge;</span>
+          <input type="number" class="reach-input" id="cf-${monthKey}" min="0" step="0.5" placeholder="pts">
+          <button class="add-range-btn" onclick="applyNotesFilter('${monthKey}')">&#x25BA; Apply</button>
+          <button class="time-clear-all" id="nf-clear-${monthKey}" onclick="clearNotesFilter('${monthKey}')">&#x2715; Clear</button>
+        </div>
+      </div>
+      <button class="dl-btn" onclick="downloadExcel('${monthKey}')">&#x2B07; Download Excel</button>
+    </div>
+    <div id="summary-${monthKey}"></div>
+    <div id="days-${monthKey}">
+      ${tradeDays.map((d) => buildDayBlock(d)).join('')}
+    </div>`;
+      }
+
+      function renderSummary(monthKey) {
+        const filter = monthFilters[monthKey] || 'ALL';
+        const months = groupByMonth();
+        const selectedDate = monthDateFilter[monthKey] || null;
+        const dates = (months[monthKey] || []).map((d) => allData[d]).filter(Boolean).filter((d) => {
+          const instrOk = filter === 'ALL' || (d.instrument || '').toUpperCase() === filter;
+          const dateOk = !selectedDate || d.date === selectedDate;
+          return instrOk && dateOk;
+        });
+        const el = document.getElementById(`summary-${monthKey}`);
+        if (!el) return;
+        if (dates.length === 0) { el.innerHTML = ''; return; }
+
+        const dayPnl = { sl: [], nsl: [], tgt: [] };
+        let totalTrades = 0, winSL = 0, winNSL = 0, winTgt = 0;
+        const dayDates = [];
+        for (const day of dates.sort((a, b) => (a.date < b.date ? -1 : 1))) {
+          let dSL = 0, dNSL = 0, dTgt = 0;
+          const filteredTrades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
+          for (const t of filteredTrades) {
+            const tq = qty(day.instrument, t.lots);
+            if (t.exitSL !== null && t.entryPrice !== null) dSL += (t.exitSL - t.entryPrice) * tq;
+            if (t.exitNSL !== null && t.entryPrice !== null) dNSL += (t.exitNSL - t.entryPrice) * tq;
+            if (t.tgtPts !== null) dTgt += t.tgtPts * tq;
+            totalTrades++;
+            if (t.exitSL !== null && t.entryPrice !== null && t.exitSL - t.entryPrice > 0) winSL++;
+            if (t.exitNSL !== null && t.entryPrice !== null && t.exitNSL - t.entryPrice > 0) winNSL++;
+            if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
+          }
+          dayPnl.sl.push(Math.round(dSL));
+          dayPnl.nsl.push(Math.round(dNSL));
+          dayPnl.tgt.push(Math.round(dTgt));
+          dayDates.push(day.date);
+        }
+        const netSL = dayPnl.sl.reduce((a, b) => a + b, 0);
+        const netNSL = dayPnl.nsl.reduce((a, b) => a + b, 0);
+        const netTgt = dayPnl.tgt.reduce((a, b) => a + b, 0);
+        const { maxDown: ddSL, maxUp: duSL, maxDownDate: ddSLDate, maxUpDate: duSLDate } = calcMonthPeaks(dayPnl.sl, dayDates);
+        const { maxDown: ddNSL, maxUp: duNSL, maxDownDate: ddNSLDate, maxUpDate: duNSLDate } = calcMonthPeaks(dayPnl.nsl, dayDates);
+        const { maxDown: ddTgt, maxUp: duTgt, maxDownDate: ddTgtDate, maxUpDate: duTgtDate } = calcMonthPeaks(dayPnl.tgt, dayDates);
+        const wrSL = totalTrades ? Math.round((winSL / totalTrades) * 100) : 0;
+        const wrNSL = totalTrades ? Math.round((winNSL / totalTrades) * 100) : 0;
+        const wrTgt = totalTrades ? Math.round((winTgt / totalTrades) * 100) : 0;
+        const capSL = INITIAL_CAPITAL + netSL, capNSL = INITIAL_CAPITAL + netNSL, capTgt = INITIAL_CAPITAL + netTgt;
+        el.innerHTML = `
+    <div class="summary">
+      <div class="scard">
+        <div class="scard-lbl">Capital</div>
+        <div class="scard-val c-white">${fmtCapital(INITIAL_CAPITAL)}</div>
+        <div class="scard-sub">Opening this month</div>
+        <div style="margin-top:10px;">${statRow('Trades', `${totalTrades}`, 'c-white', `${dates.length} day(s)`)}</div>
+      </div>
+      <div class="scard">
+        <div class="scard-lbl">Exit w/ SL</div>
+        ${statRow('Net P&amp;L', fmtRs(netSL), pnlClass(netSL))}
+        ${statRow('Net Capital', fmtCapital(capSL), pnlClass(capSL - INITIAL_CAPITAL))}
+        ${statRow('Win Rate', `${wrSL}%`, 'c-purple', `${winSL} of ${totalTrades}`)}
+        ${statRow('Max Drawdown', ddSL < 0 ? fmtRs(ddSL) : '—', 'c-orange', ddSLDate ? fmtDateShort(ddSLDate) : '')}
+        ${statRow('Max Run-Up', duSL > 0 ? fmtRs(duSL) : '—', 'c-green', duSLDate ? fmtDateShort(duSLDate) : '')}
+      </div>
+      <div class="scard">
+        <div class="scard-lbl">Exit w/o SL</div>
+        ${statRow('Net P&amp;L', fmtRs(netNSL), pnlClass(netNSL))}
+        ${statRow('Net Capital', fmtCapital(capNSL), pnlClass(capNSL - INITIAL_CAPITAL))}
+        ${statRow('Win Rate', `${wrNSL}%`, 'c-purple', `${winNSL} of ${totalTrades}`)}
+        ${statRow('Max Drawdown', ddNSL < 0 ? fmtRs(ddNSL) : '—', 'c-orange', ddNSLDate ? fmtDateShort(ddNSLDate) : '')}
+        ${statRow('Max Run-Up', duNSL > 0 ? fmtRs(duNSL) : '—', 'c-green', duNSLDate ? fmtDateShort(duNSLDate) : '')}
+      </div>
+      <div class="scard">
+        <div class="scard-lbl">Target Pts</div>
+        ${statRow('Net P&amp;L', fmtRs(netTgt), pnlClass(netTgt))}
+        ${statRow('Net Capital', fmtCapital(capTgt), pnlClass(capTgt - INITIAL_CAPITAL))}
+        ${statRow('Win Rate', `${wrTgt}%`, 'c-purple', `${winTgt} of ${totalTrades}`)}
+        ${statRow('Max Drawdown', ddTgt < 0 ? fmtRs(ddTgt) : '—', 'c-orange', ddTgtDate ? fmtDateShort(ddTgtDate) : '')}
+        ${statRow('Max Run-Up', duTgt > 0 ? fmtRs(duTgt) : '—', 'c-green', duTgtDate ? fmtDateShort(duTgtDate) : '')}
+      </div>
+    </div>`;
+      }
+
+      function statRow(key, val, cls, sub = '') {
+        return `<div class="stat-row"><span class="stat-key">${key}</span><div><div class="stat-val ${cls}">${val}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ''}</div></div>`;
+      }
+
+      function buildDayBlock(day) {
+        const dateStr = day.date;
+        const dayKey = dateStr.replace(/-/g, '');
+        const dateObj = new Date(dateStr + 'T00:00:00');
+        const weekDay = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dateObj.getDay()];
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        const mon = MONTH_NAMES[dateObj.getMonth()];
+        const dateLabel = `${dd} ${mon} ${dateObj.getFullYear()} — ${weekDay}`;
+        return `
+    <div class="day-block" id="dayblock-${dayKey}" data-instrument="${(day.instrument || '').toUpperCase()}" data-date="${dateStr}">
+      <div class="day-header open" onclick="toggleDay(this)">
+        <span class="day-chevron">&#x25BA;</span>
+        <span class="day-date">${dateLabel}</span>
+        <span class="day-badge">${day.instrument || ''}</span>
+        <span class="day-badge">${(day.trades || []).length} trade(s)</span>
+        <span class="day-pnl" id="day-pnl-${dayKey}"></span>
+      </div>
+      <div class="day-body open">
+        <div class="day-note-bar" id="note-bar-${dayKey}">
+          <span class="note-text${day.note ? '' : ' empty'}" id="note-text-${dayKey}">${day.note ? escHtml(day.note) : 'Add a day note…'}</span>
+          <button class="note-edit-btn" onclick="editDayNote('${dateStr}');event.stopPropagation()">&#x270E; Edit</button>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Time</th><th style="text-align:left">Symbol</th><th>Lots</th>
+            <th>Entry</th><th>Exit w/SL</th><th>Exit w/Tgt</th><th>Exit w/oSL</th>
+            <th>Tgt Pts</th><th>Candle</th><th style="text-align:left">Notes</th>
+            <th>P&amp;L w/SL &#x20B9;</th><th>P&amp;L w/Tgt &#x20B9;</th><th>P&amp;L w/oSL &#x20B9;</th>
+            <th style="text-align:center">Actions</th>
+          </tr></thead>
+          <tbody id="tbody-${dayKey}"></tbody>
+        </table>
+      </div>
+    </div>`;
+      }
+
+      function renderDay(dateStr) {
+        const day = allData[dateStr];
+        const dayKey = dateStr.replace(/-/g, '');
+        const tbody = document.getElementById(`tbody-${dayKey}`);
+        if (!tbody || !day) return;
+        (day.trades || []).sort((a, b) => (a.entryTime || a.time || '').localeCompare(b.entryTime || b.time || ''));
+        tbody.innerHTML = '';
+        const monthKey = dateStr.slice(0, 7);
+        const trades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
+        let totSL = 0, totNSL = 0, totTgt = 0;
+        const seriesSL = [], seriesNSL = [], seriesTgt = [];
+
+        trades.forEach((t, idx) => {
+          const tq = qty(day.instrument, t.lots);
+          const pSL = t.exitSL !== null && t.entryPrice !== null ? Math.round((t.exitSL - t.entryPrice) * tq) : null;
+          const pTgt = t.tgtPts !== null ? Math.round(t.tgtPts * tq) : null;
+          const pNSL = t.exitNSL !== null && t.entryPrice !== null ? Math.round((t.exitNSL - t.entryPrice) * tq) : null;
+          if (pSL !== null) { totSL += pSL; seriesSL.push(pSL); }
+          if (pTgt !== null) { totTgt += pTgt; seriesTgt.push(pTgt); }
+          if (pNSL !== null) { totNSL += pNSL; seriesNSL.push(pNSL); }
+
+          const addTr = document.createElement('tr');
+          addTr.className = 'add-row-tr';
+          addTr.innerHTML = `<td colspan="14" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${idx})">+ Add Row Here</button></td>`;
+          tbody.appendChild(addTr);
+
+          const tr = document.createElement('tr');
+          tr.dataset.id = t.id;
+          tr.innerHTML = `
+      <td>${(t.entryTime || t.time || '').slice(0, 5)}</td>
+      <td class="sym-text">${t.entrySymbol || '—'}</td>
+      <td>${t.lots}</td>
+      <td>${fmt(t.entryPrice)}</td>
+      <td>${fmt(t.exitSL)}</td>
+      <td>${fmt(t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[day.instrument] || 31)).toFixed(2)) : null)}</td>
+      <td>${fmt(t.exitNSL)}</td>
+      <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}</td>
+      <td style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
+      <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}</td>
+      <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}</td>
+      <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}</td>
+      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}</td>
+      <td style="text-align:center">
+        <button class="act-btn" onclick="editRow('${dateStr}', '${t.id}', this)">&#x270F; Edit</button>
+        <button class="act-btn del" onclick="deleteRow('${dateStr}', '${t.id}')">&#x2715;</button>
+      </td>`;
+          tbody.appendChild(tr);
+        });
+
+        const addTrEnd = document.createElement('tr');
+        addTrEnd.className = 'add-row-tr';
+        addTrEnd.innerHTML = `<td colspan="14" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${trades.length})">+ Add Row Here</button></td>`;
+        tbody.appendChild(addTrEnd);
+
+        const { maxDown: dSL, maxUp: uSL } = calcDayPeaks(seriesSL);
+        const { maxDown: dTgt, maxUp: uTgt } = calcDayPeaks(seriesTgt);
+        const { maxDown: dNSL, maxUp: uNSL } = calcDayPeaks(seriesNSL);
+
+        const totTr = document.createElement('tr');
+        totTr.className = 'total-row';
+        totTr.innerHTML = `<td colspan="10">Day Total</td><td class="${pnlClass(totSL)}">${fmtRs(totSL)}</td><td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}</td><td class="${pnlClass(totNSL)}">${fmtRs(totNSL)}</td><td></td>`;
+        tbody.appendChild(totTr);
+
+        const ddTr = document.createElement('tr');
+        ddTr.className = 'total-row';
+        ddTr.innerHTML = `<td colspan="10" style="color:#fb923c;">Max Drawdown</td><td class="c-orange">${dSL < 0 ? fmtRs(dSL) : '—'}</td><td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td><td class="c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td><td></td>`;
+        tbody.appendChild(ddTr);
+
+        const duTr = document.createElement('tr');
+        duTr.className = 'total-row';
+        duTr.innerHTML = `<td colspan="10" style="color:#4ade80;">Max Run-Up</td><td class="c-green">${uSL > 0 ? fmtRs(uSL) : '—'}</td><td class="c-green">${uTgt > 0 ? fmtRs(uTgt) : '—'}</td><td class="c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td><td></td>`;
+        tbody.appendChild(duTr);
+
+        const pnlEl = document.getElementById(`day-pnl-${dayKey}`);
+        if (pnlEl) { pnlEl.innerHTML = `${fmtRs(totSL)} w/SL`; pnlEl.className = `day-pnl ${pnlClass(totSL)}`; }
+      }
+
+      function renderMonthDays(monthKey) {
+        const months = groupByMonth();
+        for (const date of months[monthKey] || []) renderDay(date);
+        applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
+      }
+
+      function editRow(dateStr, id, btn) {
+        const day = allData[dateStr];
+        const t = (day.trades || []).find((x) => String(x.id) === String(id));
+        if (!t) return;
+        const instr = day.instrument || t.instrument || 'NIFTY';
+        const tr = btn.closest('tr');
+        tr.dataset.editInstr = instr;
+        const fc = (id) => `ondblclick="document.getElementById('${id}')?.focus()"`;
+        const existingNotes = t.notes || '';
+        const nU = existingNotes.toUpperCase();
+        const notSel = nU.includes('PINE SCRIPT') ? 'PINE SCRIPT SL' : nU.includes('SL HIT') ? 'SL HIT' : nU.includes('REACH') ? 'reach' : '';
+        const notPts = existingNotes.match(/(\d+(?:\.\d+)?)/)?.[1] || '';
+        const reachVisible = notSel === 'reach' ? '' : 'none';
+        const sel = (v) => (notSel === v ? 'selected' : '');
+        tr.innerHTML = `
+    <td ${fc('e-time')}><input class="edit-input sm" id="e-time" value="${(t.entryTime || t.time || '').slice(0, 5)}"></td>
+    <td ${fc('e-sym')}><input class="edit-input wide" id="e-sym" value="${t.entrySymbol || ''}"></td>
+    <td ${fc('e-lots')}><input class="edit-input sm" id="e-lots" value="${t.lots}" type="number" oninput="recalcEditRow()"></td>
+    <td ${fc('e-entry')}><input class="edit-input" id="e-entry" value="${t.entryPrice ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"></td>
+    <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[instr] || 31)).toFixed(2)) : ''}" type="number" step="0.05"></td>
+    <td ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-candle')}><input class="edit-input" id="e-candle" value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
+    <td>
+      <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
+        <option value="" ${sel('')}>—</option>
+        <option value="SL HIT" ${sel('SL HIT')}>SL HIT</option>
+        <option value="PINE SCRIPT SL" ${sel('PINE SCRIPT SL')}>PINE SCRIPT SL</option>
+        <option value="reach" ${sel('reach')}>price reach upto</option>
+      </select>
+      <input type="number" id="e-notes-pts" class="edit-input reach-pts" min="0" step="0.5" placeholder="pts" value="${notPts}" style="display:${reachVisible}" oninput="applyNotesType()">
+      <input type="hidden" id="e-notes" value="${existingNotes}">
+    </td>
+    <td colspan="3" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
+    <td style="text-align:center">
+      <button class="act-btn save" onclick="saveRow('${dateStr}','${id}',this)">&#x2713; Save</button>
+      <button class="act-btn cancel" onclick="renderDay('${dateStr}')">&#x2717;</button>
+    </td>`;
+        tr.querySelector('#e-entry').focus();
+        recalcEditRow();
+      }
+
+      function applyNotesType() {
+        const sel = document.getElementById('e-notes-sel');
+        const ptsEl = document.getElementById('e-notes-pts');
+        const hidden = document.getElementById('e-notes');
+        if (!sel) return;
+        if (sel.value === 'reach') { ptsEl.style.display = ''; hidden.value = ptsEl.value ? `price reach upto ${ptsEl.value} points` : ''; }
+        else { ptsEl.style.display = 'none'; hidden.value = sel.value; }
+      }
+
+      function recalcEditRow() {
+        const entry = parseFloat(document.getElementById('e-entry')?.value);
+        const exitNSL = parseFloat(document.getElementById('e-exitNSL')?.value);
+        const lots = parseInt(document.getElementById('e-lots')?.value);
+        if (isNaN(entry) || isNaN(exitNSL)) return;
+        const tr = document.getElementById('e-entry')?.closest('tr');
+        const instr = tr?.dataset?.editInstr || 'NIFTY';
+        const slPts = SL_PTS[instr] || 15, tgG = TGT_G[instr] || 50, tgL = TGT_L[instr] || 31, lotSz = LOT_SIZES[instr] || 65;
+        const nLots = isNaN(lots) ? 10 : lots;
+        const exitSL = parseFloat(Math.max(entry - slPts, Math.min(entry + tgG, exitNSL)).toFixed(2));
+        const exitTgt = parseFloat((entry + tgL).toFixed(2));
+        const tgtRaw = parseFloat(document.getElementById('e-tgt')?.value);
+        const tgtPts = isNaN(tgtRaw) ? parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2)) : tgtRaw;
+        const pSL = Math.round((exitSL - entry) * nLots * lotSz);
+        const pTgt = Math.round(tgtPts * nLots * lotSz);
+        const pNSL = Math.round((exitNSL - entry) * nLots * lotSz);
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        set('e-exitSL', exitSL);
+        set('e-exitTgt', exitTgt);
+        const pnl = document.getElementById('e-pnl-cell');
+        if (pnl) {
+          const c = (v) => (v >= 0 ? 'c-green' : 'c-red');
+          pnl.innerHTML = `<span class="${c(pSL)}">${fmtRs(pSL)}</span><span style="color:#374151"> | </span><span class="${c(pTgt)}">${fmtRs(pTgt)}</span><span style="color:#374151"> | </span><span class="${c(pNSL)}">${fmtRs(pNSL)}</span>`;
+        }
+      }
+
+      async function saveRow(dateStr, id, btn) {
+        const day = allData[dateStr];
+        const t = (day.trades || []).find((x) => String(x.id) === String(id));
+        if (!t) return;
+        t.entryTime = document.getElementById('e-time').value.trim();
+        t.time = t.entryTime;
+        t.entrySymbol = document.getElementById('e-sym').value.trim();
+        t.lots = parseInt(document.getElementById('e-lots').value) || t.lots;
+        t.entryPrice = parseFloat(document.getElementById('e-entry').value) || null;
+        t.exitSL = parseFloat(document.getElementById('e-exitSL').value) || null;
+        t.exitTgt = parseFloat(document.getElementById('e-exitTgt').value) || null;
+        t.exitNSL = parseFloat(document.getElementById('e-exitNSL').value) || null;
+        t.tgtPts = parseFloat(document.getElementById('e-tgt').value) || null;
+        const cr = parseFloat(document.getElementById('e-candle').value);
+        t.candleRange = isNaN(cr) ? null : cr;
+        t.notes = document.getElementById('e-notes').value.trim();
+        await persistDay(dateStr);
+        renderDay(dateStr);
+        renderSummary(activeMonth);
+      }
+
+      function insertRow(dateStr, atIndex) {
+        const day = allData[dateStr];
+        const newTrade = { id: nextId++, side: 'CE', entrySymbol: '', symbol: '', entryTime: '', time: '', lots: day.instrument === 'SENSEX' ? 15 : 10, entryPrice: null, exitPrice: null, exitSL: null, exitNSL: null, tgtPts: null, candleRange: null, notes: '' };
+        day.trades.push(newTrade);
+        renderDay(dateStr);
+        const dayKey = dateStr.replace(/-/g, '');
+        const tbody = document.getElementById(`tbody-${dayKey}`);
+        const allTrs = [...tbody.querySelectorAll('tr:not(.add-row-tr):not(.total-row)')];
+        const newTr = allTrs[allTrs.length - 1];
+        if (newTr) newTr.querySelector('.act-btn')?.click();
+      }
+
+      async function deleteRow(dateStr, id) {
+        const day = allData[dateStr];
+        day.trades = day.trades.filter((t) => String(t.id) !== String(id));
+        await persistDay(dateStr);
+        renderDay(dateStr);
+        renderSummary(activeMonth);
+      }
+
+      function editDayNote(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const bar = document.getElementById(`note-bar-${dayKey}`);
+        if (!bar) return;
+        const current = allData[dateStr]?.note || '';
+        bar.innerHTML = `<input class="note-input" id="note-input-${dayKey}" type="text" value="${escHtml(current)}" placeholder="Day note (market condition, strategy notes, etc.)" maxlength="300" /><button class="note-edit-btn" onclick="saveDayNote('${dateStr}')">&#x2713; Save</button><button class="note-edit-btn" onclick="cancelDayNote('${dateStr}')">&#x2717;</button>`;
+        document.getElementById(`note-input-${dayKey}`)?.focus();
+      }
+
+      async function saveDayNote(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const inp = document.getElementById(`note-input-${dayKey}`);
+        const note = inp ? inp.value.trim() : '';
+        allData[dateStr].note = note;
+        await persistDay(dateStr);
+        refreshNoteBar(dateStr);
+      }
+
+      function cancelDayNote(dateStr) { refreshNoteBar(dateStr); }
+
+      function refreshNoteBar(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const bar = document.getElementById(`note-bar-${dayKey}`);
+        if (!bar) return;
+        const note = allData[dateStr]?.note || '';
+        bar.innerHTML = `<span class="note-text${note ? '' : ' empty'}" id="note-text-${dayKey}">${note ? escHtml(note) : 'Add a day note…'}</span><button class="note-edit-btn" onclick="editDayNote('${dateStr}');event.stopPropagation()">&#x270E; Edit</button>`;
+      }
+
+      async function persistDay(dateStr) {
+        try {
+          const r = await fetch(SAVE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateStr, trades: allData[dateStr].trades, instrument: allData[dateStr].instrument, note: allData[dateStr].note || '' }),
+          });
+          const j = await r.json();
+          if (j.ok) showToast('Saved');
+          else showToast('Save failed: ' + (j.error || 'unknown'), true);
+        } catch (e) {
+          showToast('Save error: ' + e.message, true);
+        }
+      }
+
+      function toggleDay(hdr) { hdr.classList.toggle('open'); hdr.nextElementSibling.classList.toggle('open'); }
+
+      function switchMonth(key) {
+        activeMonth = key;
+        document.querySelectorAll('.month-tab').forEach((t) => t.classList.remove('active'));
+        document.querySelectorAll('.month-panel').forEach((p) => p.classList.remove('active'));
+        const keys = Object.keys(groupByMonth());
+        const idx = keys.indexOf(key);
+        const tabs = document.querySelectorAll('.month-tab');
+        const panels = document.querySelectorAll('.month-panel');
+        if (tabs[idx]) tabs[idx].classList.add('active');
+        if (panels[idx]) panels[idx].classList.add('active');
+        renderMonthDays(key);
+      }
+
+      function qty(instrument, lots) { return (lots || 1) * (LOT_SIZES[instrument] || 65); }
+      function fmt(v) { return v !== null && v !== undefined ? Number(v).toFixed(2) : '—'; }
+
+      function calcDayPeaks(series) {
+        let cum = 0, peak = 0, minSoFar = 0, maxDD = 0, maxRU = 0;
+        for (const v of series) {
+          cum += v;
+          if (cum > peak) peak = cum;
+          if (cum < minSoFar) minSoFar = cum;
+          const dd = peak - cum, ru = cum - minSoFar;
+          if (dd > maxDD) maxDD = dd;
+          if (ru > maxRU) maxRU = ru;
+        }
+        return { maxDown: maxDD > 0 ? -maxDD : 0, maxUp: maxRU };
+      }
+
+      function calcMonthPeaks(series, dates) {
+        let cum = 0, peak = 0, minSoFar = 0, maxDD = 0, maxRU = 0, maxDownDate = null, maxUpDate = null;
+        for (let i = 0; i < series.length; i++) {
+          cum += series[i];
+          if (cum > peak) peak = cum;
+          if (cum < minSoFar) minSoFar = cum;
+          const dd = peak - cum, ru = cum - minSoFar;
+          if (dd > maxDD) { maxDD = dd; maxDownDate = dates[i]; }
+          if (ru > maxRU) { maxRU = ru; maxUpDate = dates[i]; }
+        }
+        return { maxDown: maxDD > 0 ? -maxDD : 0, maxDownDate, maxUp: maxRU, maxUpDate };
+      }
+
+      function fmtDateShort(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        return `${String(d.getDate()).padStart(2, '0')} ${MONTH_NAMES[d.getMonth()]}`;
+      }
+
+      function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+      function fmtRs(v) { if (v === null || v === undefined) return '—'; const abs = Math.abs(Math.round(v)).toLocaleString('en-IN'); return v >= 0 ? `+₹${abs}` : `-₹${abs}`; }
+      function fmtCapital(v) { if (v === null || v === undefined) return '—'; return `₹${Math.round(v).toLocaleString('en-IN')}`; }
+      function fmtPts(v) { if (v === null || v === undefined) return '—'; return (v >= 0 ? '+' : '') + Number(v).toFixed(2); }
+      function pnlClass(v) { if (v === null || v === undefined) return 'c-gray'; return v > 0 ? 'c-green' : v < 0 ? 'c-red' : 'c-gray'; }
+      function showToast(msg, err = false) {
+        const t = document.createElement('div');
+        t.style.cssText = `position:fixed;bottom:70px;right:24px;background:${err ? '#7f1d1d' : '#052e16'};color:${err ? '#fca5a5' : '#4ade80'};border:1px solid ${err ? '#991b1b' : '#166534'};border-radius:8px;padding:10px 18px;font-size:12px;font-weight:700;z-index:999;`;
+        t.innerHTML = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2500);
+      }
+
+      function loadSheetJS() {
+        return new Promise((resolve, reject) => {
+          if (typeof XLSX !== 'undefined') return resolve();
+          const s = document.createElement('script');
+          s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+          s.onload = resolve; s.onerror = () => reject(new Error('Failed to load SheetJS'));
+          document.head.appendChild(s);
+        });
+      }
+
+      async function downloadExcel(monthKey) {
+        try { await loadSheetJS(); } catch (e) { showToast('Could not load Excel library', true); return; }
+        const months = groupByMonth();
+        const dates = (months[monthKey] || []).sort();
+        if (!dates.length) { showToast('No trades to export', true); return; }
+        const HEADERS = ['Date','Instrument','Entry Time','Lots','Entry','Exit w/SL','Exit w/oSL','Tgt Pts','P&L w/SL (₹)','P&L w/oSL (₹)','P&L Tgt (₹)'];
+        const rows = [HEADERS];
+        let totSL = 0, totNSL = 0, totTgt = 0, totalCount = 0, winSL = 0, winNSL = 0, winTgt = 0;
+        for (const date of dates) {
+          const day = allData[date]; if (!day) continue;
+          for (const t of day.trades || []) {
+            const tq = qty(day.instrument, t.lots);
+            const pSL = t.exitSL !== null && t.entryPrice !== null ? Math.round((t.exitSL - t.entryPrice) * tq) : '';
+            const pNSL = t.exitNSL !== null && t.entryPrice !== null ? Math.round((t.exitNSL - t.entryPrice) * tq) : '';
+            const pTgt = t.tgtPts !== null ? Math.round(t.tgtPts * tq) : '';
+            rows.push([date, day.instrument || '', (t.entryTime || t.time || '').slice(0, 5), t.lots, t.entryPrice ?? '', t.exitSL ?? '', t.exitNSL ?? '', t.tgtPts ?? '', pSL, pNSL, pTgt]);
+            if (pSL !== '') { totSL += pSL; if (pSL > 0) winSL++; }
+            if (pNSL !== '') { totNSL += pNSL; if (pNSL > 0) winNSL++; }
+            if (pTgt !== '') { totTgt += pTgt; if (pTgt > 0) winTgt++; }
+            totalCount++;
+          }
+        }
+        rows.push([]);
+        rows.push(['TOTAL','','','','','','','',totSL,totNSL,totTgt]);
+        const wrFmt = (w) => totalCount ? `${Math.round((w / totalCount) * 100)}% (${w}/${totalCount})` : '—';
+        rows.push(['WIN RATE','','','','','','','',wrFmt(winSL),wrFmt(winNSL),wrFmt(winTgt)]);
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{wch:12},{wch:10},{wch:10},{wch:6},{wch:8},{wch:10},{wch:11},{wch:8},{wch:14},{wch:14},{wch:12}];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, monthLabel(monthKey));
+        const fileName = `1Min_Trades_${monthKey}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        showToast(`Downloaded ${fileName}`);
+      }
+
+      function tradeInAnyRange(entryTime, ranges) {
+        if (!ranges || ranges.length === 0) return true;
+        const t = (entryTime || '').slice(0, 5);
+        if (!t) return true;
+        return ranges.some(({ from, to }) => { if (!from && !to) return true; if (from && t < from) return false; if (to && t > to) return false; return true; });
+      }
+
+      function getEffectiveMaxReach(t) {
+        if (t.maxReach !== undefined && t.maxReach !== null) return t.maxReach;
+        const m = (t.notes || '').match(/reach\s+(?:up\s*to\s+)?(\d+(?:\.\d+)?)/i);
+        return m ? parseFloat(m[1]) : 0;
+      }
+
+      function tradePassesFilters(t, monthKey) {
+        const ranges = monthTimeFilters[monthKey] || [];
+        if (!tradeInAnyRange(t.entryTime || t.time, ranges)) return false;
+        const nf = monthNoteFilters[monthKey] || {};
+        const anyNoteChecked = nf.slHit || nf.pineSL;
+        if (anyNoteChecked) {
+          const n = (t.notes || '').toUpperCase();
+          const pass = (nf.slHit && n.includes('SL HIT') && !n.includes('PINE SCRIPT')) || (nf.pineSL && n.includes('PINE SCRIPT'));
+          if (!pass) return false;
+        }
+        const minReach = monthReachFilter[monthKey];
+        if (minReach !== null && minReach !== undefined && minReach > 0) { if (getEffectiveMaxReach(t) < minReach) return false; }
+        const minCandle = monthCandleFilter[monthKey];
+        if (minCandle !== null && minCandle !== undefined && minCandle > 0) { if ((t.candleRange ?? 0) < minCandle) return false; }
+        return true;
+      }
+
+      function addTimeRange(monthKey) { if (!monthTimeFilters[monthKey]) monthTimeFilters[monthKey] = []; monthTimeFilters[monthKey].push({ from: '', to: '' }); renderTimeRanges(monthKey); }
+      function removeTimeRange(monthKey, idx) { if (!monthTimeFilters[monthKey]) return; monthTimeFilters[monthKey].splice(idx, 1); renderTimeRanges(monthKey); }
+      function updateTimeRange(monthKey, idx, field, value) { if (!monthTimeFilters[monthKey]) monthTimeFilters[monthKey] = []; if (!monthTimeFilters[monthKey][idx]) monthTimeFilters[monthKey][idx] = { from: '', to: '' }; monthTimeFilters[monthKey][idx][field] = value; renderTimeRangeActiveState(monthKey, idx); }
+      function applyTimeRanges(monthKey) { renderMonthDays(monthKey); renderSummary(monthKey); }
+      function renderTimeRangeActiveState(monthKey, idx) { const rangesEl = document.getElementById(`tf-ranges-${monthKey}`); if (!rangesEl) return; const rows = rangesEl.querySelectorAll('.time-range-row'); if (!rows[idx]) return; const r = (monthTimeFilters[monthKey] || [])[idx] || {}; rows[idx].classList.toggle('active', !!(r.from || r.to)); }
+      function clearAllRanges(monthKey) { monthTimeFilters[monthKey] = []; renderTimeRanges(monthKey); renderMonthDays(monthKey); renderSummary(monthKey); }
+
+      function renderTimeRanges(monthKey) {
+        const el = document.getElementById(`tf-ranges-${monthKey}`); if (!el) return;
+        const ranges = monthTimeFilters[monthKey] || [];
+        const clearBtn = document.getElementById(`tf-clear-${monthKey}`);
+        el.innerHTML = ranges.map(({ from, to }, i) => `<div class="time-range-row${from || to ? ' active' : ''}"><input class="time-input" type="time" value="${from || ''}" onchange="updateTimeRange('${monthKey}', ${i}, 'from', this.value)" title="From time"><span class="time-sep">–</span><input class="time-input" type="time" value="${to || ''}" onchange="updateTimeRange('${monthKey}', ${i}, 'to', this.value)" title="To time"><button class="time-del-btn" onclick="removeTimeRange('${monthKey}', ${i})" title="Remove range">✕</button></div>`).join('');
+        const applyBtn = document.getElementById(`tf-apply-${monthKey}`);
+        if (applyBtn) applyBtn.style.display = ranges.length > 0 ? '' : 'none';
+        if (clearBtn) clearBtn.style.display = ranges.length > 0 ? '' : 'none';
+      }
+
+      function notesClass(notes) { if (!notes) return ''; const n = notes.toUpperCase(); if (n.includes('PINE SCRIPT')) return 'pine-sl'; if (n.includes('SL HIT')) return 'sl-hit'; return ''; }
+
+      function applyNotesFilter(monthKey) {
+        if (!monthNoteFilters[monthKey]) monthNoteFilters[monthKey] = {};
+        const cbSL = document.getElementById(`nc-cb-${monthKey}-sl`), cbPine = document.getElementById(`nc-cb-${monthKey}-pine`);
+        const rfInput = document.getElementById(`rf-${monthKey}`), cfInput = document.getElementById(`cf-${monthKey}`);
+        monthNoteFilters[monthKey].slHit = cbSL?.checked || false;
+        monthNoteFilters[monthKey].pineSL = cbPine?.checked || false;
+        const v = parseFloat(rfInput?.value); monthReachFilter[monthKey] = isNaN(v) ? null : v;
+        const cv = parseFloat(cfInput?.value); monthCandleFilter[monthKey] = isNaN(cv) ? null : cv;
+        document.getElementById(`nc-${monthKey}-sl`)?.classList.toggle('active', monthNoteFilters[monthKey].slHit);
+        document.getElementById(`nc-${monthKey}-pine`)?.classList.toggle('active', monthNoteFilters[monthKey].pineSL);
+        renderMonthDays(monthKey); renderSummary(monthKey);
+      }
+
+      function clearNotesFilter(monthKey) {
+        monthNoteFilters[monthKey] = { slHit: false, pineSL: false };
+        monthReachFilter[monthKey] = null; monthCandleFilter[monthKey] = null;
+        const cbSL = document.getElementById(`nc-cb-${monthKey}-sl`), cbPine = document.getElementById(`nc-cb-${monthKey}-pine`);
+        const rfInput = document.getElementById(`rf-${monthKey}`), cfInput = document.getElementById(`cf-${monthKey}`);
+        if (cbSL) cbSL.checked = false; if (cbPine) cbPine.checked = false;
+        if (rfInput) rfInput.value = ''; if (cfInput) cfInput.value = '';
+        document.getElementById(`nc-${monthKey}-sl`)?.classList.remove('active');
+        document.getElementById(`nc-${monthKey}-pine`)?.classList.remove('active');
+        renderMonthDays(monthKey); renderSummary(monthKey);
+      }
+
+      function applyDateFilter(monthKey, dateStr) { monthDateFilter[monthKey] = dateStr || null; applyFilter(monthKey, monthFilters[monthKey] || 'ALL'); }
+
+      function applyFilter(monthKey, filter) {
+        monthFilters[monthKey] = filter;
+        ['ALL', 'NIFTY', 'SENSEX'].forEach((f) => { const btn = document.getElementById(`fb-${monthKey}-${f}`); if (!btn) return; btn.classList.toggle('active', f === filter); });
+        const selectedDate = monthDateFilter[monthKey] || null;
+        const panel = document.getElementById(`panel-${monthKey}`);
+        if (panel) {
+          panel.querySelectorAll('.day-block').forEach((block) => {
+            const instr = block.dataset.instrument || '', date = block.dataset.date || '';
+            const instrOk = filter === 'ALL' || instr === filter, dateOk = !selectedDate || date === selectedDate;
+            block.style.display = instrOk && dateOk ? '' : 'none';
+          });
+        }
+        renderSummary(monthKey);
+      }
+
+      loadData().then(() => { if (activeMonth) renderMonthDays(activeMonth); });
+    </script>
+  </body>
+</html>
