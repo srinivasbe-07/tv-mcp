@@ -221,6 +221,32 @@ export function shouldUpdateATM(
 // Minimum valid spot price per instrument (rejects background tab garbage reads)
 const MIN_SPOT = { NIFTY: 15000, SENSEX: 50000 };
 
+export function todayIST() {
+  const t = nowIST();
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Position reset rules on startup / new trading day:
+ *
+ * A. Pre-market or off-market start (!isMarketHours):
+ *    → CE/PE forced to 'closed'. No trades can be running outside market hours.
+ *    → lastLogSnapshot is deleted so the tick will seal it with live history on the
+ *      first force tick, preventing old history from being replayed.
+ *
+ * B. Market-hours start (monitor started late, isMarketHours = true):
+ *    → CE/PE loaded as-is from position.json.
+ *    → lastLogSnapshot is deleted so processHistoryForPositionChanges runs the
+ *      fresh-start scan on the first tick, re-deriving position from TV alert history.
+ *    → This correctly recovers a running trade that opened before the monitor started.
+ *
+ * C. Continuous running, new calendar day (no restart):
+ *    → loadState is NOT called. The tick detects isNewDay (todayIST !== state.lastDate).
+ *    → Pre-market tick (9:10 AM): resets CE/PE and seals lastLogSnapshot so no
+ *      prior-day history fires are replayed via diff-based detection.
+ *    → Market-hours tick (started late): resets CE/PE and leaves lastLogSnapshot as-is
+ *      (populated from continuous session) — diff-based detection catches only new fires.
+ */
 function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
@@ -228,6 +254,13 @@ function loadState() {
       state = { ...state, ...saved };
       delete state.seenHistoryKeys; // legacy field
       delete state.lastLogSnapshot; // session-only — always re-detect on restart
+      // Pre/off-market start: reset CE/PE clean — no trades can be running outside hours
+      // Market hours start: keep loaded state; fresh-start scan will re-derive from TV history
+      if (!isMarketHours()) {
+        state.CE = 'closed';
+        state.PE = 'closed';
+        console.log('[STATE] Pre/off-market start — CE/PE reset to closed');
+      }
     }
   } catch (_e) {
     /* ignore missing/corrupt state file */
@@ -236,6 +269,7 @@ function loadState() {
 
 function saveState() {
   try {
+    state.lastDate = todayIST();
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (_e) {
     /* ignore */
@@ -883,6 +917,29 @@ async function main() {
         return;
       }
 
+      // Fetch alert history early — needed before new-day logic to seal the snapshot
+      const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
+      const historyItems =
+        historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
+
+      // New trading day — reset CE/PE to closed
+      const isNewDay = todayIST() !== state.lastDate;
+      if (isNewDay) {
+        state.CE = 'closed';
+        state.PE = 'closed';
+        if (!isMarketHours()) {
+          // Pre-market (continuous running, new day): seal snapshot so no old history
+          // fires are replayed — diff-based detection starts clean from today's fires only
+          state.lastLogSnapshot = historyItems.slice(0, 30);
+          log(`[STATE] New day pre-market (${todayIST()}) — CE/PE reset to closed`);
+        } else {
+          // Started late during market hours: reset CE/PE but allow fresh-start scan
+          // to re-derive open trades from TV alert history
+          log(`[STATE] New day market hours (${todayIST()}) — CE/PE reset, re-deriving from history`);
+        }
+        saveState();
+      }
+
       // 1. Determine today's instrument (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu)
       const dayOfWeek = nowIST().getUTCDay();
       const instrName = DAY_INSTRUMENT[dayOfWeek] || 'NIFTY';
@@ -901,12 +958,9 @@ async function main() {
       if (depthChanged)
         log(`ITM depth changed: ITM-${state.lastITMDepth} → ITM-${itmDepth} — forcing sync`);
 
-      // 2. Check alert history for position changes
+      // 2. Determine CE/PE position changes from alert history
       const prevCE = state.CE;
       const prevPE = state.PE;
-      const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
-      const historyItems =
-        historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
       processHistoryForPositionChanges(historyItems, state);
       // If a trade just closed, force an immediate alert sync to the current strike —
       // ATM may have moved while the trade was running and the alerts are stale.

@@ -18,6 +18,7 @@ import {
   processHistoryForPositionChanges,
   shouldUpdateATM,
   ATM_COOLDOWN_MS,
+  todayIST,
 } from '../monitors/monitor.js';
 
 // ---------------------------------------------------------------------------
@@ -403,6 +404,174 @@ test('CEjustClosed bypasses cooldown', () => {
 test('PEjustClosed bypasses cooldown', () => {
   const state = { lastATMUpdateTime: Date.now() };
   return shouldUpdateATM(state, { atmShifted: true, PEjustClosed: true }).update === true;
+});
+
+// ---------------------------------------------------------------------------
+// todayIST
+// ---------------------------------------------------------------------------
+section('todayIST');
+test('returns YYYY-MM-DD string', () => /^\d{4}-\d{2}-\d{2}$/.test(todayIST()));
+test('year is plausible (2024–2099)', () => {
+  const y = parseInt(todayIST().split('-')[0], 10);
+  return y >= 2024 && y <= 2099;
+});
+test('month 01–12', () => {
+  const m = parseInt(todayIST().split('-')[1], 10);
+  return m >= 1 && m <= 12;
+});
+test('day 01–31', () => {
+  const d = parseInt(todayIST().split('-')[2], 10);
+  return d >= 1 && d <= 31;
+});
+test('stable within the same second (two calls match)', () => todayIST() === todayIST());
+
+// ---------------------------------------------------------------------------
+// processHistoryForPositionChanges — fresh-start scan (market-hours late start /
+// same-day restart). lastLogSnapshot is empty → scan history newest-to-oldest.
+// ---------------------------------------------------------------------------
+section('processHistoryForPositionChanges — fresh-start scan (lastLogSnapshot empty)');
+
+// Helper: make state with empty snapshot (simulates startup / new session)
+function makeFreshState(overrides = {}) {
+  return { CE: 'closed', PE: 'closed', lastLogSnapshot: [], ...overrides };
+}
+
+test('fresh-start: CE entry at top → CE=open', () => {
+  const s = makeFreshState();
+  processHistoryForPositionChanges([{ name: CE_ENTRY }], s);
+  return s.CE === 'open' && s.PE === 'closed';
+});
+test('fresh-start: PE entry at top → PE=open', () => {
+  const s = makeFreshState();
+  processHistoryForPositionChanges([{ name: PE_ENTRY }], s);
+  return s.CE === 'closed' && s.PE === 'open';
+});
+test('fresh-start: CE exit most recent (entry below it) → CE=closed', () => {
+  // Newest-first: exit is at top → trade already closed
+  const s = makeFreshState();
+  processHistoryForPositionChanges([{ name: CE_EXIT }, { name: CE_ENTRY }], s);
+  return s.CE === 'closed';
+});
+test('fresh-start: CE entry most recent (no exit) → CE=open', () => {
+  // Newest-first: entry is at top → trade still running
+  const s = makeFreshState();
+  processHistoryForPositionChanges([{ name: CE_ENTRY }, { name: CE_EXIT }], s);
+  return s.CE === 'open';
+});
+test('fresh-start: both sides — CE entry + PE exit most recent → CE=open PE=closed', () => {
+  const s = makeFreshState();
+  processHistoryForPositionChanges(
+    [{ name: CE_ENTRY }, { name: PE_EXIT }, { name: PE_ENTRY }],
+    s
+  );
+  return s.CE === 'open' && s.PE === 'closed';
+});
+test('fresh-start: snapshot populated to top-30 after scan', () => {
+  const s = makeFreshState();
+  const items = Array.from({ length: 40 }, (_, i) => ({ name: `other${i}` }));
+  processHistoryForPositionChanges(items, s);
+  return s.lastLogSnapshot.length === 30;
+});
+test('fresh-start: returns changed=true when state derived differs', () => {
+  const s = makeFreshState();
+  return processHistoryForPositionChanges([{ name: CE_ENTRY }], s) === true;
+});
+test('fresh-start: returns changed=false when derived state matches existing', () => {
+  const s = makeFreshState({ CE: 'open' });
+  return processHistoryForPositionChanges([{ name: CE_ENTRY }], s) === false;
+});
+
+// ---------------------------------------------------------------------------
+// processHistoryForPositionChanges — new-day pre-market (snapshot pre-sealed).
+// Snapshot is pre-populated with current history before processHistory is called,
+// so old items are treated as already-seen and never re-open stale positions.
+// ---------------------------------------------------------------------------
+section('processHistoryForPositionChanges — new-day pre-market (snapshot sealed)');
+
+test('sealed: stale CE entry in history → CE stays closed', () => {
+  // Simulates: monitor sealed snapshot after new-day reset (pre-market).
+  // History has only yesterday's CE entry (exit never fired).
+  const staleItems = [{ name: CE_ENTRY, symbol: '' }];
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: staleItems.slice(0, 30) };
+  processHistoryForPositionChanges(staleItems, s); // same items = nothing new at top
+  return s.CE === 'closed' && s.PE === 'closed';
+});
+test('sealed: stale PE entry in history → PE stays closed', () => {
+  const staleItems = [{ name: PE_ENTRY, symbol: '' }];
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: staleItems.slice(0, 30) };
+  processHistoryForPositionChanges(staleItems, s);
+  return s.PE === 'closed';
+});
+test('sealed: new CE entry fires today → CE opens via diff-based detection', () => {
+  // Snapshot was sealed with yesterday's items. A new CE entry appears at top today.
+  const yesterday = [{ name: 'someOtherAlert', symbol: '' }];
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: yesterday.slice(0, 30) };
+  const todayHistory = [{ name: CE_ENTRY, symbol: '' }, ...yesterday];
+  processHistoryForPositionChanges(todayHistory, s);
+  return s.CE === 'open';
+});
+test('sealed: new CE exit fires today → CE closes', () => {
+  const yesterday = [{ name: 'someOtherAlert', symbol: '' }];
+  const s = { CE: 'open', PE: 'closed', lastLogSnapshot: yesterday.slice(0, 30) };
+  const todayHistory = [{ name: CE_EXIT, symbol: '' }, ...yesterday];
+  processHistoryForPositionChanges(todayHistory, s);
+  return s.CE === 'closed';
+});
+test('sealed: snapshot updates to include new top item', () => {
+  const yesterday = [{ name: 'base', symbol: '' }];
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: yesterday.slice(0, 30) };
+  const todayHistory = [{ name: CE_ENTRY, symbol: '' }, ...yesterday];
+  processHistoryForPositionChanges(todayHistory, s);
+  return s.lastLogSnapshot[0].name === CE_ENTRY;
+});
+
+// ---------------------------------------------------------------------------
+// processHistoryForPositionChanges — same-day restart (snapshot from prior tick).
+// Only items newer than the last snapshot top are processed.
+// ---------------------------------------------------------------------------
+section('processHistoryForPositionChanges — same-day restart (diff-based)');
+
+test('diff: item already in snapshot top → not reprocessed', () => {
+  const existing = [{ name: CE_ENTRY, symbol: '' }];
+  const s = { CE: 'open', PE: 'closed', lastLogSnapshot: existing };
+  processHistoryForPositionChanges(existing, s); // same list, nothing new
+  return s.CE === 'open'; // stays open, CE exit not fired
+});
+test('diff: new exit appears above snapshot boundary → CE closes', () => {
+  const existing = [{ name: CE_ENTRY, symbol: '' }];
+  const s = { CE: 'open', PE: 'closed', lastLogSnapshot: existing };
+  const newHistory = [{ name: CE_EXIT, symbol: '' }, ...existing];
+  processHistoryForPositionChanges(newHistory, s);
+  return s.CE === 'closed';
+});
+test('diff: new PE entry appears above boundary → PE opens', () => {
+  const existing = [{ name: 'other', symbol: '' }];
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: existing };
+  const newHistory = [{ name: PE_ENTRY, symbol: '' }, ...existing];
+  processHistoryForPositionChanges(newHistory, s);
+  return s.PE === 'open';
+});
+test('diff: boundary item not found (log rolled) → processes top 5 only', () => {
+  // Previous snapshot top item is gone from history (TV log rolled over)
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: [{ name: 'gone', symbol: '' }] };
+  const newHistory = Array.from({ length: 10 }, (_, i) => ({ name: `item${i}`, symbol: '' }));
+  newHistory.unshift({ name: CE_ENTRY, symbol: '' }); // CE entry is in top 5
+  processHistoryForPositionChanges(newHistory, s);
+  return s.CE === 'open'; // item in top 5 → processed
+});
+test('diff: boundary item not found, CE entry at index 6 → not processed', () => {
+  const s = { CE: 'closed', PE: 'closed', lastLogSnapshot: [{ name: 'gone', symbol: '' }] };
+  // CE entry at position 6 (beyond top-5 fallback window)
+  const newHistory = [
+    { name: 'item0', symbol: '' },
+    { name: 'item1', symbol: '' },
+    { name: 'item2', symbol: '' },
+    { name: 'item3', symbol: '' },
+    { name: 'item4', symbol: '' },
+    { name: CE_ENTRY, symbol: '' }, // index 5 — outside top-5
+  ];
+  processHistoryForPositionChanges(newHistory, s);
+  return s.CE === 'closed';
 });
 
 // ---------------------------------------------------------------------------
