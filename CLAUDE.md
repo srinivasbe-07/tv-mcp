@@ -30,7 +30,9 @@ Then open **http://localhost:3000** in the browser.
 | `http://localhost:3000/pattern`            | Pattern Monitor — full config, log, candle feed                        |
 | `http://localhost:3000/supertrend`         | Supertrend Monitor — ITM override, CE/PE position, generate EOD report |
 | `http://localhost:3000/test-alerts`        | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts               |
-| `http://localhost:3000/supertrend-reports` | **Trade Reports** — paper trade journal, P&L stats, filters            |
+| `http://localhost:3000/supertrend-reports` | **Trade Reports Dashboard** — consolidated P&L for both strategies     |
+| `http://localhost:3000/1min-reports`       | **1-Min Reports** — auto-generated trades, full filters & edit         |
+| `http://localhost:3000/3min-reports`       | **3-Min Reports** — manual paper trades, full filters & edit           |
 
 ### Keys (still work when running from terminal directly)
 
@@ -282,25 +284,28 @@ Step 2  Read alert Log tab → detect new entry/exit fires → update CE/PE posi
         └── exit  alert fired → CE or PE = CLOSED (logged: [POSITION] CE CLOSED)
 Step 3  Read spot price from dedicated chart tab → calculate ATM
         └── spot invalid → save state & skip tick
-Step 4  ATM Cooldown: update immediately on first ATM shift, then lock for 90s
+Step 4  ATM Cooldown: update immediately on first ATM shift, then lock for 120s
         └── ATM shifts → update alerts NOW (same tick)
-        └── Next 90s → further ATM shifts blocked ("cooldown active Xs remaining")
-        └── After 90s → next ATM shift updates again
+        └── Next 120s → further ATM shifts blocked ("cooldown active Xs remaining")
+        └── After 120s → next ATM shift updates again
         └── Force tick (startup) → always bypasses cooldown
         └── Trade just closed → always bypasses cooldown (sync to current strike)
-Step 5  Nothing changed (ATM same, depth same, instrument same, not force, no trade just closed)?
+Step 5  Nothing changed (ATM same, depth same, instrument same, not force, no trade just closed,
+        no retry pending)?
         └── save state & exit — no alert updates needed
 Step 6  Calculate strikes
         └── CE strike = ATM − (itmDepth × stepSize)
         └── PE strike = ATM + (itmDepth × stepSize)
 Step 7  Update CE alerts
-        └── CE = OPEN        → SKIP  (logged: "CE trade is RUNNING — skipping")
-        └── CE just CLOSED   → FORCE sync to current strike (ATM may have moved during trade)
+        └── CE = OPEN              → SKIP  (logged: "CE trade is RUNNING — skipping")
+        └── CE just CLOSED         → FORCE sync to current strike (ATM may have moved during trade)
         └── CE = CLOSED + ATM shifted → update to new strike
+        └── CE = CLOSED + prev update failed → retry (logged: "Retrying CE alerts")
 Step 8  Update PE alerts
-        └── PE = OPEN        → SKIP  (logged: "PE trade is RUNNING — skipping")
-        └── PE just CLOSED   → FORCE sync to current strike
+        └── PE = OPEN              → SKIP  (logged: "PE trade is RUNNING — skipping")
+        └── PE just CLOSED         → FORCE sync to current strike
         └── PE = CLOSED + ATM shifted → update to new strike
+        └── PE = CLOSED + prev update failed → retry (logged: "Retrying PE alerts")
 Step 9  Wait 3s → verify all 4 alerts are active → auto re-activate any stopped
 Step 10 Save position.json
 ```
@@ -309,17 +314,20 @@ Step 10 Save position.json
 
 - Position state (Step 2) is always read _before_ any alert update (Steps 7–8) — if an entry fires between ticks, the next tick blocks the update automatically.
 - When a trade exits (OPEN → CLOSED), alerts are **immediately synced** to the current strike even if ATM hasn't shifted — because ATM may have moved while updates were blocked during the trade.
+- When an alert update fails (e.g. alerts panel not loaded), the side is flagged for retry. The next tick forces the update regardless of whether ATM has shifted. Retries continue every 60s until the update succeeds.
 
 ### Alert Update Behaviour by Position State
 
-| State                | CE alerts                      | PE alerts                      |
-| -------------------- | ------------------------------ | ------------------------------ |
-| CE=closed, PE=closed | ✓ Updated on ATM shift         | ✓ Updated on ATM shift         |
-| CE=open, PE=closed   | ✗ Skipped — trade running      | ✓ Updated on ATM shift         |
-| CE=closed, PE=open   | ✓ Updated on ATM shift         | ✗ Skipped — trade running      |
-| CE=open, PE=open     | ✗ Skipped — trade running      | ✗ Skipped — trade running      |
-| CE just closed       | ✓ Force sync to current strike | (PE continues normally)        |
-| PE just closed       | (CE continues normally)        | ✓ Force sync to current strike |
+| State                      | CE alerts                           | PE alerts                           |
+| -------------------------- | ----------------------------------- | ----------------------------------- |
+| CE=closed, PE=closed       | ✓ Updated on ATM shift              | ✓ Updated on ATM shift              |
+| CE=open, PE=closed         | ✗ Skipped — trade running           | ✓ Updated on ATM shift              |
+| CE=closed, PE=open         | ✓ Updated on ATM shift              | ✗ Skipped — trade running           |
+| CE=open, PE=open           | ✗ Skipped — trade running           | ✗ Skipped — trade running           |
+| CE just closed             | ✓ Force sync to current strike      | (PE continues normally)             |
+| PE just closed             | (CE continues normally)             | ✓ Force sync to current strike      |
+| CE prev update failed      | ✓ Retry next tick (every 60s until success) | (PE continues normally)      |
+| PE prev update failed      | (CE continues normally)             | ✓ Retry next tick (every 60s until success) |
 
 A running trade's alerts **never move** — they stay on the exact entry strike.
 When the trade exits, alerts are synced to current ITM strike immediately.
@@ -377,7 +385,7 @@ A paper-trading journal. After each trading day, generate a report to capture op
 npm run ui   ← start the UI server first
 ```
 
-Then open **http://localhost:3000/supertrend-reports** (or click **View Reports** on the Supertrend page).
+Then open **http://localhost:3000/supertrend-reports** (dashboard) → click card to open **http://localhost:3000/1min-reports** or **http://localhost:3000/3min-reports**.
 
 ---
 
