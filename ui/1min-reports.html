@@ -875,7 +875,9 @@
           pbExplicitCount = 0;
         const dayDates = [];
         for (const day of dates.sort((a, b) => (a.date < b.date ? -1 : 1))) {
-          let dSL = 0, dNSL = 0, dTgt = 0;
+          let dSL = 0,
+            dNSL = 0,
+            dTgt = 0;
           const filteredTrades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
           for (const t of filteredTrades) {
             const tq = qty(day.instrument, t.lots);
@@ -890,17 +892,25 @@
             if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
             if (t.entryPrice !== null) {
               const hasPB = t.pbEntry !== null && t.pbEntry !== undefined && t.pbEntry !== 0;
-              let pSL = null, pNSL = null, pTgt = null;
+              let pSL = null,
+                pNSL = null,
+                pTgt = null;
               if (hasPB && t.exitNSL !== null) {
-                const pbVals = calcPBValues(t.pbEntry, t.exitNSL, day.instrument,
-                  t.pbTgtPts ?? null, t.pbExitSL ?? null, t.pbExitTgt ?? null);
+                const pbVals = calcPBValues(
+                  t.pbEntry,
+                  t.exitNSL,
+                  day.instrument,
+                  t.pbTgtPts ?? null,
+                  t.pbExitSL ?? null,
+                  t.pbExitTgt ?? null
+                );
                 if (pbVals) {
-                  pSL  = (pbVals.pbExitSL  - t.pbEntry) * tq;
+                  pSL = (pbVals.pbExitSL - t.pbEntry) * tq;
                   pNSL = (pbVals.pbExitNSL - t.pbEntry) * tq;
                   pTgt = pbVals.pbTgtPts * tq;
                 }
               } else if (t.exitSL !== null && t.exitNSL !== null && t.tgtPts !== null) {
-                pSL  = (t.exitSL  - t.entryPrice) * tq;
+                pSL = (t.exitSL - t.entryPrice) * tq;
                 pNSL = (t.exitNSL - t.entryPrice) * tq;
                 pTgt = t.tgtPts * tq;
               }
@@ -911,7 +921,7 @@
                 pbTrades.dates.push(day.date);
                 pbTradeCount++;
                 if (hasPB) pbExplicitCount++;
-                if (pSL  > 0) winPBSL++;
+                if (pSL > 0) winPBSL++;
                 if (pNSL > 0) winPBNSL++;
                 if (pTgt > 0) winPBTgt++;
               }
@@ -967,13 +977,13 @@
         const wrSL = totalTrades ? Math.round((winSL / totalTrades) * 100) : 0;
         const wrNSL = totalTrades ? Math.round((winNSL / totalTrades) * 100) : 0;
         const wrTgt = totalTrades ? Math.round((winTgt / totalTrades) * 100) : 0;
-        const wrPBSL  = pbTradeCount ? Math.round((winPBSL  / pbTradeCount) * 100) : 0;
+        const wrPBSL = pbTradeCount ? Math.round((winPBSL / pbTradeCount) * 100) : 0;
         const wrPBNSL = pbTradeCount ? Math.round((winPBNSL / pbTradeCount) * 100) : 0;
         const wrPBTgt = pbTradeCount ? Math.round((winPBTgt / pbTradeCount) * 100) : 0;
         const capSL = INITIAL_CAPITAL + netSL,
           capNSL = INITIAL_CAPITAL + netNSL,
           capTgt = INITIAL_CAPITAL + netTgt,
-          capPBSL  = INITIAL_CAPITAL + netPBSL,
+          capPBSL = INITIAL_CAPITAL + netPBSL,
           capPBNSL = INITIAL_CAPITAL + netPBNSL,
           capPBTgt = INITIAL_CAPITAL + netPBTgt;
         el.innerHTML = `
@@ -1059,7 +1069,7 @@
 
       function togglePBCard(monthKey, type) {
         pbTypeSelection[monthKey] = type;
-        ['sl', 'nsl', 'tgt'].forEach(t => {
+        ['sl', 'nsl', 'tgt'].forEach((t) => {
           const el = document.getElementById(`pb-stats-${monthKey}-${t}`);
           if (el) el.style.display = t === type ? '' : 'none';
         });
@@ -1159,15 +1169,22 @@
           const pbVals =
             effectivePBEntry !== null && t.exitNSL !== null
               ? calcPBValues(
-                  effectivePBEntry, t.exitNSL, day.instrument,
+                  effectivePBEntry,
+                  t.exitNSL,
+                  day.instrument,
                   hasPBEntry ? (t.pbTgtPts ?? null) : null,
                   hasPBEntry ? (t.pbExitSL ?? null) : null,
                   hasPBEntry ? (t.pbExitTgt ?? null) : null
                 )
               : null;
-          const pbSL = pbVals !== null ? Math.round((pbVals.pbExitSL - effectivePBEntry) * tq) : null;
-          const pbTgt = pbVals !== null ? Math.round((hasPBEntry ? pbVals.pbTgtPts : (t.tgtPts ?? 0)) * tq) : null;
-          const pbNSL = pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
+          const pbSL =
+            pbVals !== null ? Math.round((pbVals.pbExitSL - effectivePBEntry) * tq) : null;
+          const pbTgt =
+            pbVals !== null
+              ? Math.round((hasPBEntry ? pbVals.pbTgtPts : (t.tgtPts ?? 0)) * tq)
+              : null;
+          const pbNSL =
+            pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
           if (pbSL !== null) totPBSL += pbSL;
           if (pbTgt !== null) totPBTgt += pbTgt;
           if (pbNSL !== null) totPBNSL += pbNSL;
@@ -1383,7 +1400,14 @@
             const pbTgtPtsInput = parseFloat(document.getElementById('e-pbTgtPts')?.value);
             const pbExitSLInput = parseFloat(document.getElementById('e-pbExitSL')?.value);
             const pbExitTgtInput = parseFloat(document.getElementById('e-pbExitTgt')?.value);
-            const pbVals = calcPBValues(pbEntry, exitNSL, instr, pbTgtPtsInput, pbExitSLInput, pbExitTgtInput);
+            const pbVals = calcPBValues(
+              pbEntry,
+              exitNSL,
+              instr,
+              pbTgtPtsInput,
+              pbExitSLInput,
+              pbExitTgtInput
+            );
             if (pbVals) {
               const pbPSL = Math.round((pbVals.pbExitSL - pbEntry) * nLots * lotSz);
               const pbPTgt = Math.round(pbVals.pbTgtPts * nLots * lotSz);
@@ -1619,7 +1643,14 @@
         return 0; // SL HIT / PINE SCRIPT SL → target not reached
       }
 
-      function calcPBValues(pbEntry, pbExit, instr, pbTgtPtsOverride, pbExitSLOverride, pbExitTgtOverride) {
+      function calcPBValues(
+        pbEntry,
+        pbExit,
+        instr,
+        pbTgtPtsOverride,
+        pbExitSLOverride,
+        pbExitTgtOverride
+      ) {
         const pb = parseFloat(pbEntry),
           eNSL = parseFloat(pbExit);
         if (isNaN(pb) || isNaN(eNSL)) return null;
@@ -1642,9 +1673,9 @@
         }
         const pbExitSL = !isNaN(ovrSL)
           ? ovrSL
-          : (!isNaN(ovrTgt) || !isNaN(ovrPts))
-          ? pbExitTgt
-          : parseFloat(Math.max(pb - slPts, Math.min(pb + tgG, eNSL)).toFixed(2));
+          : !isNaN(ovrTgt) || !isNaN(ovrPts)
+            ? pbExitTgt
+            : parseFloat(Math.max(pb - slPts, Math.min(pb + tgG, eNSL)).toFixed(2));
         return { pbExitSL, pbExitTgt, pbExitNSL: eNSL, pbTgtPts };
       }
       function showToast(msg, err = false) {
