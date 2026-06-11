@@ -711,6 +711,7 @@
       let monthReachFilter = {};
       let monthCandleFilter = {};
       let monthDateFilter = {};
+      let pbTypeSelection = {};
       let NSE_HOLIDAYS = new Set();
 
       async function loadData() {
@@ -861,19 +862,20 @@
           return;
         }
 
-        const dayPnl = { sl: [], nsl: [], tgt: [], pbsl: [] };
+        const dayPnl = { sl: [], nsl: [], tgt: [] };
+        const pbTrades = { sl: [], nsl: [], tgt: [], dates: [] };
         let totalTrades = 0,
           winSL = 0,
           winNSL = 0,
           winTgt = 0,
           winPBSL = 0,
-          pbTradeCount = 0;
+          winPBNSL = 0,
+          winPBTgt = 0,
+          pbTradeCount = 0,
+          pbExplicitCount = 0;
         const dayDates = [];
         for (const day of dates.sort((a, b) => (a.date < b.date ? -1 : 1))) {
-          let dSL = 0,
-            dNSL = 0,
-            dTgt = 0,
-            dPBSL = 0;
+          let dSL = 0, dNSL = 0, dTgt = 0;
           const filteredTrades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
           for (const t of filteredTrades) {
             const tq = qty(day.instrument, t.lots);
@@ -886,26 +888,44 @@
             if (t.exitNSL !== null && t.entryPrice !== null && t.exitNSL - t.entryPrice > 0)
               winNSL++;
             if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
-            if (t.pbEntry !== null && t.pbEntry !== undefined) {
-              const pbVals = calcPBValues(t.pbEntry, t.exitNSL, day.instrument, t.entryPrice, pbMaxReachFor(t.pbNotes, t.maxReach));
-              if (pbVals) {
-                const pbP = (pbVals.pbExitSL - t.pbEntry) * tq;
-                dPBSL += pbP;
+            if (t.entryPrice !== null) {
+              const hasPB = t.pbEntry !== null && t.pbEntry !== undefined && t.pbEntry !== 0;
+              let pSL = null, pNSL = null, pTgt = null;
+              if (hasPB && t.exitNSL !== null) {
+                const pbVals = calcPBValues(t.pbEntry, t.exitNSL, day.instrument,
+                  t.pbTgtPts ?? null, t.pbExitSL ?? null, t.pbExitTgt ?? null);
+                if (pbVals) {
+                  pSL  = (pbVals.pbExitSL  - t.pbEntry) * tq;
+                  pNSL = (pbVals.pbExitNSL - t.pbEntry) * tq;
+                  pTgt = pbVals.pbTgtPts * tq;
+                }
+              } else if (t.exitSL !== null && t.exitNSL !== null && t.tgtPts !== null) {
+                pSL  = (t.exitSL  - t.entryPrice) * tq;
+                pNSL = (t.exitNSL - t.entryPrice) * tq;
+                pTgt = t.tgtPts * tq;
+              }
+              if (pSL !== null) {
+                pbTrades.sl.push(Math.round(pSL));
+                pbTrades.nsl.push(Math.round(pNSL));
+                pbTrades.tgt.push(Math.round(pTgt));
+                pbTrades.dates.push(day.date);
                 pbTradeCount++;
-                if (pbP > 0) winPBSL++;
+                if (hasPB) pbExplicitCount++;
+                if (pSL  > 0) winPBSL++;
+                if (pNSL > 0) winPBNSL++;
+                if (pTgt > 0) winPBTgt++;
               }
             }
           }
           dayPnl.sl.push(Math.round(dSL));
           dayPnl.nsl.push(Math.round(dNSL));
           dayPnl.tgt.push(Math.round(dTgt));
-          dayPnl.pbsl.push(Math.round(dPBSL));
           dayDates.push(day.date);
         }
         const netSL = dayPnl.sl.reduce((a, b) => a + b, 0);
         const netNSL = dayPnl.nsl.reduce((a, b) => a + b, 0);
         const netTgt = dayPnl.tgt.reduce((a, b) => a + b, 0);
-        const netPBSL = dayPnl.pbsl.reduce((a, b) => a + b, 0);
+        const netPBSL = pbTrades.sl.reduce((a, b) => a + b, 0);
         const {
           maxDown: ddSL,
           maxUp: duSL,
@@ -929,15 +949,33 @@
           maxUp: duPBSL,
           maxDownDate: ddPBSLDate,
           maxUpDate: duPBSLDate,
-        } = calcMonthPeaks(dayPnl.pbsl, dayDates);
+        } = calcMonthPeaks(pbTrades.sl, pbTrades.dates);
+        const netPBNSL = pbTrades.nsl.reduce((a, b) => a + b, 0);
+        const netPBTgt = pbTrades.tgt.reduce((a, b) => a + b, 0);
+        const {
+          maxDown: ddPBNSL,
+          maxUp: duPBNSL,
+          maxDownDate: ddPBNSLDate,
+          maxUpDate: duPBNSLDate,
+        } = calcMonthPeaks(pbTrades.nsl, pbTrades.dates);
+        const {
+          maxDown: ddPBTgt,
+          maxUp: duPBTgt,
+          maxDownDate: ddPBTgtDate,
+          maxUpDate: duPBTgtDate,
+        } = calcMonthPeaks(pbTrades.tgt, pbTrades.dates);
         const wrSL = totalTrades ? Math.round((winSL / totalTrades) * 100) : 0;
         const wrNSL = totalTrades ? Math.round((winNSL / totalTrades) * 100) : 0;
         const wrTgt = totalTrades ? Math.round((winTgt / totalTrades) * 100) : 0;
-        const wrPBSL = pbTradeCount ? Math.round((winPBSL / pbTradeCount) * 100) : 0;
+        const wrPBSL  = pbTradeCount ? Math.round((winPBSL  / pbTradeCount) * 100) : 0;
+        const wrPBNSL = pbTradeCount ? Math.round((winPBNSL / pbTradeCount) * 100) : 0;
+        const wrPBTgt = pbTradeCount ? Math.round((winPBTgt / pbTradeCount) * 100) : 0;
         const capSL = INITIAL_CAPITAL + netSL,
           capNSL = INITIAL_CAPITAL + netNSL,
           capTgt = INITIAL_CAPITAL + netTgt,
-          capPBSL = INITIAL_CAPITAL + netPBSL;
+          capPBSL  = INITIAL_CAPITAL + netPBSL,
+          capPBNSL = INITIAL_CAPITAL + netPBNSL,
+          capPBTgt = INITIAL_CAPITAL + netPBTgt;
         el.innerHTML = `
     <div class="summary" style="grid-template-columns:160px repeat(4,1fr)">
       <div class="scard">
@@ -952,7 +990,7 @@
         ${statRow('Net Capital', fmtCapital(capSL), pnlClass(capSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrSL}%`, 'c-purple', `${winSL} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddSL < 0 ? fmtRs(ddSL) : '—', 'c-orange', ddSLDate ? fmtDateShort(ddSLDate) : '')}
-        ${statRow('Max Run-Up', duSL > 0 ? fmtRs(duSL) : '—', 'c-green', duSLDate ? fmtDateShort(duSLDate) : '')}
+        ${statRow('Max Run-Up', duSL > 0 && duSL !== netSL ? fmtRs(duSL) : '—', 'c-green', duSL > 0 && duSL !== netSL && duSLDate ? fmtDateShort(duSLDate) : '')}
       </div>
       <div class="scard">
         <div class="scard-lbl">Exit w/o SL</div>
@@ -960,7 +998,7 @@
         ${statRow('Net Capital', fmtCapital(capNSL), pnlClass(capNSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrNSL}%`, 'c-purple', `${winNSL} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddNSL < 0 ? fmtRs(ddNSL) : '—', 'c-orange', ddNSLDate ? fmtDateShort(ddNSLDate) : '')}
-        ${statRow('Max Run-Up', duNSL > 0 ? fmtRs(duNSL) : '—', 'c-green', duNSLDate ? fmtDateShort(duNSLDate) : '')}
+        ${statRow('Max Run-Up', duNSL > 0 && duNSL !== netNSL ? fmtRs(duNSL) : '—', 'c-green', duNSL > 0 && duNSL !== netNSL && duNSLDate ? fmtDateShort(duNSLDate) : '')}
       </div>
       <div class="scard">
         <div class="scard-lbl">Target Pts</div>
@@ -968,26 +1006,63 @@
         ${statRow('Net Capital', fmtCapital(capTgt), pnlClass(capTgt - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrTgt}%`, 'c-purple', `${winTgt} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddTgt < 0 ? fmtRs(ddTgt) : '—', 'c-orange', ddTgtDate ? fmtDateShort(ddTgtDate) : '')}
-        ${statRow('Max Run-Up', duTgt > 0 ? fmtRs(duTgt) : '—', 'c-green', duTgtDate ? fmtDateShort(duTgtDate) : '')}
+        ${statRow('Max Run-Up', duTgt > 0 && duTgt !== netTgt ? fmtRs(duTgt) : '—', 'c-green', duTgt > 0 && duTgt !== netTgt && duTgtDate ? fmtDateShort(duTgtDate) : '')}
       </div>
       <div class="scard" style="border-color:#4b3d7a">
-        <div class="scard-lbl" style="color:#a78bfa">PB Entry w/ SL</div>
+        <div class="scard-lbl" style="color:#a78bfa;display:flex;align-items:center;gap:6px">PB Entry
+          <select style="font-size:10px;background:#1e1e2e;color:#a78bfa;border:1px solid #4b3d7a;border-radius:4px;padding:1px 4px;cursor:pointer"
+                  onchange="togglePBCard('${monthKey}', this.value)">
+            <option value="tgt">w/ Tgt</option>
+            <option value="sl">w/ SL</option>
+            <option value="nsl">w/o SL</option>
+          </select>
+        </div>
         ${
           pbTradeCount === 0
             ? `<div class="scard-sub" style="margin-top:10px;color:#4b5563">No pullback entries yet</div>`
-            : `${statRow('Net P&amp;L', fmtRs(netPBSL), pnlClass(netPBSL))}
+            : `<div id="pb-stats-${monthKey}-tgt">
+        ${statRow('Net P&amp;L', fmtRs(netPBTgt), pnlClass(netPBTgt))}
+        ${statRow('Net Capital', fmtCapital(capPBTgt), pnlClass(capPBTgt - INITIAL_CAPITAL))}
+        ${statRow('Win Rate', `${wrPBTgt}%`, 'c-purple', `${winPBTgt} of ${pbTradeCount}`)}
+        ${statRow('Max Drawdown', ddPBTgt < 0 ? fmtRs(ddPBTgt) : '—', 'c-orange', ddPBTgtDate ? fmtDateShort(ddPBTgtDate) : '')}
+        ${statRow('Max Run-Up', duPBTgt > 0 && duPBTgt !== netPBTgt ? fmtRs(duPBTgt) : '—', 'c-green', duPBTgt > 0 && duPBTgt !== netPBTgt && duPBTgtDate ? fmtDateShort(duPBTgtDate) : '')}
+        </div>
+        <div id="pb-stats-${monthKey}-sl" style="display:none">
+        ${statRow('Net P&amp;L', fmtRs(netPBSL), pnlClass(netPBSL))}
         ${statRow('Net Capital', fmtCapital(capPBSL), pnlClass(capPBSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrPBSL}%`, 'c-purple', `${winPBSL} of ${pbTradeCount}`)}
         ${statRow('Max Drawdown', ddPBSL < 0 ? fmtRs(ddPBSL) : '—', 'c-orange', ddPBSLDate ? fmtDateShort(ddPBSLDate) : '')}
-        ${statRow('Max Run-Up', duPBSL > 0 ? fmtRs(duPBSL) : '—', 'c-green', duPBSLDate ? fmtDateShort(duPBSLDate) : '')}`
+        ${statRow('Max Run-Up', duPBSL > 0 && duPBSL !== netPBSL ? fmtRs(duPBSL) : '—', 'c-green', duPBSL > 0 && duPBSL !== netPBSL && duPBSLDate ? fmtDateShort(duPBSLDate) : '')}
+        </div>
+        <div id="pb-stats-${monthKey}-nsl" style="display:none">
+        ${statRow('Net P&amp;L', fmtRs(netPBNSL), pnlClass(netPBNSL))}
+        ${statRow('Net Capital', fmtCapital(capPBNSL), pnlClass(capPBNSL - INITIAL_CAPITAL))}
+        ${statRow('Win Rate', `${wrPBNSL}%`, 'c-purple', `${winPBNSL} of ${pbTradeCount}`)}
+        ${statRow('Max Drawdown', ddPBNSL < 0 ? fmtRs(ddPBNSL) : '—', 'c-orange', ddPBNSLDate ? fmtDateShort(ddPBNSLDate) : '')}
+        ${statRow('Max Run-Up', duPBNSL > 0 && duPBNSL !== netPBNSL ? fmtRs(duPBNSL) : '—', 'c-green', duPBNSL > 0 && duPBNSL !== netPBNSL && duPBNSLDate ? fmtDateShort(duPBNSLDate) : '')}
+        </div>`
         }
-        <div class="scard-sub" style="margin-top:6px">${pbTradeCount} of ${totalTrades} trades</div>
+        <div class="scard-sub" style="margin-top:6px">${pbTradeCount} trades &nbsp;·&nbsp; ${pbExplicitCount} w/ pb entry</div>
       </div>
     </div>`;
+        const savedPBType = pbTypeSelection[monthKey];
+        if (savedPBType && savedPBType !== 'tgt') {
+          togglePBCard(monthKey, savedPBType);
+          const sel = el.querySelector('select');
+          if (sel) sel.value = savedPBType;
+        }
       }
 
       function statRow(key, val, cls, sub = '') {
         return `<div class="stat-row"><span class="stat-key">${key}</span><div><div class="stat-val ${cls}">${val}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ''}</div></div>`;
+      }
+
+      function togglePBCard(monthKey, type) {
+        pbTypeSelection[monthKey] = type;
+        ['sl', 'nsl', 'tgt'].forEach(t => {
+          const el = document.getElementById(`pb-stats-${monthKey}-${t}`);
+          if (el) el.style.display = t === type ? '' : 'none';
+        });
       }
 
       function buildDayBlock(day) {
@@ -1079,19 +1154,26 @@
             seriesNSL.push(pNSL);
           }
 
+          const hasPBEntry = t.pbEntry !== null && t.pbEntry !== undefined && t.pbEntry !== 0;
+          const effectivePBEntry = hasPBEntry ? t.pbEntry : t.entryPrice;
           const pbVals =
-            t.pbEntry !== null && t.pbEntry !== undefined
-              ? calcPBValues(t.pbEntry, t.exitNSL, day.instrument, t.entryPrice, pbMaxReachFor(t.pbNotes, t.maxReach))
+            effectivePBEntry !== null && t.exitNSL !== null
+              ? calcPBValues(
+                  effectivePBEntry, t.exitNSL, day.instrument,
+                  hasPBEntry ? (t.pbTgtPts ?? null) : null,
+                  hasPBEntry ? (t.pbExitSL ?? null) : null,
+                  hasPBEntry ? (t.pbExitTgt ?? null) : null
+                )
               : null;
-          const pbSL = pbVals !== null ? Math.round((pbVals.pbExitSL - t.pbEntry) * tq) : null;
-          const pbTgt = pbVals !== null ? Math.round(pbVals.pbTgtPts * tq) : null;
-          const pbNSL = pbVals !== null ? Math.round((pbVals.pbExitNSL - t.pbEntry) * tq) : null;
+          const pbSL = pbVals !== null ? Math.round((pbVals.pbExitSL - effectivePBEntry) * tq) : null;
+          const pbTgt = pbVals !== null ? Math.round((hasPBEntry ? pbVals.pbTgtPts : (t.tgtPts ?? 0)) * tq) : null;
+          const pbNSL = pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
           if (pbSL !== null) totPBSL += pbSL;
           if (pbTgt !== null) totPBTgt += pbTgt;
           if (pbNSL !== null) totPBNSL += pbNSL;
 
           const pb = (v, cls) =>
-            v !== null
+            v !== null && v !== 0
               ? `<div style="color:#a78bfa;font-size:10px">${cls ? `<span class="${pnlClass(v)}">${fmtRs(v)}</span>` : fmt(v)}</div>`
               : '';
 
@@ -1106,16 +1188,16 @@
       <td>${(t.entryTime || t.time || '').slice(0, 5)}</td>
       <td class="sym-text">${t.entrySymbol || '—'}</td>
       <td>${t.lots}</td>
-      <td>${fmt(t.entryPrice)}${t.pbEntry !== null && t.pbEntry !== undefined ? `<div style="color:#a78bfa;font-size:10px">${fmt(t.pbEntry)}</div>` : ''}</td>
-      <td>${fmt(t.exitSL)}${pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>
-      <td>${fmt(t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[day.instrument] || 31)).toFixed(2)) : null)}${pbVals ? pb(pbVals.pbExitTgt, false) : ''}</td>
+      <td>${fmt(t.entryPrice)}${hasPBEntry ? `<div style="color:#a78bfa;font-size:10px">${fmt(t.pbEntry)}</div>` : ''}</td>
+      <td>${fmt(t.exitSL)}${hasPBEntry && pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>
+      <td>${fmt(t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : null)}${hasPBEntry && pbVals ? pb(pbVals.pbExitTgt, false) : ''}</td>
       <td>${fmt(t.exitNSL)}</td>
-      <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}</td>
+      <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}${hasPBEntry && pbVals && pbVals.pbTgtPts !== 0 ? `<div class="${pnlClass(pbVals.pbTgtPts)}" style="font-size:10px">${fmtPts(pbVals.pbTgtPts)}</div>` : ''}</td>
       <td style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
       <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}${t.pbNotes ? `<div style="color:#a78bfa;font-size:10px;margin-top:2px">${t.pbNotes}</div>` : ''}</td>
-      <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${pbSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
-      <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${pbTgt !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
-      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
+      <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${hasPBEntry && pbSL !== null && pbSL !== 0 ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
+      <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${hasPBEntry && pbTgt !== null && pbTgt !== 0 ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
+      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null && pbNSL !== 0 ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
       <td style="text-align:center">
         <button class="act-btn" onclick="editRow('${dateStr}', '${t.id}', this)">&#x270F; Edit</button>
         <button class="act-btn del" onclick="deleteRow('${dateStr}', '${t.id}')">&#x2715;</button>
@@ -1200,10 +1282,10 @@
     <td ${fc('e-sym')}><input class="edit-input wide" id="e-sym" value="${t.entrySymbol || ''}"></td>
     <td ${fc('e-lots')}><input class="edit-input sm" id="e-lots" value="${t.lots}" type="number" oninput="recalcEditRow()"></td>
     <td ${fc('e-entry')}><input class="edit-input" id="e-entry" value="${t.entryPrice ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"><br><input class="edit-input" id="e-pbEntry" value="${t.pbEntry ?? ''}" type="number" step="0.05" placeholder="PB entry" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()"></td>
-    <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"></td>
-    <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null ? parseFloat((t.entryPrice + (TGT_L[instr] || 31)).toFixed(2)) : ''}" type="number" step="0.05"></td>
+    <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
+    <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitTgt" value="${t.pbExitTgt ?? (t.pbEntry !== null && t.pbTgtPts !== null ? parseFloat((t.pbEntry + t.pbTgtPts).toFixed(2)) : '')}" type="number" step="0.05" placeholder="PB w/Tgt" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     <td ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
-    <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbTgtPts" value="${t.pbTgtPts ?? ''}" type="number" step="0.05" placeholder="PB tgt pts" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     <td ${fc('e-candle')}><input class="edit-input" id="e-candle" value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
     <td>
       <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
@@ -1270,7 +1352,6 @@
         if (isNaN(entry) || isNaN(exitNSL)) return;
         const tr = document.getElementById('e-entry')?.closest('tr');
         const instr = tr?.dataset?.editInstr || 'NIFTY';
-        const editMaxReach = parseFloat(tr?.dataset?.editMaxReach);
         const slPts = SL_PTS[instr] || 15,
           tgG = TGT_G[instr] || 50,
           tgL = TGT_L[instr] || 31,
@@ -1279,11 +1360,11 @@
         const exitSL = parseFloat(
           Math.max(entry - slPts, Math.min(entry + tgG, exitNSL)).toFixed(2)
         );
-        const exitTgt = parseFloat((entry + tgL).toFixed(2));
         const tgtRaw = parseFloat(document.getElementById('e-tgt')?.value);
         const tgtPts = isNaN(tgtRaw)
           ? parseFloat(Math.max(-slPts, Math.min(tgL, exitNSL - entry)).toFixed(2))
           : tgtRaw;
+        const exitTgt = parseFloat((entry + tgtPts).toFixed(2));
         const pSL = Math.round((exitSL - entry) * nLots * lotSz);
         const pTgt = Math.round(tgtPts * nLots * lotSz);
         const pNSL = Math.round((exitNSL - entry) * nLots * lotSz);
@@ -1299,9 +1380,10 @@
           let html = `<span class="${c(pSL)}">${fmtRs(pSL)}</span><span style="color:#374151"> | </span><span class="${c(pTgt)}">${fmtRs(pTgt)}</span><span style="color:#374151"> | </span><span class="${c(pNSL)}">${fmtRs(pNSL)}</span>`;
           const pbEntry = parseFloat(document.getElementById('e-pbEntry')?.value);
           if (!isNaN(pbEntry)) {
-            const editPBNotes = document.getElementById('e-pb-notes')?.value || '';
-          const editPBMaxReach = pbMaxReachFor(editPBNotes || null, editMaxReach);
-          const pbVals = calcPBValues(pbEntry, exitNSL, instr, entry, editPBMaxReach);
+            const pbTgtPtsInput = parseFloat(document.getElementById('e-pbTgtPts')?.value);
+            const pbExitSLInput = parseFloat(document.getElementById('e-pbExitSL')?.value);
+            const pbExitTgtInput = parseFloat(document.getElementById('e-pbExitTgt')?.value);
+            const pbVals = calcPBValues(pbEntry, exitNSL, instr, pbTgtPtsInput, pbExitSLInput, pbExitTgtInput);
             if (pbVals) {
               const pbPSL = Math.round((pbVals.pbExitSL - pbEntry) * nLots * lotSz);
               const pbPTgt = Math.round(pbVals.pbTgtPts * nLots * lotSz);
@@ -1331,7 +1413,13 @@
         t.notes = document.getElementById('e-notes').value.trim();
         t.pbNotes = document.getElementById('e-pb-notes')?.value.trim() || '';
         const pbEV = parseFloat(document.getElementById('e-pbEntry')?.value);
-        t.pbEntry = isNaN(pbEV) ? null : pbEV;
+        t.pbEntry = isNaN(pbEV) || pbEV === 0 ? null : pbEV;
+        const pbTgtV = parseFloat(document.getElementById('e-pbTgtPts')?.value);
+        t.pbTgtPts = isNaN(pbTgtV) ? null : pbTgtV;
+        const pbExitSLV = parseFloat(document.getElementById('e-pbExitSL')?.value);
+        t.pbExitSL = isNaN(pbExitSLV) ? null : pbExitSLV;
+        const pbExitTgtV = parseFloat(document.getElementById('e-pbExitTgt')?.value);
+        t.pbExitTgt = isNaN(pbExitTgtV) ? null : pbExitTgtV;
         await persistDay(dateStr);
         renderDay(dateStr);
         renderSummary(activeMonth);
@@ -1509,7 +1597,7 @@
       function fmtRs(v) {
         if (v === null || v === undefined) return '—';
         const abs = Math.abs(Math.round(v)).toLocaleString('en-IN');
-        return v >= 0 ? `+₹${abs}` : `-₹${abs}`;
+        return v > 0 ? `+₹${abs}` : v < 0 ? `-₹${abs}` : `₹${abs}`;
       }
       function fmtCapital(v) {
         if (v === null || v === undefined) return '—';
@@ -1531,26 +1619,32 @@
         return 0; // SL HIT / PINE SCRIPT SL → target not reached
       }
 
-      function calcPBValues(pbEntry, pbExit, instr, originalEntry, maxReach) {
+      function calcPBValues(pbEntry, pbExit, instr, pbTgtPtsOverride, pbExitSLOverride, pbExitTgtOverride) {
         const pb = parseFloat(pbEntry),
           eNSL = parseFloat(pbExit);
         if (isNaN(pb) || isNaN(eNSL)) return null;
         const slPts = SL_PTS[instr] || 15,
           tgG = TGT_G[instr] || 50,
           tgL = TGT_L[instr] || 31;
-        const pbExitSL = parseFloat(Math.max(pb - slPts, Math.min(pb + tgG, eNSL)).toFixed(2));
-        const origE = parseFloat(originalEntry);
-        const mr = parseFloat(maxReach);
-        // Only use theoretical target if maxReach confirms price actually reached it
-        let pbExitTgt, pbTgtPts;
-        if (!isNaN(mr) && mr >= tgL) {
-          const targetPrice = parseFloat(((isNaN(origE) ? pb : origE) + tgL).toFixed(2));
-          pbExitTgt = targetPrice;
-          pbTgtPts = parseFloat(Math.min(tgL, targetPrice - pb).toFixed(2));
+        const ovrTgt = parseFloat(pbExitTgtOverride);
+        const ovrPts = parseFloat(pbTgtPtsOverride);
+        const ovrSL = parseFloat(pbExitSLOverride);
+        let pbTgtPts, pbExitTgt;
+        if (!isNaN(ovrTgt)) {
+          pbExitTgt = ovrTgt;
+          pbTgtPts = parseFloat(Math.max(-slPts, Math.min(tgL, ovrTgt - pb)).toFixed(2));
+        } else if (!isNaN(ovrPts)) {
+          pbTgtPts = ovrPts;
+          pbExitTgt = parseFloat((pb + pbTgtPts).toFixed(2));
         } else {
-          pbExitTgt = pbExitSL;
           pbTgtPts = parseFloat(Math.max(-slPts, Math.min(tgL, eNSL - pb)).toFixed(2));
+          pbExitTgt = parseFloat((pb + pbTgtPts).toFixed(2));
         }
+        const pbExitSL = !isNaN(ovrSL)
+          ? ovrSL
+          : (!isNaN(ovrTgt) || !isNaN(ovrPts))
+          ? pbExitTgt
+          : parseFloat(Math.max(pb - slPts, Math.min(pb + tgG, eNSL)).toFixed(2));
         return { pbExitSL, pbExitTgt, pbExitNSL: eNSL, pbTgtPts };
       }
       function showToast(msg, err = false) {
