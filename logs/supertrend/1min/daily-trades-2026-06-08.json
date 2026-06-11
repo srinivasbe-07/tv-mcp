@@ -3,27 +3,6 @@
   "instrument": "NIFTY",
   "trades": [
     {
-      "id": 1,
-      "instrument": "NIFTY",
-      "side": "PE",
-      "entrySymbol": "NIFTY260609P23200",
-      "exitSymbol": "NIFTY260609P23200",
-      "entryTime": "09:16",
-      "exitTime": "09:55:00",
-      "lots": 10,
-      "lotSize": 65,
-      "entryPrice": 168.95,
-      "exitPrice": 124.4,
-      "exitSL": 153.95,
-      "exitTgt": 199.95,
-      "exitNSL": 124.4,
-      "tgtPts": -15,
-      "maxReach": 18.6,
-      "candleRange": 45.2,
-      "notes": "SL HIT",
-      "time": "09:16"
-    },
-    {
       "id": 2,
       "instrument": "NIFTY",
       "side": "PE",
