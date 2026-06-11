@@ -972,9 +972,10 @@
       </div>
       <div class="scard" style="border-color:#4b3d7a">
         <div class="scard-lbl" style="color:#a78bfa">PB Entry w/ SL</div>
-        ${pbTradeCount === 0
-          ? `<div class="scard-sub" style="margin-top:10px;color:#4b5563">No pullback entries yet</div>`
-          : `${statRow('Net P&amp;L', fmtRs(netPBSL), pnlClass(netPBSL))}
+        ${
+          pbTradeCount === 0
+            ? `<div class="scard-sub" style="margin-top:10px;color:#4b5563">No pullback entries yet</div>`
+            : `${statRow('Net P&amp;L', fmtRs(netPBSL), pnlClass(netPBSL))}
         ${statRow('Net Capital', fmtCapital(capPBSL), pnlClass(capPBSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrPBSL}%`, 'c-purple', `${winPBSL} of ${pbTradeCount}`)}
         ${statRow('Max Drawdown', ddPBSL < 0 ? fmtRs(ddPBSL) : '—', 'c-orange', ddPBSLDate ? fmtDateShort(ddPBSLDate) : '')}
@@ -1089,7 +1090,10 @@
           if (pbTgt !== null) totPBTgt += pbTgt;
           if (pbNSL !== null) totPBNSL += pbNSL;
 
-          const pb = (v, cls) => v !== null ? `<div style="color:#a78bfa;font-size:10px">${cls ? `<span class="${pnlClass(v)}">${fmtRs(v)}</span>` : fmt(v)}</div>` : '';
+          const pb = (v, cls) =>
+            v !== null
+              ? `<div style="color:#a78bfa;font-size:10px">${cls ? `<span class="${pnlClass(v)}">${fmtRs(v)}</span>` : fmt(v)}</div>`
+              : '';
 
           const addTr = document.createElement('tr');
           addTr.className = 'add-row-tr';
@@ -1127,7 +1131,8 @@
         const { maxDown: dSL, maxUp: uSL } = calcDayPeaks(seriesSL);
         const { maxDown: dTgt, maxUp: uTgt } = calcDayPeaks(seriesTgt);
         const { maxDown: dNSL, maxUp: uNSL } = calcDayPeaks(seriesNSL);
-        const pbSubTot = (v) => v !== 0 ? `<div style="color:#a78bfa;font-size:10px">${fmtRs(v)}</div>` : '';
+        const pbSubTot = (v) =>
+          v !== 0 ? `<div style="color:#a78bfa;font-size:10px">${fmtRs(v)}</div>` : '';
 
         const totTr = document.createElement('tr');
         totTr.className = 'total-row';
@@ -1477,9 +1482,12 @@
       }
 
       function calcPBValues(pbEntry, pbExit, instr, originalEntry) {
-        const pb = parseFloat(pbEntry), eNSL = parseFloat(pbExit);
+        const pb = parseFloat(pbEntry),
+          eNSL = parseFloat(pbExit);
         if (isNaN(pb) || isNaN(eNSL)) return null;
-        const slPts = SL_PTS[instr] || 15, tgG = TGT_G[instr] || 50, tgL = TGT_L[instr] || 31;
+        const slPts = SL_PTS[instr] || 15,
+          tgG = TGT_G[instr] || 50,
+          tgL = TGT_L[instr] || 31;
         const pbExitSL = parseFloat(Math.max(pb - slPts, Math.min(pb + tgG, eNSL)).toFixed(2));
         // Target price is the same absolute level as the original trade
         const origE = parseFloat(originalEntry);
