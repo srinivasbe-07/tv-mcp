@@ -22,7 +22,8 @@
       "candleRange": 19.95,
       "notes": "price reach upto 96.55 points",
       "time": "10:59",
-      "pbEntry": 444.53
+      "pbEntry": 444.53,
+      "pbNotes": "price reach upto 99 points"
     },
     {
       "id": 2,
@@ -30,7 +31,7 @@
       "side": "PE",
       "entrySymbol": "BSX260611P74600",
       "exitSymbol": "BSX260611P74600",
-      "entryTime": "12:42:01",
+      "entryTime": "12:42",
       "exitTime": "12:49:00",
       "lots": 15,
       "lotSize": 20,
@@ -42,7 +43,10 @@
       "tgtPts": -22.8,
       "maxReach": 47.35,
       "candleRange": 22.25,
-      "notes": "price reach upto 47.35 points"
+      "notes": "price reach upto 47.35 points",
+      "time": "12:42",
+      "pbNotes": "price reach upto 59 points",
+      "pbEntry": 446.68
     },
     {
       "id": 3,

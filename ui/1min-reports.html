@@ -887,7 +887,7 @@
               winNSL++;
             if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
             if (t.pbEntry !== null && t.pbEntry !== undefined) {
-              const pbVals = calcPBValues(t.pbEntry, t.exitNSL, day.instrument, t.entryPrice);
+              const pbVals = calcPBValues(t.pbEntry, t.exitNSL, day.instrument, t.entryPrice, pbMaxReachFor(t.pbNotes, t.maxReach));
               if (pbVals) {
                 const pbP = (pbVals.pbExitSL - t.pbEntry) * tq;
                 dPBSL += pbP;
@@ -1081,7 +1081,7 @@
 
           const pbVals =
             t.pbEntry !== null && t.pbEntry !== undefined
-              ? calcPBValues(t.pbEntry, t.exitNSL, day.instrument, t.entryPrice)
+              ? calcPBValues(t.pbEntry, t.exitNSL, day.instrument, t.entryPrice, pbMaxReachFor(t.pbNotes, t.maxReach))
               : null;
           const pbSL = pbVals !== null ? Math.round((pbVals.pbExitSL - t.pbEntry) * tq) : null;
           const pbTgt = pbVals !== null ? Math.round(pbVals.pbTgtPts * tq) : null;
@@ -1112,7 +1112,7 @@
       <td>${fmt(t.exitNSL)}</td>
       <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}</td>
       <td style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
-      <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}</td>
+      <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}${t.pbNotes ? `<div style="color:#a78bfa;font-size:10px;margin-top:2px">${t.pbNotes}</div>` : ''}</td>
       <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${pbSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
       <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${pbTgt !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
       <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
@@ -1169,6 +1169,7 @@
         const instr = day.instrument || t.instrument || 'NIFTY';
         const tr = btn.closest('tr');
         tr.dataset.editInstr = instr;
+        tr.dataset.editMaxReach = t.maxReach ?? '';
         const fc = (id) => `ondblclick="document.getElementById('${id}')?.focus()"`;
         const existingNotes = t.notes || '';
         const nU = existingNotes.toUpperCase();
@@ -1182,6 +1183,18 @@
         const notPts = existingNotes.match(/(\d+(?:\.\d+)?)/)?.[1] || '';
         const reachVisible = notSel === 'reach' ? '' : 'none';
         const sel = (v) => (notSel === v ? 'selected' : '');
+        const existingPBNotes = t.pbNotes || '';
+        const pbNU = existingPBNotes.toUpperCase();
+        const pbNotSel = pbNU.includes('PINE SCRIPT')
+          ? 'PINE SCRIPT SL'
+          : pbNU.includes('SL HIT')
+            ? 'SL HIT'
+            : pbNU.includes('REACH')
+              ? 'reach'
+              : '';
+        const pbNotPts = existingPBNotes.match(/(\d+(?:\.\d+)?)/)?.[1] || '';
+        const pbReachVisible = pbNotSel === 'reach' ? '' : 'none';
+        const pbSel = (v) => (pbNotSel === v ? 'selected' : '');
         tr.innerHTML = `
     <td ${fc('e-time')}><input class="edit-input sm" id="e-time" value="${(t.entryTime || t.time || '').slice(0, 5)}"></td>
     <td ${fc('e-sym')}><input class="edit-input wide" id="e-sym" value="${t.entrySymbol || ''}"></td>
@@ -1201,6 +1214,16 @@
       </select>
       <input type="number" id="e-notes-pts" class="edit-input reach-pts" min="0" step="0.5" placeholder="pts" value="${notPts}" style="display:${reachVisible}" oninput="applyNotesType()">
       <input type="hidden" id="e-notes" value="${existingNotes}">
+      <div style="margin-top:4px">
+        <select id="e-pb-notes-sel" class="edit-select" style="border-color:#4b3d7a;color:#a78bfa" onchange="applyPBNotesType()">
+          <option value="" ${pbSel('')}>— PB —</option>
+          <option value="SL HIT" ${pbSel('SL HIT')}>SL HIT</option>
+          <option value="PINE SCRIPT SL" ${pbSel('PINE SCRIPT SL')}>PINE SCRIPT SL</option>
+          <option value="reach" ${pbSel('reach')}>price reach upto</option>
+        </select>
+        <input type="number" id="e-pb-notes-pts" class="edit-input reach-pts" min="0" step="0.5" placeholder="pts" value="${pbNotPts}" style="display:${pbReachVisible}" oninput="applyPBNotesType()">
+        <input type="hidden" id="e-pb-notes" value="${existingPBNotes}">
+      </div>
     </td>
     <td colspan="3" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
     <td style="text-align:center">
@@ -1225,6 +1248,21 @@
         }
       }
 
+      function applyPBNotesType() {
+        const sel = document.getElementById('e-pb-notes-sel');
+        const ptsEl = document.getElementById('e-pb-notes-pts');
+        const hidden = document.getElementById('e-pb-notes');
+        if (!sel) return;
+        if (sel.value === 'reach') {
+          ptsEl.style.display = '';
+          hidden.value = ptsEl.value ? `price reach upto ${ptsEl.value} points` : '';
+        } else {
+          ptsEl.style.display = 'none';
+          hidden.value = sel.value;
+        }
+        recalcEditRow();
+      }
+
       function recalcEditRow() {
         const entry = parseFloat(document.getElementById('e-entry')?.value);
         const exitNSL = parseFloat(document.getElementById('e-exitNSL')?.value);
@@ -1232,6 +1270,7 @@
         if (isNaN(entry) || isNaN(exitNSL)) return;
         const tr = document.getElementById('e-entry')?.closest('tr');
         const instr = tr?.dataset?.editInstr || 'NIFTY';
+        const editMaxReach = parseFloat(tr?.dataset?.editMaxReach);
         const slPts = SL_PTS[instr] || 15,
           tgG = TGT_G[instr] || 50,
           tgL = TGT_L[instr] || 31,
@@ -1260,7 +1299,9 @@
           let html = `<span class="${c(pSL)}">${fmtRs(pSL)}</span><span style="color:#374151"> | </span><span class="${c(pTgt)}">${fmtRs(pTgt)}</span><span style="color:#374151"> | </span><span class="${c(pNSL)}">${fmtRs(pNSL)}</span>`;
           const pbEntry = parseFloat(document.getElementById('e-pbEntry')?.value);
           if (!isNaN(pbEntry)) {
-            const pbVals = calcPBValues(pbEntry, exitNSL, instr, entry);
+            const editPBNotes = document.getElementById('e-pb-notes')?.value || '';
+          const editPBMaxReach = pbMaxReachFor(editPBNotes || null, editMaxReach);
+          const pbVals = calcPBValues(pbEntry, exitNSL, instr, entry, editPBMaxReach);
             if (pbVals) {
               const pbPSL = Math.round((pbVals.pbExitSL - pbEntry) * nLots * lotSz);
               const pbPTgt = Math.round(pbVals.pbTgtPts * nLots * lotSz);
@@ -1288,6 +1329,7 @@
         const cr = parseFloat(document.getElementById('e-candle').value);
         t.candleRange = isNaN(cr) ? null : cr;
         t.notes = document.getElementById('e-notes').value.trim();
+        t.pbNotes = document.getElementById('e-pb-notes')?.value.trim() || '';
         const pbEV = parseFloat(document.getElementById('e-pbEntry')?.value);
         t.pbEntry = isNaN(pbEV) ? null : pbEV;
         await persistDay(dateStr);
@@ -1313,6 +1355,7 @@
           candleRange: null,
           pbEntry: null,
           notes: '',
+          pbNotes: '',
         };
         day.trades.push(newTrade);
         renderDay(dateStr);
@@ -1481,7 +1524,14 @@
         return v > 0 ? 'c-green' : v < 0 ? 'c-red' : 'c-gray';
       }
 
-      function calcPBValues(pbEntry, pbExit, instr, originalEntry) {
+      function pbMaxReachFor(pbNotes, fallback) {
+        if (!pbNotes) return fallback;
+        const m = String(pbNotes).match(/(\d+(?:\.\d+)?)/);
+        if (String(pbNotes).toLowerCase().includes('reach') && m) return parseFloat(m[1]);
+        return 0; // SL HIT / PINE SCRIPT SL → target not reached
+      }
+
+      function calcPBValues(pbEntry, pbExit, instr, originalEntry, maxReach) {
         const pb = parseFloat(pbEntry),
           eNSL = parseFloat(pbExit);
         if (isNaN(pb) || isNaN(eNSL)) return null;
@@ -1489,11 +1539,18 @@
           tgG = TGT_G[instr] || 50,
           tgL = TGT_L[instr] || 31;
         const pbExitSL = parseFloat(Math.max(pb - slPts, Math.min(pb + tgG, eNSL)).toFixed(2));
-        // Target price is the same absolute level as the original trade
         const origE = parseFloat(originalEntry);
-        const targetPrice = parseFloat(((isNaN(origE) ? pb : origE) + tgL).toFixed(2));
-        const pbExitTgt = targetPrice;
-        const pbTgtPts = parseFloat(Math.min(tgL, targetPrice - pb).toFixed(2));
+        const mr = parseFloat(maxReach);
+        // Only use theoretical target if maxReach confirms price actually reached it
+        let pbExitTgt, pbTgtPts;
+        if (!isNaN(mr) && mr >= tgL) {
+          const targetPrice = parseFloat(((isNaN(origE) ? pb : origE) + tgL).toFixed(2));
+          pbExitTgt = targetPrice;
+          pbTgtPts = parseFloat(Math.min(tgL, targetPrice - pb).toFixed(2));
+        } else {
+          pbExitTgt = pbExitSL;
+          pbTgtPts = parseFloat(Math.max(-slPts, Math.min(tgL, eNSL - pb)).toFixed(2));
+        }
         return { pbExitSL, pbExitTgt, pbExitNSL: eNSL, pbTgtPts };
       }
       function showToast(msg, err = false) {
