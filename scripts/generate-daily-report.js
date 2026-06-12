@@ -170,7 +170,10 @@ function classify(alertName) {
 }
 
 // Reconstruct trade pairs from alert log snapshot (oldest-first processing).
-function parseTrades(snapshot) {
+// instrFilter: if provided, only process alerts for that instrument (e.g. 'NIFTY').
+// The TV alert log contains history from multiple days/instruments so filtering
+// is essential to avoid yesterday's SENSEX trades appearing in a NIFTY report.
+function parseTrades(snapshot, instrFilter = null) {
   const items = [...snapshot].reverse(); // oldest → newest
   const trades = [];
   const pending = {}; // side → { instrument, symbol, entryTime }
@@ -179,6 +182,7 @@ function parseTrades(snapshot) {
   for (const item of items) {
     const meta = classify(item.name);
     if (!meta) continue;
+    if (instrFilter && meta.instrument !== instrFilter) continue;
     const { symbol, time } = parseRaw(item.raw);
     const { instrument, side, event } = meta;
 
@@ -207,13 +211,14 @@ function parseTrades(snapshot) {
 
 // Return entries that fired but never had a matching exit (still open at EOD).
 // These get assigned 15:26:00 IST as their exit time (last usable bar before close).
-function parseOpenTrades(snapshot, startId = 1) {
+function parseOpenTrades(snapshot, startId = 1, instrFilter = null) {
   const items = [...snapshot].reverse();
   const pending = {};
 
   for (const item of items) {
     const meta = classify(item.name);
     if (!meta) continue;
+    if (instrFilter && meta.instrument !== instrFilter) continue;
     const { symbol, time } = parseRaw(item.raw);
     const { instrument, side, event } = meta;
     if (event === 'entry') {
@@ -324,8 +329,9 @@ async function main() {
     process.exit(1);
   }
 
-  const trades = parseTrades(snapshot);
-  const openTrades = parseOpenTrades(snapshot, trades.length + 1);
+  const instrFilter = position.lastInstrument || 'NIFTY';
+  const trades = parseTrades(snapshot, instrFilter);
+  const openTrades = parseOpenTrades(snapshot, trades.length + 1, instrFilter);
   if (openTrades.length > 0) {
     console.log(`Open trades (EOD exit at 15:26): ${openTrades.length}`);
     for (const t of openTrades) {
