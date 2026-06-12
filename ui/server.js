@@ -189,9 +189,11 @@ app.get('/api/st/events', (req, res) => {
   try {
     const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
     res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
-  } catch (_e) {
-    /* ignore */
-  }
+  } catch (_e) { /* ignore */ }
+  reportLog
+    .slice(-80)
+    .forEach((line) => res.write(`event: replog\ndata: ${JSON.stringify({ line })}\n\n`));
+  res.write(`event: repstatus\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
   stClients.push(res);
   const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
   req.on('close', () => {
@@ -618,11 +620,13 @@ function pushReport(line) {
   if (reportLog.length > 300) reportLog.shift();
   const payload = JSON.stringify({ line });
   reportClients.forEach((r) => r.write(`event: log\ndata: ${payload}\n\n`));
+  broadcast(stClients, 'replog', { line });
 }
 
 function broadcastReportStatus() {
   const payload = JSON.stringify({ running: reportRunning });
   reportClients.forEach((r) => r.write(`event: status\ndata: ${payload}\n\n`));
+  broadcast(stClients, 'repstatus', { running: reportRunning });
 }
 
 app.get('/api/report/events', (req, res) => {

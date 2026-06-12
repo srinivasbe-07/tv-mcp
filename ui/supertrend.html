@@ -1051,15 +1051,13 @@
         if (!data.ok) appendReportLog(`[ERR] ${data.message || 'Failed to start'}`);
       }
 
-      const esReport = new EventSource('/api/report/events');
-      esReport.addEventListener('log', (e) => appendReportLog(JSON.parse(e.data).line));
-      esReport.addEventListener('status', (e) => setReportRunning(JSON.parse(e.data).running));
-      esReport.addEventListener('done', () => window.open('/supertrend-reports', '_blank'));
-      esReport.onerror = () => {};
-
       const es = new EventSource('/api/st/events');
       es.addEventListener('log', (e) => appendLog(JSON.parse(e.data).line));
       es.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
+      es.addEventListener('replog', (e) => appendReportLog(JSON.parse(e.data).line));
+      es.addEventListener('repstatus', (e) => setReportRunning(JSON.parse(e.data).running));
+      es.addEventListener('done', () => window.open('/supertrend-reports', '_blank'));
+      es.onerror = () => {};
       es.addEventListener('position', (e) => {
         const pos = JSON.parse(e.data);
         ceState = pos.CE || 'closed';
