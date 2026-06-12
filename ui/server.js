@@ -179,7 +179,9 @@ app.get('/api/st/events', (req, res) => {
     /* ignore */
   }
   stClients.push(res);
+  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
   req.on('close', () => {
+    clearInterval(hb);
     stClients = stClients.filter((c) => c !== res);
   });
 });
@@ -195,7 +197,9 @@ app.get('/api/events', (req, res) => {
     .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
   patClients.push(res);
+  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
   req.on('close', () => {
+    clearInterval(hb);
     patClients = patClients.filter((c) => c !== res);
   });
 });
@@ -226,6 +230,13 @@ app.post('/api/tv/start', (_req, res) => {
     if (!line) return;
     pushLog(`[TV] ${line}`);
     pushST(`[TV] ${line}`);
+  });
+  tvProc.on('error', (err) => {
+    tvProc = null;
+    tvReady = false;
+    pushLog(`[TV] Failed to start script: ${err.message}`);
+    pushST(`[TV] Failed to start script: ${err.message}`);
+    broadcastStatus();
   });
   tvProc.on('close', (code) => {
     tvProc = null;
@@ -597,12 +608,15 @@ app.get('/api/report/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
   reportLog
     .slice(-80)
     .forEach((l) => res.write(`event: log\ndata: ${JSON.stringify({ line: l })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
   reportClients.push(res);
+  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
   req.on('close', () => {
+    clearInterval(hb);
     const i = reportClients.indexOf(res);
     if (i >= 0) reportClients.splice(i, 1);
   });

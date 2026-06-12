@@ -1,4 +1,4 @@
-﻿# launch-tv.ps1 -- Launch TradingView Desktop with CDP enabled on port 9222
+# launch-tv.ps1 -- Launch TradingView Desktop with CDP enabled on port 9222
 # Auto-discovers the install path (works after app updates).
 # Usage:  .\launch-tv.ps1
 #         .\launch-tv.ps1 -Port 9223   (alternate port)
@@ -8,12 +8,13 @@ param(
     [int]$TimeoutSec = 300
 )
 
+Write-Output "launch-tv.ps1: checking CDP on port $Port ..."
+
 # If CDP is already responding, nothing to do
 try {
     $null = Invoke-WebRequest -Uri "http://localhost:$Port/json/version" `
         -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
-    Write-Host "TradingView CDP already running on port $Port" -ForegroundColor Green
-    Write-Host "You can start the MCP server:  npm start" -ForegroundColor Green
+    Write-Output "TradingView CDP already running on port $Port"
     exit 0
 } catch {}
 
@@ -22,10 +23,12 @@ $tvPath = $null
 
 # Option A: Non-MSIX .exe installer -- preferred (accepts CDP flags)
 $candidate = "$env:LOCALAPPDATA\TradingView\TradingView.exe"
+Write-Output "Checking installer path: $candidate"
 if (Test-Path $candidate) { $tvPath = $candidate }
 
 # Option B: MSIX / Microsoft Store install -- fallback (cold start takes ~90s for CDP to bind)
 if (-not $tvPath) {
+    Write-Output "Not found via installer — searching MSIX packages (may take a moment)..."
     $pkg = Get-AppxPackage -Name *TradingView* -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($pkg) {
         $candidate = Join-Path $pkg.InstallLocation "TradingView.exe"
@@ -34,27 +37,26 @@ if (-not $tvPath) {
 }
 
 if (-not $tvPath) {
-    Write-Host "ERROR: TradingView not found." -ForegroundColor Red
-    Write-Host "Install TradingView Desktop from https://www.tradingview.com/desktop/" -ForegroundColor Yellow
+    Write-Output "ERROR: TradingView not found. Install from https://www.tradingview.com/desktop/"
     exit 1
 }
 
-Write-Host "Found TradingView: $tvPath" -ForegroundColor DarkGray
+Write-Output "Found TradingView: $tvPath"
 
 # Kill any existing instance (it was not launched with CDP)
 $running = Get-Process -Name TradingView -ErrorAction SilentlyContinue
 if ($running) {
-    Write-Host "Closing existing TradingView instance (no CDP)..." -ForegroundColor Yellow
+    Write-Output "Closing existing TradingView instance (no CDP)..."
     $running | Stop-Process -Force
     Start-Sleep -Seconds 2
 }
 
 # Launch with CDP
-Write-Host "Launching TradingView with --remote-debugging-port=$Port ..." -ForegroundColor Cyan
+Write-Output "Launching TradingView with --remote-debugging-port=$Port ..."
 Start-Process -FilePath $tvPath -ArgumentList "--remote-debugging-port=$Port"
 
 # Poll until CDP responds (cold start can take 90+ seconds)
-Write-Host "Waiting for CDP on port $Port (cold start can take up to ${TimeoutSec}s) ..." -ForegroundColor Cyan
+Write-Output "Waiting for CDP on port $Port (cold start can take up to ${TimeoutSec}s) ..."
 $elapsed = 0
 $ready = $false
 
@@ -68,19 +70,14 @@ while ($elapsed -lt $TimeoutSec) {
         break
     } catch {}
     if ($elapsed % 10 -eq 0) {
-        Write-Host "  still waiting... ($elapsed/$TimeoutSec s)" -ForegroundColor DarkGray
+        Write-Output "  still waiting... ($elapsed/$TimeoutSec s)"
     }
 }
 
 if ($ready) {
-    Write-Host ""
-    Write-Host "TradingView CDP is ready on port $Port" -ForegroundColor Green
-    Write-Host "You can now start the MCP server:  npm start" -ForegroundColor Green
+    Write-Output "TradingView CDP is ready on port $Port"
     exit 0
 } else {
-    Write-Host ""
-    Write-Host "TIMEOUT: CDP did not respond after ${TimeoutSec}s." -ForegroundColor Red
-    Write-Host "TradingView may still be loading - check manually:" -ForegroundColor Yellow
-    Write-Host "  Invoke-WebRequest http://localhost:${Port}/json/version -UseBasicParsing" -ForegroundColor Yellow
+    Write-Output "TIMEOUT: CDP did not respond after ${TimeoutSec}s."
     exit 1
 }
