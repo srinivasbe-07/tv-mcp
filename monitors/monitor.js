@@ -661,6 +661,13 @@ export function processHistoryForPositionChanges(historyItems, stateObj, instrum
         log(`[POSITION] PE CLOSED from history (alert: ${n})`);
       }
     }
+    if (!seenTodayInstr) {
+      // No today-instrument alerts found in the log at all — the log is empty or
+      // contains only other days/instruments. Keep whatever was already in position.json
+      // (user may have set it manually) rather than forcing both sides to 'closed'.
+      stateObj.CE = prevCE;
+      stateObj.PE = prevPE;
+    }
     const changed = stateObj.CE !== prevCE || stateObj.PE !== prevPE;
     stateObj.lastLogSnapshot = historyItems.slice(0, 30);
     return changed;
