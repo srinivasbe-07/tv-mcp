@@ -1015,7 +1015,7 @@
       }
 
       // ── SSE ────────────────────────────────────────────────────────────────
-      const es = new EventSource('/api/pm/events');
+      const es = new EventSource('/api/stream');
       es.addEventListener('log', (e) => appendLog(JSON.parse(e.data).line));
       es.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
       es.addEventListener('config', (e) => {

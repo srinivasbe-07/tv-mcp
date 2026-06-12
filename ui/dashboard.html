@@ -1065,7 +1065,7 @@
       // ── Pattern SSE ───────────────────────────────────────────────────
       const patLogBody = document.getElementById('pat-log-body');
       let patESConnected = false;
-      const patES = new EventSource('/api/events');
+      const patES = new EventSource('/api/stream');
       patES.addEventListener('open', () => {
         patESConnected = true;
       });

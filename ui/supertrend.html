@@ -1051,8 +1051,8 @@
         if (!data.ok) appendReportLog(`[ERR] ${data.message || 'Failed to start'}`);
       }
 
-      const es = new EventSource('/api/st/events');
-      es.addEventListener('log', (e) => appendLog(JSON.parse(e.data).line));
+      const es = new EventSource('/api/stream');
+      es.addEventListener('stlog', (e) => appendLog(JSON.parse(e.data).line));
       es.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
       es.addEventListener('replog', (e) => appendReportLog(JSON.parse(e.data).line));
       es.addEventListener('repstatus', (e) => setReportRunning(JSON.parse(e.data).running));

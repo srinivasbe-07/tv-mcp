@@ -52,10 +52,9 @@ let stProc = null;
 let tvProc = null;
 let tvReady = false;
 
-// ── SSE clients ───────────────────────────────────────────────────
-let stClients = [];
+// ── SSE — single unified stream ───────────────────────────────────
+let allClients = [];
 let stLog = [];
-let patClients = [];
 let patLog = [];
 
 function broadcast(clients, event, data) {
@@ -89,8 +88,7 @@ function pushST(line) {
   serverLog(t);
   stLog.push(t);
   if (stLog.length > 200) stLog.shift();
-  broadcast(stClients, 'log', { line: t });
-  broadcast(patClients, 'stlog', { line: t });
+  broadcast(allClients, 'stlog', { line: t });
 }
 
 function pushLog(line) {
@@ -99,7 +97,7 @@ function pushLog(line) {
   serverLog(t);
   patLog.push(t);
   if (patLog.length > 200) patLog.shift();
-  broadcast(patClients, 'log', { line: t });
+  broadcast(allClients, 'log', { line: t });
 }
 
 function getStatus() {
@@ -110,14 +108,11 @@ function getStatus() {
 }
 
 function broadcastStatus() {
-  const s = getStatus();
-  broadcast(stClients, 'status', s);
-  broadcast(patClients, 'status', s);
+  broadcast(allClients, 'status', getStatus());
 }
 
 function broadcastPosition(pos) {
-  broadcast(stClients, 'position', pos);
-  broadcast(patClients, 'position', pos);
+  broadcast(allClients, 'position', pos);
 }
 
 // Watch position file — broadcast to all pages when monitor.js updates it
@@ -176,56 +171,33 @@ app.post('/api/st/position', (req, res) => {
 // ── Status ────────────────────────────────────────────────────────
 app.get('/api/status', (_req, res) => res.json(getStatus()));
 
-// ── SSE — Supertrend ──────────────────────────────────────────────
-app.get('/api/st/events', (req, res) => {
+// ── SSE — single unified stream (all pages share this) ───────────
+function handleStream(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
-  stLog
-    .slice(-50)
-    .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
+  patLog.slice(-50).forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
+  stLog.slice(-50).forEach((line) => res.write(`event: stlog\ndata: ${JSON.stringify({ line })}\n\n`));
+  reportLog.slice(-80).forEach((line) => res.write(`event: replog\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
-  try {
-    const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
-    res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
-  } catch (_e) { /* ignore */ }
-  reportLog
-    .slice(-80)
-    .forEach((line) => res.write(`event: replog\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: repstatus\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
-  stClients.push(res);
-  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
-  req.on('close', () => {
-    clearInterval(hb);
-    stClients = stClients.filter((c) => c !== res);
-  });
-});
-
-// ── SSE — unified dashboard stream (left + right panels) ─────────
-app.get('/api/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  patLog
-    .slice(-50)
-    .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
-  stLog
-    .slice(-50)
-    .forEach((line) => res.write(`event: stlog\ndata: ${JSON.stringify({ line })}\n\n`));
-  res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
   try {
     const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
     res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
   } catch (_e) { /* ignore */ }
-  patClients.push(res);
+  allClients.push(res);
   const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
   req.on('close', () => {
     clearInterval(hb);
-    patClients = patClients.filter((c) => c !== res);
+    allClients = allClients.filter((c) => c !== res);
   });
-});
+}
+
+app.get('/api/stream', handleStream);
+app.get('/api/events', handleStream);
+app.get('/api/st/events', handleStream);
+app.get('/api/report/events', handleStream);
 
 // ── TradingView ───────────────────────────────────────────────────
 app.post('/api/tv/start', (_req, res) => {
@@ -580,72 +552,22 @@ app.post('/api/pm/levels', (req, res) => {
 app.post('/api/pm/start', (_req, res) => res.json({ ok: true }));
 app.post('/api/pm/stop', (_req, res) => res.json({ ok: true }));
 app.post('/api/pm/restart', (_req, res) => res.json({ ok: true }));
-
-app.get('/api/pm/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  // Send dummy log lines for preview
-  const lines = [
-    '[09:15:02] === Pattern Monitor started ===',
-    '[09:15:03] Fetched Day H/L: D-1 to D-10',
-    '[09:15:03] Day levels: R=24500  S=24100',
-    '[09:15:04] Drew 2 level lines on chart',
-    '[09:15:04] Important levels drawn: 24450, 24380',
-    '[09:30:02] 15-min candle close — checking levels',
-    '[09:30:02] Price 24320 — between levels, no action',
-    '[09:45:02] [BREAK] Level 24450 broken — close 24462 above level',
-    '[09:45:03] Drew next level: D-3 H 24580',
-    '[10:00:02] 15-min candle close — checking levels',
-    '[10:00:02] Price 24510 — between levels, no action',
-  ];
-  let i = 0;
-  const iv = setInterval(() => {
-    if (i < lines.length) {
-      res.write(`event: log\ndata: ${JSON.stringify({ line: lines[i++] })}\n\n`);
-    }
-  }, 400);
-  req.on('close', () => clearInterval(iv));
-});
+app.get('/api/pm/events', handleStream);
 
 // ── EOD Report ────────────────────────────────────────────────────
 const reportLog = [];
-const reportClients = [];
 let reportRunning = false;
 
 function pushReport(line) {
   if (!line.trim()) return;
   reportLog.push(line);
   if (reportLog.length > 300) reportLog.shift();
-  const payload = JSON.stringify({ line });
-  reportClients.forEach((r) => r.write(`event: log\ndata: ${payload}\n\n`));
-  broadcast(stClients, 'replog', { line });
+  broadcast(allClients, 'replog', { line });
 }
 
 function broadcastReportStatus() {
-  const payload = JSON.stringify({ running: reportRunning });
-  reportClients.forEach((r) => r.write(`event: status\ndata: ${payload}\n\n`));
-  broadcast(stClients, 'repstatus', { running: reportRunning });
+  broadcast(allClients, 'repstatus', { running: reportRunning });
 }
-
-app.get('/api/report/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  reportLog
-    .slice(-80)
-    .forEach((l) => res.write(`event: log\ndata: ${JSON.stringify({ line: l })}\n\n`));
-  res.write(`event: status\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
-  reportClients.push(res);
-  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
-  req.on('close', () => {
-    clearInterval(hb);
-    const i = reportClients.indexOf(res);
-    if (i >= 0) reportClients.splice(i, 1);
-  });
-});
 
 // Run generate-daily-report.js — JSON file is the permanent record
 app.post('/api/report/run', (req, res) => {
@@ -676,8 +598,7 @@ app.post('/api/report/run', (req, res) => {
   proc.on('close', (code) => {
     if (code === 0) {
       pushReport('[REPORT] ✓ Done — opening report...');
-      // Signal the UI to open the reports page
-      reportClients.forEach((r) => r.write(`event: done\ndata: {}\n\n`));
+      broadcast(allClients, 'done', {});
     } else {
       pushReport(`[REPORT] ✗ Failed (exit ${code})`);
     }
