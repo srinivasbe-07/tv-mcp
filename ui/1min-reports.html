@@ -1105,7 +1105,6 @@
         <span class="day-pnl" id="day-pnl-${dayKey}"></span>
         <button class="act-btn" style="margin-left:auto;font-size:11px" onclick="captureScreenshots('${dateStr}');event.stopPropagation()">&#128247; Screenshots</button>
       </div>
-      <div id="shot-log-${dayKey}" style="display:none;background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:8px 12px;margin:4px 0;font-size:11px;font-family:monospace;color:#94a3b8;max-height:120px;overflow-y:auto"></div>
       <div class="day-body open">
         <div class="day-note-bar" id="note-bar-${dayKey}">
           <span class="note-text${day.note ? '' : ' empty'}" id="note-text-${dayKey}">${day.note ? escHtml(day.note) : 'Add a day note…'}</span>
@@ -1122,6 +1121,7 @@
           <tbody id="tbody-${dayKey}"></tbody>
         </table>
       </div>
+      <div id="shot-log-${dayKey}" style="display:none;background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:8px 12px;margin:4px 0;font-size:11px;font-family:monospace;color:#94a3b8;max-height:120px;overflow-y:auto"></div>
     </div>`;
       }
 
@@ -1556,10 +1556,7 @@
 
       function toggleDay(hdr) {
         hdr.classList.toggle('open');
-        // shot-log sits between header and day-body — skip it
-        const siblings = [...hdr.parentElement.children];
-        const bodyIdx = siblings.indexOf(hdr) + 2; // +1 = shot-log, +2 = day-body
-        if (siblings[bodyIdx]) siblings[bodyIdx].classList.toggle('open');
+        hdr.nextElementSibling.classList.toggle('open');
       }
 
       async function captureScreenshots(dateStr) {
