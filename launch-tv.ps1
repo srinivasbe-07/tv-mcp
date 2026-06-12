@@ -28,7 +28,7 @@ if (Test-Path $candidate) { $tvPath = $candidate }
 
 # Option B: MSIX / Microsoft Store install -- fallback (cold start takes ~90s for CDP to bind)
 if (-not $tvPath) {
-    Write-Host "Not found via installer — searching MSIX packages (may take a moment)..."
+    Write-Host "Not found via installer -- searching MSIX packages (may take a moment)..."
     $pkg = Get-AppxPackage -Name *TradingView* -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($pkg) {
         $candidate = Join-Path $pkg.InstallLocation "TradingView.exe"
