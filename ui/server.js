@@ -77,6 +77,7 @@ function broadcast(clients, event, data) {
 fs.mkdirSync(path.join(ROOT, 'logs'), { recursive: true });
 const serverLogStream = fs.createWriteStream(SERVER_LOG, { flags: 'a' });
 serverLogStream.on('error', (e) => console.error('[server.log]', e.message));
+serverLogStream.write(`[${new Date().toTimeString().slice(0, 8)}] === server started ===\n`);
 function serverLog(line) {
   const ts = new Date().toTimeString().slice(0, 8);
   try { serverLogStream.write(`[${ts}] ${line}\n`); } catch (_e) {}
@@ -94,6 +95,7 @@ function pushST(line) {
 function pushLog(line) {
   const t = line.trim();
   if (!t) return;
+  serverLog(t);
   patLog.push(t);
   if (patLog.length > 200) patLog.shift();
   broadcast(patClients, 'log', { line: t });
