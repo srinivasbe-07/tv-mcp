@@ -74,10 +74,12 @@ function broadcast(clients, event, data) {
   );
 }
 
+fs.mkdirSync(path.join(ROOT, 'logs'), { recursive: true });
 const serverLogStream = fs.createWriteStream(SERVER_LOG, { flags: 'a' });
+serverLogStream.on('error', (e) => console.error('[server.log]', e.message));
 function serverLog(line) {
   const ts = new Date().toTimeString().slice(0, 8);
-  serverLogStream.write(`[${ts}] ${line}\n`);
+  try { serverLogStream.write(`[${ts}] ${line}\n`); } catch (_e) {}
 }
 
 function pushST(line) {
