@@ -1103,7 +1103,9 @@
         <span class="day-badge">${day.instrument || ''}</span>
         <span class="day-badge">${(day.trades || []).length} trade(s)</span>
         <span class="day-pnl" id="day-pnl-${dayKey}"></span>
+        <button class="act-btn" style="margin-left:auto;font-size:11px" onclick="captureScreenshots('${dateStr}');event.stopPropagation()">&#128247; Screenshots</button>
       </div>
+      <div id="shot-log-${dayKey}" style="display:none;background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:8px 12px;margin:4px 0;font-size:11px;font-family:monospace;color:#94a3b8;max-height:120px;overflow-y:auto"></div>
       <div class="day-body open">
         <div class="day-note-bar" id="note-bar-${dayKey}">
           <span class="note-text${day.note ? '' : ' empty'}" id="note-text-${dayKey}">${day.note ? escHtml(day.note) : 'Add a day note…'}</span>
@@ -1554,7 +1556,39 @@
 
       function toggleDay(hdr) {
         hdr.classList.toggle('open');
-        hdr.nextElementSibling.classList.toggle('open');
+        // shot-log sits between header and day-body — skip it
+        const siblings = [...hdr.parentElement.children];
+        const bodyIdx = siblings.indexOf(hdr) + 2; // +1 = shot-log, +2 = day-body
+        if (siblings[bodyIdx]) siblings[bodyIdx].classList.toggle('open');
+      }
+
+      async function captureScreenshots(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const logEl = document.getElementById(`shot-log-${dayKey}`);
+        logEl.style.display = 'block';
+        logEl.innerHTML = '<span style="color:#60a5fa">Starting screenshot capture…</span><br>';
+        const addLine = (msg, color) => {
+          const line = document.createElement('div');
+          line.style.color = color || '#94a3b8';
+          line.textContent = msg;
+          logEl.appendChild(line);
+          logEl.scrollTop = logEl.scrollHeight;
+        };
+        try {
+          const es = new EventSource(`/api/report/screenshots?date=${dateStr}`);
+          es.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            if (d.type === 'log') addLine(d.msg);
+            else if (d.type === 'file') addLine(`✓ ${d.name}`, '#4ade80');
+            else if (d.type === 'done') {
+              addLine(d.msg, d.ok ? '#4ade80' : '#f87171');
+              es.close();
+            }
+          };
+          es.onerror = () => { addLine('Connection lost', '#f87171'); es.close(); };
+        } catch (e) {
+          addLine('Error: ' + e.message, '#f87171');
+        }
       }
 
       function switchMonth(key) {

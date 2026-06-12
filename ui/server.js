@@ -650,6 +650,108 @@ app.post('/api/report/run', (req, res) => {
 const DIR_1MIN = path.join(ROOT, 'logs', 'supertrend', '1min');
 const DIR_3MIN = path.join(ROOT, 'logs', 'supertrend', '3min');
 
+// ── Trade screenshots ─────────────────────────────────────────────
+// GET /api/report/screenshots?date=YYYY-MM-DD
+// SSE stream: reads daily-trades JSON → navigates TradingView per trade
+// → scrolls to full entry→exit window → captures one screenshot per trade.
+// Saved to logs/supertrend/1min/screenshots/{date}/{id}-{side}.png
+const EXCHANGE_MAP = { NIFTY: 'NSE', SENSEX: 'BSE' };
+
+function istTimeToUnixLocal(timeStr, dateStr) {
+  const [h, m, s] = timeStr.split(':').map(Number);
+  const utcMs = new Date(`${dateStr}T00:00:00Z`).getTime() + (h * 60 + m - 330) * 60000 + (s || 0) * 1000;
+  return Math.floor(utcMs / 1000);
+}
+
+let shotRunning = false;
+
+app.get('/api/report/screenshots', async (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: 'date required' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const emit = (type, data) => res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+  const log = (msg) => emit('log', { msg });
+  const done = (ok, msg) => { emit('done', { ok, msg }); res.end(); };
+
+  if (shotRunning) return done(false, 'Screenshot capture already running');
+
+  const tradeFile = path.join(DIR_1MIN, `daily-trades-${date}.json`);
+  let record;
+  try { record = JSON.parse(fs.readFileSync(tradeFile, 'utf8')); }
+  catch { return done(false, `No trade file found for ${date}`); }
+
+  const trades = (record.trades || []).filter(t => t.entryTime && t.entrySymbol);
+  if (trades.length === 0) return done(false, 'No trades in file');
+
+  shotRunning = true;
+  const screenshotDir = path.join(DIR_1MIN, 'screenshots', date);
+  fs.mkdirSync(screenshotDir, { recursive: true });
+
+  let cdp;
+  try {
+    log('Connecting to TradingView...');
+    let tabId = null;
+    try { tabId = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'supertrend-tab.json'), 'utf8')).targetId; } catch { /**/ }
+    cdp = new CDPManager(tabId);
+    await cdp.connect();
+    log('Connected');
+
+    const cdpChart = new ChartTools(cdp);
+    const files = [];
+
+    for (const t of trades) {
+      const label = `${t.id ?? ''}-${t.side}`.replace(/^-/, '');
+      const sym = t.entrySymbol;
+      const instr = sym.startsWith('BSX') ? 'SENSEX' : 'NIFTY';
+      const qualified = `${EXCHANGE_MAP[instr]}:${sym}`;
+      const entryUnix = istTimeToUnixLocal(t.entryTime, date);
+      const exitTime = t.exitTime || '15:26:00';
+      const exitUnix = istTimeToUnixLocal(exitTime, date);
+
+      log(`Trade ${label}: switching to ${qualified}...`);
+      await cdpChart.handle('chart_set_symbol', { symbol: qualified });
+      await new Promise(r => setTimeout(r, 2500));
+      await cdpChart.handle('chart_set_timeframe', { timeframe: '1' });
+      await new Promise(r => setTimeout(r, 1500));
+
+      // Scroll to show full entry→exit with 15-min padding on each side
+      const from = entryUnix - 15 * 60;
+      const to = exitUnix + 15 * 60;
+      await cdp.executeScript(`
+        (function() {
+          try {
+            const ts = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget?._modelWV?._value?.timeScale?.();
+            if (ts?.setVisibleRange) { ts.setVisibleRange({ from: ${from}, to: ${to} }); return 'ok'; }
+            return 'no-api';
+          } catch(e) { return 'err:' + e.message; }
+        })()`);
+      await new Promise(r => setTimeout(r, 1500));
+
+      try {
+        const shot = await cdp.takeScreenshot();
+        const outPath = path.join(screenshotDir, `${label}.png`);
+        fs.writeFileSync(outPath, Buffer.from(shot.data, 'base64'));
+        files.push(`${label}.png`);
+        log(`✓ Saved ${label}.png`);
+        emit('file', { name: `${label}.png`, date });
+      } catch (e) {
+        log(`✗ Screenshot failed for ${label}: ${e.message}`);
+      }
+    }
+
+    done(true, `${files.length} screenshot(s) saved to screenshots/${date}/`);
+  } catch (e) {
+    done(false, `Error: ${e.message}`);
+  } finally {
+    shotRunning = false;
+    if (cdp) await cdp.disconnect().catch(() => {});
+  }
+});
+
 // NSE holidays config
 app.get('/api/holidays', (_req, res) => {
   try {
