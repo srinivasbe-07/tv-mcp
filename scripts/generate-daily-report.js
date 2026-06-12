@@ -383,7 +383,12 @@ async function main() {
     }
   }
 
+  // Prepare screenshot directory: logs/supertrend/1min/screenshots/{date}/
+  const screenshotDir = path.join(LOGS_DIR, 'screenshots', today);
+  fs.mkdirSync(screenshotDir, { recursive: true });
+
   // Fetch 1m OHLCV for each unique option symbol — scroll to its exact trade window
+  // Take a screenshot after each symbol is loaded so the chart state is captured.
   const allSymbols = [...new Set(allTrades.flatMap((t) => [t.entrySymbol, t.exitSymbol]))];
   const barsCache = {};
   for (const sym of allSymbols) {
@@ -392,6 +397,15 @@ async function main() {
     const { from, to } = symWindows[sym];
     console.log(`\nFetching 1m bars for ${qualified}...`);
     barsCache[sym] = await fetchBarsForSymbol(cdp, cdpChart, qualified, from, to);
+
+    try {
+      const shot = await cdp.takeScreenshot();
+      const shotFile = path.join(screenshotDir, `${sym}.png`);
+      fs.writeFileSync(shotFile, Buffer.from(shot.data, 'base64'));
+      console.log(`  screenshot saved → ${shotFile}`);
+    } catch (e) {
+      console.warn(`  screenshot failed for ${sym}: ${e.message}`);
+    }
   }
 
   // Look up entry and exit prices from OHLCV
