@@ -607,7 +607,7 @@ async function verifyAlertStatus(cdpAlerts, instrName) {
   }
 }
 
-export function processHistoryForPositionChanges(historyItems, stateObj) {
+export function processHistoryForPositionChanges(historyItems, stateObj, instrument = null) {
   // Detect new fires by comparing current log with the previous tick's snapshot.
   // TV's time field is often empty so key-based dedup breaks (same key every fire).
   // Instead: find items at the TOP of the current list that weren't at the top last tick.
@@ -616,36 +616,52 @@ export function processHistoryForPositionChanges(historyItems, stateObj) {
 
   if (prevSnapshot.length === 0) {
     // Fresh start — scan log from newest to oldest to determine current CE/PE state.
-    // Stop once both sides are determined (most recent event wins per side).
-    let changed = false;
+    // Default both sides to closed; only set open if a recent entry is found.
+    // Only match today's instrument alerts to prevent cross-instrument contamination.
+    // Stop scanning when we cross the day boundary: the first non-today-instrument
+    // alert AFTER already having seen at least one today-instrument alert — this
+    // prevents old NIFTY alerts from a previous week from reopening PE/CE on a new day.
+    const alertsToScan = instrument
+      ? [ALERT_NAMES[instrument]]
+      : Object.values(ALERT_NAMES);
+    const prevCE = stateObj.CE;
+    const prevPE = stateObj.PE;
+    stateObj.CE = 'closed';
+    stateObj.PE = 'closed';
     let ceDone = false,
       peDone = false;
+    let seenTodayInstr = false;
     for (const item of historyItems) {
       if (ceDone && peDone) break;
       const n = item.name;
-      if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.entry === n)) {
-        if (stateObj.CE !== 'open') changed = true;
+      const isTodayInstr = alertsToScan.some(
+        (a) => a.CE.entry === n || a.CE.exit === n || a.PE.entry === n || a.PE.exit === n
+      );
+      if (!isTodayInstr) {
+        if (seenTodayInstr) break; // crossed the day boundary — stop scanning
+        continue; // skip non-today items before seeing any today-instrument alerts
+      }
+      seenTodayInstr = true;
+      if (!ceDone && alertsToScan.some((a) => a.CE.entry === n)) {
         stateObj.CE = 'open';
         ceDone = true;
         log(`[POSITION] CE OPENED from history (alert: ${n})`);
-      } else if (!ceDone && Object.values(ALERT_NAMES).some((a) => a.CE.exit === n)) {
-        if (stateObj.CE !== 'closed') changed = true;
+      } else if (!ceDone && alertsToScan.some((a) => a.CE.exit === n)) {
         stateObj.CE = 'closed';
         ceDone = true;
         log(`[POSITION] CE CLOSED from history (alert: ${n})`);
       }
-      if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.entry === n)) {
-        if (stateObj.PE !== 'open') changed = true;
+      if (!peDone && alertsToScan.some((a) => a.PE.entry === n)) {
         stateObj.PE = 'open';
         peDone = true;
         log(`[POSITION] PE OPENED from history (alert: ${n})`);
-      } else if (!peDone && Object.values(ALERT_NAMES).some((a) => a.PE.exit === n)) {
-        if (stateObj.PE !== 'closed') changed = true;
+      } else if (!peDone && alertsToScan.some((a) => a.PE.exit === n)) {
         stateObj.PE = 'closed';
         peDone = true;
         log(`[POSITION] PE CLOSED from history (alert: ${n})`);
       }
     }
+    const changed = stateObj.CE !== prevCE || stateObj.PE !== prevPE;
     stateObj.lastLogSnapshot = historyItems.slice(0, 30);
     return changed;
   } else {
@@ -782,7 +798,7 @@ async function main() {
       const historyItems =
         historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
       if (historyItems.length > 0) {
-        processHistoryForPositionChanges(historyItems, state);
+        processHistoryForPositionChanges(historyItems, state, todayInstr.name);
         saveState();
         log(
           `[STATE] Position re-derived: CE=${state.CE.toUpperCase()} PE=${state.PE.toUpperCase()}`
@@ -944,7 +960,7 @@ async function main() {
       // 2. Determine CE/PE position changes from alert history
       const prevCE = state.CE;
       const prevPE = state.PE;
-      processHistoryForPositionChanges(historyItems, state);
+      processHistoryForPositionChanges(historyItems, state, instrName);
       // If a trade just closed, force an immediate alert sync to the current strike —
       // ATM may have moved while the trade was running and the alerts are stale.
       const CEjustClosed = prevCE === 'open' && state.CE === 'closed';
