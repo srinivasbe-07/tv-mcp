@@ -1142,11 +1142,9 @@
         }
       }
 
-      // ── Supertrend SSE ────────────────────────────────────────────────
+      // ── Supertrend events via unified patES ───────────────────────────
       const stLogBody = document.getElementById('st-log-body');
-      const stES = new EventSource('/api/st/events');
-      stES.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
-      stES.addEventListener('position', (e) => {
+      patES.addEventListener('position', (e) => {
         const pos = JSON.parse(e.data);
         renderSTPosition(pos.CE || 'closed', pos.PE || 'closed');
         if (pos.lastATM) document.getElementById('st-atm').textContent = fmt(pos.lastATM);
@@ -1158,16 +1156,12 @@
             pos.lastITMDepth != null ? `ITM-${pos.lastITMDepth}` : '—';
         }
       });
-      stES.addEventListener('log', (e) => {
+      patES.addEventListener('stlog', (e) => {
         const line = JSON.parse(e.data).line;
         if (stMonRunning || line.startsWith('[TV]') || line.startsWith('[UI]'))
           appendLog(stLogBody, line);
-        // Mirror TV/UI startup lines to the left panel when patES is not connected
-        if ((line.startsWith('[TV]') || line.startsWith('[UI]')) && !patESConnected)
-          appendLog(patLogBody, line);
         parseSTLine(line);
       });
-      stES.onerror = () => {};
 
       function parseSTLine(line) {
         // Main tick: "NIFTY: 23623.50  ATM: 23600  ITM-1  ... CE:CLOSED  PE:CLOSED"

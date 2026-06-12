@@ -90,6 +90,7 @@ function pushST(line) {
   stLog.push(t);
   if (stLog.length > 200) stLog.shift();
   broadcast(stClients, 'log', { line: t });
+  broadcast(patClients, 'stlog', { line: t });
 }
 
 function pushLog(line) {
@@ -116,6 +117,7 @@ function broadcastStatus() {
 
 function broadcastPosition(pos) {
   broadcast(stClients, 'position', pos);
+  broadcast(patClients, 'position', pos);
 }
 
 // Watch position file — broadcast to all pages when monitor.js updates it
@@ -198,7 +200,7 @@ app.get('/api/st/events', (req, res) => {
   });
 });
 
-// ── SSE — Pattern Monitor / TV startup (left panel) ──────────────
+// ── SSE — unified dashboard stream (left + right panels) ─────────
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -207,7 +209,14 @@ app.get('/api/events', (req, res) => {
   patLog
     .slice(-50)
     .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
+  stLog
+    .slice(-50)
+    .forEach((line) => res.write(`event: stlog\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
+  try {
+    const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
+  } catch (_e) { /* ignore */ }
   patClients.push(res);
   const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
   req.on('close', () => {
