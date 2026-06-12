@@ -25,6 +25,7 @@ const ST_CONFIG = path.join(ROOT, 'config', 'monitor-config.json');
 const POSITION_FILE = path.join(ROOT, 'config', 'position.json');
 const NSE_HOLIDAYS_FILE = path.join(ROOT, 'config', 'nse-holidays.json');
 const _ST_LOG = path.join(ROOT, 'logs', 'monitor.log');
+const SERVER_LOG = path.join(ROOT, 'logs', 'server.log');
 const LAUNCH_TV_PS = path.join(ROOT, 'launch-tv.ps1');
 
 const app = express();
@@ -73,9 +74,16 @@ function broadcast(clients, event, data) {
   );
 }
 
+const serverLogStream = fs.createWriteStream(SERVER_LOG, { flags: 'a' });
+function serverLog(line) {
+  const ts = new Date().toTimeString().slice(0, 8);
+  serverLogStream.write(`[${ts}] ${line}\n`);
+}
+
 function pushST(line) {
   const t = line.trim();
   if (!t) return;
+  serverLog(t);
   stLog.push(t);
   if (stLog.length > 200) stLog.shift();
   broadcast(stClients, 'log', { line: t });
