@@ -239,12 +239,14 @@ app.post('/api/tv/start', (_req, res) => {
 });
 
 app.post('/api/tv/stop', (_req, res) => {
-  exec('taskkill /IM TradingView.exe /F', () => {
-    tvReady = false;
+  if (tvProc) {
+    try { tvProc.kill(); } catch (_e) { /* already gone */ }
     tvProc = null;
-    pushST('[UI] TradingView stopped');
-    broadcastStatus();
-  });
+  }
+  exec('taskkill /IM TradingView.exe /F', () => {});
+  tvReady = false;
+  pushST('[UI] TradingView stopped');
+  broadcastStatus();
   res.json({ ok: true });
 });
 

@@ -895,7 +895,10 @@
           tvDot.className = 'status-dot dot-starting';
           tvStat.className = 'proc-status text-yellow';
           tvStat.textContent = 'Starting';
-          btnTvT.disabled = true;
+          btnTvT.textContent = '⏹ Cancel';
+          btnTvT.className = 'hdr-btn btn-red';
+          btnTvT.onclick = () => confirm2('Cancel TV startup?', tvStop);
+          btnTvT.disabled = false;
         } else {
           tvDot.className = 'status-dot dot-stopped';
           tvStat.className = 'proc-status text-gray';

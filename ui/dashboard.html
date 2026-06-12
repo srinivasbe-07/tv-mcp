@@ -839,7 +839,10 @@
           tvDot.className = 'status-dot dot-starting';
           tvStat.className = 'tv-stat c-yellow';
           tvStat.textContent = 'Starting';
-          btnTvT.disabled = true;
+          btnTvT.textContent = '⏹ Cancel';
+          btnTvT.className = 'hdr-btn btn-red';
+          btnTvT.onclick = tvStop;
+          btnTvT.disabled = false;
           banner.className = 'tv-banner show starting';
           bannerTx.textContent = '⏳ TradingView is starting — please wait...';
         } else {
