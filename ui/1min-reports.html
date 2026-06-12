@@ -891,11 +891,15 @@
               winNSL++;
             if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
             if (t.entryPrice !== null) {
-              const hasPB = t.pbEntry !== null && t.pbEntry !== undefined && t.pbEntry !== 0;
+              const hasPB = t.pbEntry !== null && t.pbEntry !== undefined;
               let pSL = null,
                 pNSL = null,
                 pTgt = null;
-              if (hasPB && t.exitNSL !== null) {
+              if (hasPB && t.pbEntry === 0) {
+                pSL = 0;
+                pNSL = 0;
+                pTgt = 0;
+              } else if (hasPB && t.exitNSL !== null) {
                 const pbVals = calcPBValues(
                   t.pbEntry,
                   t.exitNSL,
@@ -909,7 +913,7 @@
                   pNSL = (pbVals.pbExitNSL - t.pbEntry) * tq;
                   pTgt = pbVals.pbTgtPts * tq;
                 }
-              } else if (t.exitSL !== null && t.exitNSL !== null && t.tgtPts !== null) {
+              } else if (!hasPB && t.exitSL !== null && t.exitNSL !== null && t.tgtPts !== null) {
                 pSL = (t.exitSL - t.entryPrice) * tq;
                 pNSL = (t.exitNSL - t.entryPrice) * tq;
                 pTgt = t.tgtPts * tq;
@@ -1164,27 +1168,39 @@
             seriesNSL.push(pNSL);
           }
 
-          const hasPBEntry = t.pbEntry !== null && t.pbEntry !== undefined && t.pbEntry !== 0;
-          const effectivePBEntry = hasPBEntry ? t.pbEntry : t.entryPrice;
-          const pbVals =
-            effectivePBEntry !== null && t.exitNSL !== null
-              ? calcPBValues(
-                  effectivePBEntry,
-                  t.exitNSL,
-                  day.instrument,
-                  hasPBEntry ? (t.pbTgtPts ?? null) : null,
-                  hasPBEntry ? (t.pbExitSL ?? null) : null,
-                  hasPBEntry ? (t.pbExitTgt ?? null) : null
-                )
-              : null;
-          const pbSL =
-            pbVals !== null ? Math.round((pbVals.pbExitSL - effectivePBEntry) * tq) : null;
-          const pbTgt =
-            pbVals !== null
-              ? Math.round((hasPBEntry ? pbVals.pbTgtPts : (t.tgtPts ?? 0)) * tq)
-              : null;
-          const pbNSL =
-            pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
+          const hasPBEntry = t.pbEntry !== null && t.pbEntry !== undefined;
+          let pbSL = null,
+            pbTgt = null,
+            pbNSL = null,
+            pbVals = null,
+            pbTgtPtsDisplay = null;
+          if (hasPBEntry && t.pbEntry === 0) {
+            pbSL = 0;
+            pbTgt = 0;
+            pbNSL = 0;
+            pbTgtPtsDisplay = 0;
+          } else {
+            const effectivePBEntry = hasPBEntry ? t.pbEntry : t.entryPrice;
+            pbVals =
+              effectivePBEntry !== null && t.exitNSL !== null
+                ? calcPBValues(
+                    effectivePBEntry,
+                    t.exitNSL,
+                    day.instrument,
+                    hasPBEntry ? (t.pbTgtPts ?? null) : null,
+                    hasPBEntry ? (t.pbExitSL ?? null) : null,
+                    hasPBEntry ? (t.pbExitTgt ?? null) : null
+                  )
+                : null;
+            pbSL = pbVals !== null ? Math.round((pbVals.pbExitSL - effectivePBEntry) * tq) : null;
+            pbTgt =
+              pbVals !== null
+                ? Math.round((hasPBEntry ? pbVals.pbTgtPts : (t.tgtPts ?? 0)) * tq)
+                : null;
+            pbNSL =
+              pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
+            pbTgtPtsDisplay = pbVals ? pbVals.pbTgtPts : null;
+          }
           if (pbSL !== null) totPBSL += pbSL;
           if (pbTgt !== null) totPBTgt += pbTgt;
           if (pbNSL !== null) totPBNSL += pbNSL;
@@ -1209,12 +1225,12 @@
       <td>${fmt(t.exitSL)}${hasPBEntry && pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>
       <td>${fmt(t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : null)}${hasPBEntry && pbVals ? pb(pbVals.pbExitTgt, false) : ''}</td>
       <td>${fmt(t.exitNSL)}</td>
-      <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}${hasPBEntry && pbVals && pbVals.pbTgtPts !== 0 ? `<div class="${pnlClass(pbVals.pbTgtPts)}" style="font-size:10px">${fmtPts(pbVals.pbTgtPts)}</div>` : ''}</td>
+      <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}${hasPBEntry && pbTgtPtsDisplay !== null ? `<div class="${pnlClass(pbTgtPtsDisplay)}" style="font-size:10px">${fmtPts(pbTgtPtsDisplay)}</div>` : ''}</td>
       <td style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
       <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}${t.pbNotes ? `<div style="color:#a78bfa;font-size:10px;margin-top:2px">${t.pbNotes}</div>` : ''}</td>
-      <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${hasPBEntry && pbSL !== null && pbSL !== 0 ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
-      <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${hasPBEntry && pbTgt !== null && pbTgt !== 0 ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
-      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null && pbNSL !== 0 ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
+      <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${hasPBEntry && pbSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
+      <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${hasPBEntry && pbTgt !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
+      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
       <td style="text-align:center">
         <button class="act-btn" onclick="editRow('${dateStr}', '${t.id}', this)">&#x270F; Edit</button>
         <button class="act-btn del" onclick="deleteRow('${dateStr}', '${t.id}')">&#x2715;</button>
