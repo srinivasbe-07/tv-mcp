@@ -705,18 +705,23 @@ app.get('/api/report/screenshots', async (req, res) => {
     })()`;
 
     const scrollToRange = async (from, to) => {
-      // First attempt: use whatever bars are already loaded
+      // First attempt: bars already loaded (works when symbol's last data is target date)
       const r1 = await cdp.executeScript(doZoom(from, to));
       if (String(r1).startsWith('ok')) return r1;
 
-      // Bars not loaded yet — scroll to beginning to force TV to load the full day
+      // Chart is showing a different day (e.g. today for still-active CE options).
+      // Ask TV to fetch the target date's data via loadRange, then poll until bars arrive.
       await cdp.executeScript(`(function(){
         const cw = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget;
-        const ts = cw?._modelWV?._value?.timeScale?.();
-        ts?.scrollToFirstBar?.();
+        try { cw?.loadRange?.({ from: ${from - 3600}, to: ${to + 3600} }); } catch(e) {}
       })()`);
-      await new Promise(r => setTimeout(r, 2500));
-      return await cdp.executeScript(doZoom(from, to));
+
+      for (let i = 0; i < 5; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const r = await cdp.executeScript(doZoom(from, to));
+        if (String(r).startsWith('ok')) return r;
+      }
+      return 'no-data';
     };
 
     for (const t of trades) {
