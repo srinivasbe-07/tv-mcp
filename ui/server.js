@@ -616,7 +616,7 @@ const DIR_3MIN = path.join(ROOT, 'logs', 'supertrend', '3min');
 // GET /api/report/screenshots?date=YYYY-MM-DD
 // SSE stream: reads daily-trades JSON → navigates TradingView per trade
 // → scrolls to full entry→exit window → captures one screenshot per trade.
-// Saved to logs/supertrend/1min/screenshots/{date}/{id}-{side}.png
+// Saved to logs/supertrend/1min/{instrument}/{date}/{symbol}_{time}.png
 const EXCHANGE_MAP = { NIFTY: 'NSE', SENSEX: 'BSE' };
 
 function istTimeToUnixLocal(timeStr, dateStr) {
@@ -649,9 +649,15 @@ app.get('/api/report/screenshots', async (req, res) => {
   const trades = (record.trades || []).filter(t => t.entryTime && t.entrySymbol);
   if (trades.length === 0) return done(false, 'No trades in file');
 
+  const instrument = (record.instrument || 'NIFTY').toLowerCase();
   shotRunning = true;
-  const screenshotDir = path.join(DIR_1MIN, 'screenshots', date);
+  const screenshotDir = path.join(DIR_1MIN, instrument, date);
   fs.mkdirSync(screenshotDir, { recursive: true });
+  // Clear existing snapshots for this date before re-capturing
+  try {
+    fs.readdirSync(screenshotDir).filter(f => f.endsWith('.png'))
+      .forEach(f => fs.unlinkSync(path.join(screenshotDir, f)));
+  } catch { /**/ }
 
   let cdp;
   try {
@@ -666,7 +672,8 @@ app.get('/api/report/screenshots', async (req, res) => {
     const files = [];
 
     for (const t of trades) {
-      const label = `${t.id ?? ''}-${t.side}`.replace(/^-/, '');
+      const timeStr = (t.entryTime || '').slice(0, 5).replace(':', '-');
+      const label = `${t.entrySymbol}_${timeStr}`;
       const sym = t.entrySymbol;
       const instr = sym.startsWith('BSX') ? 'SENSEX' : 'NIFTY';
       const qualified = `${EXCHANGE_MAP[instr]}:${sym}`;
@@ -699,19 +706,40 @@ app.get('/api/report/screenshots', async (req, res) => {
         fs.writeFileSync(outPath, Buffer.from(shot.data, 'base64'));
         files.push(`${label}.png`);
         log(`✓ Saved ${label}.png`);
-        emit('file', { name: `${label}.png`, date });
+        emit('file', { name: `${label}.png`, date, instrument });
       } catch (e) {
         log(`✗ Screenshot failed for ${label}: ${e.message}`);
       }
     }
 
-    done(true, `${files.length} screenshot(s) saved to screenshots/${date}/`);
+    done(true, `${files.length} screenshot(s) saved to 1min/${instrument}/${date}/`);
   } catch (e) {
     done(false, `Error: ${e.message}`);
   } finally {
     shotRunning = false;
     if (cdp) await cdp.disconnect().catch(() => {});
   }
+});
+
+// List saved screenshots for a date
+app.get('/api/report/screenshots/list', (req, res) => {
+  const { date, instrument } = req.query;
+  if (!date || !instrument) return res.json([]);
+  const dir = path.join(DIR_1MIN, instrument.toLowerCase(), date);
+  try {
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.png')).sort();
+    res.json(files);
+  } catch { res.json([]); }
+});
+
+// Serve a saved screenshot image
+app.get('/api/screenshots/:instrument/:date/:file', (req, res) => {
+  const { instrument, date, file } = req.params;
+  if (!/^[a-zA-Z]+$/.test(instrument) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[\w-]+\.png$/.test(file))
+    return res.status(400).send('Invalid');
+  const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+  res.sendFile(filePath);
 });
 
 // NSE holidays config

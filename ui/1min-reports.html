@@ -676,6 +676,25 @@
         background: #2a2d3a;
         border-radius: 2px;
       }
+      .shot-gallery { display:flex; flex-wrap:wrap; gap:8px; padding:6px 0 2px; }
+      .shot-thumb { position:relative; cursor:pointer; border:1px solid #1e293b; border-radius:6px; overflow:hidden; transition:border-color 0.15s; }
+      .shot-thumb:hover { border-color:#4b5563; }
+      .shot-thumb img { display:block; width:220px; height:130px; object-fit:cover; background:#0f172a; }
+      .shot-thumb .shot-label { position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.65); color:#94a3b8; font-size:10px; padding:2px 6px; text-align:center; }
+      #snap-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:1000; cursor:not-allowed; flex-direction:column; align-items:center; justify-content:center; gap:22px; }
+      #snap-overlay.active { display:flex; }
+      .snap-spinner { position:relative; width:56px; height:56px; }
+      .snap-spinner span { position:absolute; left:50%; top:50%; width:5px; height:16px; margin-left:-2.5px; margin-top:-8px; background:#ccc; border-radius:3px; transform-origin:center 28px; animation:snap-fade 0.9s linear infinite; }
+      .snap-spinner span:nth-child(1) { transform:rotate(0deg);   animation-delay:-0.8s; }
+      .snap-spinner span:nth-child(2) { transform:rotate(45deg);  animation-delay:-0.7s; }
+      .snap-spinner span:nth-child(3) { transform:rotate(90deg);  animation-delay:-0.6s; }
+      .snap-spinner span:nth-child(4) { transform:rotate(135deg); animation-delay:-0.5s; }
+      .snap-spinner span:nth-child(5) { transform:rotate(180deg); animation-delay:-0.4s; }
+      .snap-spinner span:nth-child(6) { transform:rotate(225deg); animation-delay:-0.3s; }
+      .snap-spinner span:nth-child(7) { transform:rotate(270deg); animation-delay:-0.2s; }
+      .snap-spinner span:nth-child(8) { transform:rotate(315deg); animation-delay:-0.1s; }
+      @keyframes snap-fade { 0%{opacity:1} 100%{opacity:0.12} }
+      #snap-status { color:#d1d5db; font-size:14px; font-family:'Segoe UI',system-ui,sans-serif; letter-spacing:0.3px; }
     </style>
   </head>
   <body>
@@ -1122,6 +1141,7 @@
         </table>
       </div>
       <div id="shot-log-${dayKey}" style="display:none;background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:8px 12px;margin:4px 0;font-size:11px;font-family:monospace;color:#94a3b8;max-height:120px;overflow-y:auto"></div>
+      <div id="shot-gallery-${dayKey}" class="shot-gallery" style="display:none"></div>
     </div>`;
       }
 
@@ -1271,6 +1291,7 @@
           pnlEl.innerHTML = `${fmtRs(totSL)} w/SL`;
           pnlEl.className = `day-pnl ${pnlClass(totSL)}`;
         }
+        loadScreenshots(dateStr, allData[dateStr]?.instrument);
       }
 
       function renderMonthDays(monthKey) {
@@ -1415,22 +1436,26 @@
           let html = `<span class="${c(pSL)}">${fmtRs(pSL)}</span><span style="color:#374151"> | </span><span class="${c(pTgt)}">${fmtRs(pTgt)}</span><span style="color:#374151"> | </span><span class="${c(pNSL)}">${fmtRs(pNSL)}</span>`;
           const pbEntry = parseFloat(document.getElementById('e-pbEntry')?.value);
           if (!isNaN(pbEntry)) {
-            const pbTgtPtsInput = parseFloat(document.getElementById('e-pbTgtPts')?.value);
-            const pbExitSLInput = parseFloat(document.getElementById('e-pbExitSL')?.value);
-            const pbExitTgtInput = parseFloat(document.getElementById('e-pbExitTgt')?.value);
-            const pbVals = calcPBValues(
-              pbEntry,
-              exitNSL,
-              instr,
-              pbTgtPtsInput,
-              pbExitSLInput,
-              pbExitTgtInput
-            );
-            if (pbVals) {
-              const pbPSL = Math.round((pbVals.pbExitSL - pbEntry) * nLots * lotSz);
-              const pbPTgt = Math.round(pbVals.pbTgtPts * nLots * lotSz);
-              const pbPNSL = Math.round((pbVals.pbExitNSL - pbEntry) * nLots * lotSz);
-              html += `<div style="color:#a78bfa;font-size:10px;margin-top:3px"><span class="${c(pbPSL)}">${fmtRs(pbPSL)}</span><span style="color:#374151"> | </span><span class="${c(pbPTgt)}">${fmtRs(pbPTgt)}</span><span style="color:#374151"> | </span><span class="${c(pbPNSL)}">${fmtRs(pbPNSL)}</span></div>`;
+            if (pbEntry === 0) {
+              html += `<div style="color:#a78bfa;font-size:10px;margin-top:3px"><span class="${c(0)}">${fmtRs(0)}</span><span style="color:#374151"> | </span><span class="${c(0)}">${fmtRs(0)}</span><span style="color:#374151"> | </span><span class="${c(0)}">${fmtRs(0)}</span></div>`;
+            } else {
+              const pbTgtPtsInput = parseFloat(document.getElementById('e-pbTgtPts')?.value);
+              const pbExitSLInput = parseFloat(document.getElementById('e-pbExitSL')?.value);
+              const pbExitTgtInput = parseFloat(document.getElementById('e-pbExitTgt')?.value);
+              const pbVals = calcPBValues(
+                pbEntry,
+                exitNSL,
+                instr,
+                pbTgtPtsInput,
+                pbExitSLInput,
+                pbExitTgtInput
+              );
+              if (pbVals) {
+                const pbPSL = Math.round((pbVals.pbExitSL - pbEntry) * nLots * lotSz);
+                const pbPTgt = Math.round(pbVals.pbTgtPts * nLots * lotSz);
+                const pbPNSL = Math.round((pbVals.pbExitNSL - pbEntry) * nLots * lotSz);
+                html += `<div style="color:#a78bfa;font-size:10px;margin-top:3px"><span class="${c(pbPSL)}">${fmtRs(pbPSL)}</span><span style="color:#374151"> | </span><span class="${c(pbPTgt)}">${fmtRs(pbPTgt)}</span><span style="color:#374151"> | </span><span class="${c(pbPNSL)}">${fmtRs(pbPNSL)}</span></div>`;
+              }
             }
           }
           pnl.innerHTML = html;
@@ -1455,7 +1480,7 @@
         t.notes = document.getElementById('e-notes').value.trim();
         t.pbNotes = document.getElementById('e-pb-notes')?.value.trim() || '';
         const pbEV = parseFloat(document.getElementById('e-pbEntry')?.value);
-        t.pbEntry = isNaN(pbEV) || pbEV === 0 ? null : pbEV;
+        t.pbEntry = isNaN(pbEV) ? null : pbEV;
         const pbTgtV = parseFloat(document.getElementById('e-pbTgtPts')?.value);
         t.pbTgtPts = isNaN(pbTgtV) ? null : pbTgtV;
         const pbExitSLV = parseFloat(document.getElementById('e-pbExitSL')?.value);
@@ -1559,11 +1584,62 @@
         hdr.nextElementSibling.classList.toggle('open');
       }
 
-      async function captureScreenshots(dateStr) {
+      function addScreenshotThumb(dateStr, filename, instrument) {
         const dayKey = dateStr.replace(/-/g, '');
+        const gallery = document.getElementById(`shot-gallery-${dayKey}`);
+        if (!gallery) return;
+        gallery.style.display = 'flex';
+        const instr = (instrument || 'nifty').toLowerCase();
+        const wrap = document.createElement('div');
+        wrap.className = 'shot-thumb';
+        wrap.title = `Click to open full size — ${filename}`;
+        wrap.onclick = () => window.open(`/api/screenshots/${instr}/${dateStr}/${filename}`, '_blank');
+        const label = filename.replace(/\.png$/, '');
+        wrap.innerHTML = `<img src="/api/screenshots/${instr}/${dateStr}/${filename}" loading="lazy" alt="${label}"><div class="shot-label">${label}</div>`;
+        gallery.appendChild(wrap);
+      }
+
+      const _capturingDates = new Set();
+
+      async function loadScreenshots(dateStr, instrument) {
+        if (_capturingDates.has(dateStr)) return;
+        const dayKey = dateStr.replace(/-/g, '');
+        const gallery = document.getElementById(`shot-gallery-${dayKey}`);
+        if (!gallery) return;
+        try {
+          const instr = (instrument || 'nifty').toLowerCase();
+          const files = await fetch(`/api/report/screenshots/list?date=${dateStr}&instrument=${instr}`).then(r => r.json());
+          if (_capturingDates.has(dateStr)) return;
+          if (!Array.isArray(files) || !files.length) return;
+          gallery.innerHTML = '';
+          gallery.style.display = 'flex';
+          files.forEach(f => addScreenshotThumb(dateStr, f, instr));
+        } catch { /* silent */ }
+      }
+
+      function captureScreenshots(dateStr) {
+        const dayKey = dateStr.replace(/-/g, '');
+        const total = (allData[dateStr]?.trades || []).length;
+        let captured = 0;
+
         const logEl = document.getElementById(`shot-log-${dayKey}`);
         logEl.style.display = 'block';
-        logEl.innerHTML = '<span style="color:#60a5fa">Starting screenshot capture…</span><br>';
+        logEl.innerHTML = '<span style="color:#60a5fa">Starting…</span>';
+
+        // Block loadScreenshots for this date while capturing
+        _capturingDates.add(dateStr);
+
+        // Clear existing thumbnails from gallery
+        const gallery = document.getElementById(`shot-gallery-${dayKey}`);
+        if (gallery) { gallery.innerHTML = ''; gallery.style.display = 'none'; }
+
+        // Scroll to gallery area first, then show overlay after scroll settles
+        if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        const statusEl = document.getElementById('snap-status');
+        statusEl.textContent = `Capturing Snapshots… 0 / ${total}`;
+        setTimeout(() => document.getElementById('snap-overlay').classList.add('active'), 400);
+
         const addLine = (msg, color) => {
           const line = document.createElement('div');
           line.style.color = color || '#94a3b8';
@@ -1571,20 +1647,35 @@
           logEl.appendChild(line);
           logEl.scrollTop = logEl.scrollHeight;
         };
+
+        const finish = () => {
+          _capturingDates.delete(dateStr);
+          document.getElementById('snap-overlay').classList.remove('active');
+          if (gallery && gallery.children.length > 0)
+            gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
         try {
           const es = new EventSource(`/api/report/screenshots?date=${dateStr}`);
           es.onmessage = (e) => {
             const d = JSON.parse(e.data);
             if (d.type === 'log') addLine(d.msg);
-            else if (d.type === 'file') addLine(`✓ ${d.name}`, '#4ade80');
+            else if (d.type === 'file') {
+              captured++;
+              statusEl.textContent = `Capturing Snapshots… ${captured} / ${total}`;
+              addLine(`✓ ${d.name}`, '#4ade80');
+              addScreenshotThumb(dateStr, d.name, d.instrument);
+            }
             else if (d.type === 'done') {
               addLine(d.msg, d.ok ? '#4ade80' : '#f87171');
               es.close();
+              finish();
             }
           };
-          es.onerror = () => { addLine('Connection lost', '#f87171'); es.close(); };
+          es.onerror = () => { addLine('Connection lost', '#f87171'); es.close(); finish(); };
         } catch (e) {
           addLine('Error: ' + e.message, '#f87171');
+          finish();
         }
       }
 
@@ -2029,5 +2120,13 @@
         if (activeMonth) renderMonthDays(activeMonth);
       });
     </script>
+
+    <div id="snap-overlay">
+      <div class="snap-spinner">
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div id="snap-status">Capturing Snapshots…</div>
+    </div>
   </body>
 </html>
