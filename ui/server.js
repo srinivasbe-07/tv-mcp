@@ -662,14 +662,62 @@ app.get('/api/report/screenshots', async (req, res) => {
   let cdp;
   try {
     log('Connecting to TradingView...');
-    let tabId = null;
-    try { tabId = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'supertrend-tab.json'), 'utf8')).targetId; } catch { /**/ }
-    cdp = new CDPManager(tabId);
+    // Auto-probe for the chart tab with active TradingViewApi (same approach as generate-daily-report.js)
+    cdp = new CDPManager(null);
     await cdp.connect();
     log('Connected');
 
     const cdpChart = new ChartTools(cdp);
     const files = [];
+
+
+    const doZoom = (from, to) => `(function() {
+      const cw = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget;
+      const ts    = cw?._modelWV?._value?.timeScale?.();
+      const model = cw?._modelWV?._value;
+      if (!ts || !model) return 'no-api';
+      try {
+        const barsStore = model.mainSeries?.()?.bars?.();
+        if (!barsStore || barsStore.size() === 0) return 'no-bars';
+        const first = barsStore.firstIndex();
+        const last  = barsStore.lastIndex();
+        let fi = -1, ti = -1, fiBest = Infinity, tiBest = Infinity;
+        for (let i = first; i <= last; i++) {
+          const b = barsStore.valueAt(i);
+          const v = Array.isArray(b) ? b : (b?.value || []);
+          const t = v[0];
+          if (t == null) continue;
+          const df = Math.abs(t - ${from}), dt = Math.abs(t - ${to});
+          if (df < fiBest) { fiBest = df; fi = i; }
+          if (dt < tiBest) { tiBest = dt; ti = i; }
+        }
+        if (fi < 0) return 'not-found';
+        // Reject if closest bar is more than 20 min away from target
+        const fbar = barsStore.valueAt(fi);
+        const fv = Array.isArray(fbar) ? fbar : (fbar?.value || []);
+        if (Math.abs((fv[0] || 0) - ${from}) > 1200) return 'too-far:' + fv[0];
+        const pfi = Math.max(first, fi - 15);
+        const pti = Math.min(last,  ti + 15);
+        ts.scrollToBar?.(fi);
+        ts.zoomToBarsRange?.(pfi, pti);
+        return 'ok:' + pfi + '-' + pti;
+      } catch(e) { return 'err:' + e.message; }
+    })()`;
+
+    const scrollToRange = async (from, to) => {
+      // First attempt: use whatever bars are already loaded
+      const r1 = await cdp.executeScript(doZoom(from, to));
+      if (String(r1).startsWith('ok')) return r1;
+
+      // Bars not loaded yet — scroll to beginning to force TV to load the full day
+      await cdp.executeScript(`(function(){
+        const cw = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget;
+        const ts = cw?._modelWV?._value?.timeScale?.();
+        ts?.scrollToFirstBar?.();
+      })()`);
+      await new Promise(r => setTimeout(r, 2500));
+      return await cdp.executeScript(doZoom(from, to));
+    };
 
     for (const t of trades) {
       const timeStr = (t.entryTime || '').slice(0, 5).replace(':', '-');
@@ -680,25 +728,28 @@ app.get('/api/report/screenshots', async (req, res) => {
       const entryUnix = istTimeToUnixLocal(t.entryTime, date);
       const exitTime = t.exitTime || '15:26:00';
       const exitUnix = istTimeToUnixLocal(exitTime, date);
+      const from = entryUnix - 15 * 60;
+      const to = exitUnix + 15 * 60;
 
       log(`Trade ${label}: switching to ${qualified}...`);
       await cdpChart.handle('chart_set_symbol', { symbol: qualified });
-      await new Promise(r => setTimeout(r, 2500));
+      await new Promise(r => setTimeout(r, 3000));
       await cdpChart.handle('chart_set_timeframe', { timeframe: '1' });
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 2000));
 
-      // Scroll to show full entry→exit with 15-min padding on each side
-      const from = entryUnix - 15 * 60;
-      const to = exitUnix + 15 * 60;
-      await cdp.executeScript(`
-        (function() {
-          try {
-            const ts = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget?._modelWV?._value?.timeScale?.();
-            if (ts?.setVisibleRange) { ts.setVisibleRange({ from: ${from}, to: ${to} }); return 'ok'; }
-            return 'no-api';
-          } catch(e) { return 'err:' + e.message; }
-        })()`);
-      await new Promise(r => setTimeout(r, 1500));
+      // Unpin chart from live mode by pressing Left arrow, then scroll to trade window
+      await cdp.client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft' });
+      await cdp.client.Input.dispatchKeyEvent({ type: 'keyUp',   key: 'ArrowLeft', code: 'ArrowLeft' });
+      await new Promise(r => setTimeout(r, 300));
+
+      let scrollResult = await scrollToRange(from, to);
+      log(`  scroll: ${scrollResult}`);
+      await new Promise(r => setTimeout(r, 2500));
+      if (!String(scrollResult).startsWith('ok')) {
+        scrollResult = await scrollToRange(from, to);
+        log(`  scroll retry: ${scrollResult}`);
+        await new Promise(r => setTimeout(r, 2500));
+      }
 
       try {
         const shot = await cdp.takeScreenshot();
