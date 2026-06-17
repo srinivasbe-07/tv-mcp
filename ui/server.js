@@ -798,6 +798,34 @@ app.get('/api/screenshots/:instrument/:date/:file', (req, res) => {
   res.sendFile(filePath);
 });
 
+// Delete a single saved screenshot
+app.delete('/api/screenshots/:instrument/:date/:file', (req, res) => {
+  const { instrument, date, file } = req.params;
+  if (!/^[a-zA-Z]+$/.test(instrument) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[\w-]+\.png$/.test(file))
+    return res.status(400).json({ ok: false, error: 'Invalid' });
+  const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'Not found' });
+  try {
+    fs.unlinkSync(filePath);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Open a snapshot's folder in Windows Explorer with the file selected
+app.post('/api/screenshots/:instrument/:date/:file/reveal', (req, res) => {
+  const { instrument, date, file } = req.params;
+  if (!/^[a-zA-Z]+$/.test(instrument) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[\w-]+\.png$/.test(file))
+    return res.status(400).json({ ok: false, error: 'Invalid' });
+  const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'Not found' });
+  // explorer /select highlights the file in its folder. It returns exit code 1
+  // even on success, so we don't treat a non-zero exit as an error.
+  exec(`explorer /select,"${filePath}"`, () => {});
+  res.json({ ok: true });
+});
+
 // NSE holidays config
 app.get('/api/holidays', (_req, res) => {
   try {

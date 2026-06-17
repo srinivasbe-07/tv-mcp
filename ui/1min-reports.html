@@ -681,6 +681,12 @@
       .shot-thumb:hover { border-color:#4b5563; }
       .shot-thumb img { display:block; width:220px; height:130px; object-fit:cover; background:#0f172a; }
       .shot-thumb .shot-label { position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.65); color:#94a3b8; font-size:10px; padding:2px 6px; text-align:center; }
+      .shot-thumb .shot-del { position:absolute; top:4px; right:4px; width:22px; height:22px; border:none; border-radius:4px; background:rgba(0,0,0,0.6); color:#f87171; font-size:14px; line-height:1; cursor:pointer; opacity:0; transition:opacity 0.15s, background 0.15s; }
+      .shot-thumb:hover .shot-del { opacity:1; }
+      .shot-thumb .shot-del:hover { background:#dc2626; color:#fff; }
+      .shot-thumb .shot-open { position:absolute; top:4px; right:30px; width:22px; height:22px; border:none; border-radius:4px; background:rgba(0,0,0,0.6); color:#60a5fa; font-size:13px; line-height:1; cursor:pointer; opacity:0; transition:opacity 0.15s, background 0.15s; }
+      .shot-thumb:hover .shot-open { opacity:1; }
+      .shot-thumb .shot-open:hover { background:#2563eb; color:#fff; }
       #snap-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:1000; cursor:not-allowed; flex-direction:column; align-items:center; justify-content:center; gap:22px; }
       #snap-overlay.active { display:flex; }
       .snap-spinner { position:relative; width:56px; height:56px; }
@@ -1595,8 +1601,40 @@
         wrap.title = `Click to open full size — ${filename}`;
         wrap.onclick = () => window.open(`/api/screenshots/${instr}/${dateStr}/${filename}`, '_blank');
         const label = filename.replace(/\.png$/, '');
-        wrap.innerHTML = `<img src="/api/screenshots/${instr}/${dateStr}/${filename}" loading="lazy" alt="${label}"><div class="shot-label">${label}</div>`;
+        wrap.innerHTML = `<img src="/api/screenshots/${instr}/${dateStr}/${filename}" loading="lazy" alt="${label}"><div class="shot-label">${label}</div><button class="shot-open" title="Open folder in Explorer">&#128193;</button><button class="shot-del" title="Delete this snapshot">&times;</button>`;
+        wrap.querySelector('.shot-del').onclick = (e) => {
+          e.stopPropagation();
+          deleteScreenshot(dateStr, filename, instr, wrap);
+        };
+        wrap.querySelector('.shot-open').onclick = (e) => {
+          e.stopPropagation();
+          revealScreenshot(dateStr, filename, instr);
+        };
         gallery.appendChild(wrap);
+      }
+
+      async function revealScreenshot(dateStr, filename, instr) {
+        try {
+          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}/reveal`, { method: 'POST' })
+            .then(res => res.json());
+          if (!r.ok) alert('Could not open folder: ' + (r.error || 'unknown error'));
+        } catch (e) {
+          alert('Could not open folder: ' + e.message);
+        }
+      }
+
+      async function deleteScreenshot(dateStr, filename, instr, wrap) {
+        if (!confirm(`Delete this snapshot?\n\n${filename}`)) return;
+        try {
+          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}`, { method: 'DELETE' })
+            .then(res => res.json());
+          if (!r.ok) { alert('Delete failed: ' + (r.error || 'unknown error')); return; }
+          const gallery = wrap.parentElement;
+          wrap.remove();
+          if (gallery && gallery.children.length === 0) gallery.style.display = 'none';
+        } catch (e) {
+          alert('Delete failed: ' + e.message);
+        }
       }
 
       const _capturingDates = new Set();
