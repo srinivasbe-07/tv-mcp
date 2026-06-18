@@ -27,7 +27,7 @@ try {
     stdio: 'pipe',
   });
   console.log('Copied to temp file.');
-} catch (e) {
+} catch (_e) {
   console.warn('Could not copy — will try original path directly.');
 }
 
@@ -105,7 +105,7 @@ try {
     stdio: ['pipe', 'pipe', 'pipe'],
     maxBuffer: 10 * 1024 * 1024,
   });
-} catch (e) {
+} catch (_e) {
   // Try with multiline via temp py file
   const tmpPy = path.join(ROOT, 'logs', '_import_tmp.py');
   fs.writeFileSync(tmpPy, pyScript);

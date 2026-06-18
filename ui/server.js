@@ -86,7 +86,9 @@ function serverLog(line) {
   const ts = new Date().toTimeString().slice(0, 8);
   try {
     serverLogStream.write(`[${ts}] ${line}\n`);
-  } catch (_e) {}
+  } catch (_e) {
+    /* ignore log write errors */
+  }
 }
 
 function pushST(line) {
@@ -205,7 +207,9 @@ function handleStream(req, res) {
   const hb = setInterval(() => {
     try {
       res.write(': ping\n\n');
-    } catch (_e) {}
+    } catch (_e) {
+      /* client gone — cleaned up on close */
+    }
   }, 20000);
   req.on('close', () => {
     clearInterval(hb);
