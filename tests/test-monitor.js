@@ -328,15 +328,19 @@ test('seenHistoryKeys capped at 200 even with 201 items', () => {
 });
 
 section('processHistoryForPositionChanges — CE/PE independence');
+// Use a non-empty snapshot so the diff-based path runs (the fresh-start scan
+// re-derives BOTH sides from scratch, which is not what "independence" means).
 test('CE change does not affect PE', () => {
-  const s = makeState({ PE: 'open' });
-  processHistoryForPositionChanges([{ name: CE_ENTRY, time: '09:15' }], s);
-  return s.PE === 'open';
+  const base = [{ name: 'someOtherAlert', symbol: '' }];
+  const s = { CE: 'closed', PE: 'open', lastLogSnapshot: base };
+  processHistoryForPositionChanges([{ name: CE_ENTRY, symbol: '' }, ...base], s);
+  return s.PE === 'open' && s.CE === 'open';
 });
 test('PE change does not affect CE', () => {
-  const s = makeState({ CE: 'open' });
-  processHistoryForPositionChanges([{ name: PE_EXIT, time: '10:00' }], s);
-  return s.CE === 'open';
+  const base = [{ name: 'someOtherAlert', symbol: '' }];
+  const s = { CE: 'open', PE: 'open', lastLogSnapshot: base };
+  processHistoryForPositionChanges([{ name: PE_EXIT, symbol: '' }, ...base], s);
+  return s.CE === 'open' && s.PE === 'closed';
 });
 test('batch: CE entry + PE entry in one call', () => {
   const s = makeState();
