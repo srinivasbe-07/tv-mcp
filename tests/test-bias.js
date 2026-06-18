@@ -14,6 +14,7 @@ import {
   processBiasHistory,
   INSTRUMENTS,
 } from '../monitors/monitor.js';
+import { classify, parseTrades, parseOpenTrades } from '../scripts/generate-bias-report.js';
 
 // ---------------------------------------------------------------------------
 // Minimal test runner (same style as test-monitor.js)
@@ -257,6 +258,95 @@ test('snapshot sealed to top-30', () => {
   const items = Array.from({ length: 40 }, (_, i) => ({ name: `n${i}`, symbol: '' }));
   processBiasHistory(items, s, 'NIFTY', 'up');
   return s.lastBiasLogSnapshot.length === 30;
+});
+
+// ---------------------------------------------------------------------------
+// EOD report parsing (generate-bias-report.js): classify / parseTrades / parseOpenTrades
+// ---------------------------------------------------------------------------
+const mk = (name, sym, time) => ({
+  name,
+  symbol: '',
+  raw: `${name}\n${sym}, 1m\n${time}\nWebhook`,
+});
+
+section('classify (bias report)');
+test('0NiftyBiasEntry → NIFTY/CE/entry', () => {
+  const c = classify('0NiftyBiasEntry');
+  return c && c.instrument === 'NIFTY' && c.side === 'CE' && c.event === 'entry';
+});
+test('zSensexBiasTarget → SENSEX/PE/target', () => {
+  const c = classify('zSensexBiasTarget');
+  return c && c.instrument === 'SENSEX' && c.side === 'PE' && c.event === 'target';
+});
+test('zNiftyBiasExit → NIFTY/PE/exit', () => {
+  const c = classify('zNiftyBiasExit');
+  return c && c.instrument === 'NIFTY' && c.side === 'PE' && c.event === 'exit';
+});
+test('non-bias alert → null', () => classify('niftySupertrendLongEntry') === null);
+
+section('parseTrades — entry → exit / target');
+test('entry → exit pairs into one trade', () => {
+  // snapshot is newest-first
+  const snap = [
+    mk('0SensexBiasExit', 'BSX260618C77300', '11:30:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return (
+    t.length === 1 &&
+    t[0].side === 'CE' &&
+    t[0].exitType === 'exit' &&
+    t[0].entryTime === '11:00:00' &&
+    t[0].exitTime === '11:30:00'
+  );
+});
+test('entry → target closes the trade (exitType=target)', () => {
+  const snap = [
+    mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return t.length === 1 && t[0].exitType === 'target';
+});
+test('lone entry (no close) → no completed trade', () => {
+  const snap = [mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00')];
+  return parseTrades(snap, 'SENSEX').length === 0;
+});
+test('instrFilter excludes other instrument', () => {
+  const snap = [
+    mk('0NiftyBiasExit', 'NIFTY260603C23300', '11:30:00'),
+    mk('0NiftyBiasEntry', 'NIFTY260603C23300', '11:00:00'),
+  ];
+  return parseTrades(snap, 'SENSEX').length === 0 && parseTrades(snap, 'NIFTY').length === 1;
+});
+test('down (PE) entry/exit pairs correctly', () => {
+  const snap = [
+    mk('zSensexBiasExit', 'BSX260618P77600', '12:00:00'),
+    mk('zSensexBiasEntry', 'BSX260618P77600', '11:45:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return t.length === 1 && t[0].side === 'PE';
+});
+
+section('parseOpenTrades — entry with no close → open at EOD');
+test('lone entry → 1 open trade (EOD exit)', () => {
+  const snap = [mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00')];
+  const o = parseOpenTrades(snap, 1, 'SENSEX');
+  return o.length === 1 && o[0].exitTime === '15:26:00' && o[0].exitType === 'eod';
+});
+test('entry then exit → no open trade', () => {
+  const snap = [
+    mk('0SensexBiasExit', 'BSX260618C77300', '11:30:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  return parseOpenTrades(snap, 1, 'SENSEX').length === 0;
+});
+test('entry then target → no open trade', () => {
+  const snap = [
+    mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  return parseOpenTrades(snap, 1, 'SENSEX').length === 0;
 });
 
 // ---------------------------------------------------------------------------

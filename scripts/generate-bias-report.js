@@ -20,6 +20,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+export { classify, parseTrades, parseOpenTrades, ALERT_NAMES as BIAS_REPORT_ALERTS };
+
 function checkMarketClosed() {
   const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
   const day = istNow.getUTCDay();
@@ -378,9 +380,12 @@ async function main() {
   console.log(`\nSaved → ${outFile}`);
 }
 
-// Allow --skip-market-check for off-hours testing
-if (!process.argv.includes('--skip-market-check')) checkMarketClosed();
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Only auto-run when invoked directly, not when imported for tests.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // Allow --skip-market-check for off-hours testing
+  if (!process.argv.includes('--skip-market-check')) checkMarketClosed();
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
