@@ -18,148 +18,103 @@ Then open **http://localhost:3000** in the browser.
 | Step | Action                                                                     |
 | ---- | -------------------------------------------------------------------------- |
 | 1    | Click **▶ Start TV** — waits until TradingView CDP is ready (green banner) |
-| 2    | Click **▶ Start** on Pattern Monitor and/or Supertrend Monitor             |
+| 2    | Click **▶ Start** on the Supertrend Monitor (this one process runs both Supertrend + Bias) |
 | 3    | Live status + logs appear in each panel                                    |
 | 4    | Click **Open ↗** to open the full control page in a new tab                |
+
+> **Note:** Supertrend and Bias are now **one merged process** (`monitors/monitor.js`) sharing a single TradingView window/tab. There is no separate Bias process to start — starting the Supertrend monitor runs both. The `/bias` page just sets the bias direction. Bias runs whenever a `bias.direction` is configured (no separate on/off).
 
 ### Pages
 
 | URL                                        | Purpose                                                                |
 | ------------------------------------------ | ---------------------------------------------------------------------- |
-| `http://localhost:3000`                    | Dashboard — overview + start/stop all processes                        |
-| `http://localhost:3000/pattern`            | Pattern Monitor — full config, log, candle feed                        |
+| `http://localhost:3000`                    | Dashboard — overview + start/stop the monitor                          |
+| `http://localhost:3000/bias`               | Bias Monitor — manual up/down direction, live status, EOD report        |
+| `http://localhost:3000/bias-reports`       | **Bias EOD Reports** — same UI as 1-min reports, bias trades            |
 | `http://localhost:3000/supertrend`         | Supertrend Monitor — ITM override, CE/PE position, generate EOD report |
 | `http://localhost:3000/test-alerts`        | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts               |
 | `http://localhost:3000/supertrend-reports` | **Trade Reports Dashboard** — consolidated P&L for both strategies     |
 | `http://localhost:3000/1min-reports`       | **1-Min Reports** — auto-generated trades, full filters & edit         |
 | `http://localhost:3000/3min-reports`       | **3-Min Reports** — manual paper trades, full filters & edit           |
 
-### Keys (still work when running from terminal directly)
+(`/pattern` redirects to `/bias` — the old pattern monitor was merged into the bias monitor.)
 
-| Key | Action                           |
-| --- | -------------------------------- |
-| `a` | Toggle active (pause/resume)     |
-| `f` | Flip bias (up ↔ down)            |
-| `r` | Apply config changes immediately |
-| `q` | Quit                             |
+### Config file: `config/monitor-config.json`
 
-### Config file: `config/pattern-monitor-config.json`
+Edit and save — changes apply on the next 60s tick (no restart needed).
 
-Edit and save — changes apply instantly (no restart needed).
+| Field                  | Example  | Notes                                                          |
+| ---------------------- | -------- | -------------------------------------------------------------- |
+| `itmOverride`          | `null`   | null = day rule, 0 = ATM, 1 = ITM-1, 2 = ITM-2 (both strats)    |
+| `supertrend.enabled`   | `true`   | Supertrend Run/Pause — **default enabled** (paused only if false) |
+| `bias.enabled`         | `false`  | Bias Run/Pause — **default paused** (runs only when `true`)     |
+| `bias.direction`       | `"up"`   | `up` = buy CE/call, `down` = buy PE/put                        |
+| `ignoreMarketHours`    | `false`  | `true` = run ticks 24/7 (off-hours testing / crypto)           |
 
-| Field             | Example          | Notes                              |
-| ----------------- | ---------------- | ---------------------------------- |
-| `bias`            | `"up"`           | `up` = buy/call, `down` = sell/put |
-| `zone`            | `[73356, 73293]` | Order doesn't matter               |
-| `target`          | `73500`          | Profit target price                |
-| `sl`              | `0`              | 0 = auto (candle extreme)          |
-| `importantLevels` | `[73600]`        | Key S/R levels                     |
-| `active`          | `true`           | false = paused                     |
+**Run/Pause per strategy** (toggle on each page): both strategies share one monitor process. **Pause** disables that strategy's alerts (deactivates all of them) and stops managing them. **Resume** re-enables the alerts and immediately updates them (next tick). Supertrend defaults to running; Bias defaults to paused (manual trading).
 
 ---
 
-## Pattern Monitor
+## Bias Monitor
 
 ### What It Does
 
-Watches candlestick patterns forming inside a configured price zone. When a reversal pattern appears, it automatically creates 3 TradingView alerts (Entry, SL, Target) on the relevant option or spot symbol.
+Keeps a manually-chosen **direction's** 3 alerts (Entry / Exit / Target) pointed at the current ITM option strike — the same way the Supertrend Monitor keeps its CE/PE alerts on the right strike, but with the direction set by **you** (UI toggle) instead of by an indicator.
 
-### Patterns Detected
+It runs **inside the merged monitor process** (`monitors/monitor.js`) — supertrend and bias share one TradingView window/tab, and their alert updates run sequentially in one 60s tick so they never collide on the single Alerts panel. There is no separate bias process. (Pattern detection from the old pattern monitor has been removed.)
 
-| Pattern           | Bias    | Condition                                              |
-| ----------------- | ------- | ------------------------------------------------------ |
-| Hammer            | up      | Long lower wick ≥ 2× body, small upper wick            |
-| Bullish Engulfing | up      | Current green candle fully engulfs previous red candle |
-| Doji              | up/down | Body ≤ 10% of total range                              |
-| Shooting Star     | down    | Long upper wick ≥ 2× body, small lower wick            |
+### Alert Names (must already exist in TradingView)
 
-### On Every Candle Close It
+6 per instrument — 3 for `up` (CE), 3 for `down` (PE). Only the today-instrument's chosen direction is active; the opposite direction's 3 alerts are **deactivated**.
 
-1. Reads last completed candle (configurable timeframe, default 3-min)
-2. Checks if candle is **inside the zone** — if not, skips
-3. In **Options Mode**: switches to the ITM option chart, reads option candles for pattern detection
-4. Detects pattern on candle (option candle in options mode, spot candle otherwise)
-5. If pattern found → creates 3 alerts (Entry, SL, Target) and logs `[SIGNAL]`
-6. Watches 15-min candles for **liquidity grab** near key levels → auto-flips bias
-7. Checks if TradeSL or TradeTarget fired → cleans up all 3 alerts on exit
-8. Trails SL to breakeven once price reaches entry + trail points
+| Instrument | Direction | Entry             | Exit             | Target             |
+| ---------- | --------- | ----------------- | ---------------- | ------------------ |
+| NIFTY      | up        | `0NiftyBiasEntry` | `0NiftyBiasExit` | `0NiftyBiasTarget` |
+| NIFTY      | down      | `zNiftyBiasEntry` | `zNiftyBiasExit` | `zNiftyBiasTarget` |
+| SENSEX     | up        | `0SensexBiasEntry`| `0SensexBiasExit`| `0SensexBiasTarget`|
+| SENSEX     | down      | `zSensexBiasEntry`| `zSensexBiasExit`| `zSensexBiasTarget`|
 
-### Alerts Created on Signal
+(`0` prefix sorts up-alerts to the top of the Alerts panel; `z` sorts down-alerts to the bottom.)
 
-| Name          | Condition    | Level                                | Fires |
-| ------------- | ------------ | ------------------------------------ | ----- |
-| `TradeEntry`  | crosses up   | Candle HIGH                          | Once  |
-| `TradeSL`     | crosses down | Candle LOW (or config `sl`)          | Once  |
-| `TradeTarget` | crosses up   | Config `target` (or auto swing high) | Once  |
+### Every 60s tick, the bias block
 
-### Options Mode
+1. Reads `bias.direction` (up/down) from `config/monitor-config.json` (bias runs whenever a direction is set)
+2. Derives the bias position (open/closed) from the Alerts **Log** tab — entry fired = OPEN, exit/target fired = CLOSED
+3. Picks the chosen 3 alerts by direction; strike = up → CE (ATM − depth·step), down → PE (ATM + depth·step) — same ATM/ITM-depth/day rule as supertrend
+4. **No open trade** → updates all 3 chosen alerts via `alert_update`: **symbol → ITM strike AND price → 0**
+5. **Deactivates** the opposite direction's 3 alerts (re-activates the chosen 3 only on a flip-back, when they may have been disabled)
+6. **Trade OPEN** → does **not** move symbols; on the entry fire it sets the **entry price → 0 and disables the entry** alert; leaves **exit + target untouched**; re-enables the entry when the trade closes
+7. Shares the supertrend ATM cooldown; a direction flip / just-opened / just-closed / retry bypasses the cooldown
 
-When `optionsMode: true` in config (and no custom `symbol`):
+### Direction & Deferred Flip
 
-- Spot enters zone → monitor switches chart to the **ITM option** (CE for bias=up, PE for bias=down)
-- Pattern detection runs on **option candles**, not spot candles
-- Alerts are created on the option symbol (e.g. `NIFTY260603C23300`)
-- ITM depth: Fri = ITM-1, Mon/Tue = ITM-2, SENSEX = ITM-2
-- Target 0 = auto (uses swing high from recent option bars)
+- Set direction with the `/bias` page toggle (or edit `bias.direction` in config).
+- If you flip while a trade is **OPEN**, the flip is **deferred** — logged as "flip pending" — and applied automatically once the position closes, so a running trade never loses its exit/target alert.
 
-### Liquidity Grab & Bias Auto-Flip
+### EOD Report (`/bias-reports`)
 
-Monitors 15-min candles for a wick that reaches/exceeds a key level but closes back:
+Same as the supertrend EOD report, for bias trades. Click **↧ EOD Report** on the `/bias` page (or `npm run report:bias` / `node scripts/generate-bias-report.js [YYYY-MM-DD]`).
 
-- **bias=up**: wick above a resistance level + Shooting Star or Doji + closes below level → flip to `down`
-- **bias=down**: wick below a support level + Hammer or Doji + closes above level → flip to `up`
-
-Key levels used = last 10 days H/L (auto-fetched daily) + `importantLevels` from config.
-
-### Trail SL to Breakeven
-
-When price reaches `entry + trailToCostPoints`, TradeSL is moved to entry (breakeven):
-
-- NIFTY default: 15 pts
-- SENSEX default: 35 pts
-- Crypto/custom: disabled (0)
-- Set `trailToCostPoints: 0` in config to disable
-
-### Chart Drawings
-
-The monitor draws directly on TradingView:
-
-- **Zone** — box between zone top and bottom (blue = up bias, red = down bias)
-- **Important levels** — horizontal lines at each `importantLevels` price
-- **Nearest day level** — closest resistance (above price) and support (below price) from last 10 days
-- Drawings persist across restarts via `logs/drawn-ids.json`
-- Lines can be **dragged** on chart — drag sync writes new price back to config automatically
-
-### Config (`config/pattern-monitor-config.json`)
-
-| Field               | Example          | Notes                                                    |
-| ------------------- | ---------------- | -------------------------------------------------------- |
-| `bias`              | `"up"`           | `up` = buy CE/call, `down` = sell PE/put                 |
-| `zone`              | `[23356, 23293]` | Entry zone — order doesn't matter                        |
-| `target`            | `23500`          | Profit target price (0 = auto in options mode)           |
-| `sl`                | `0`              | Stop loss price (0 = auto candle extreme)                |
-| `importantLevels`   | `[23600]`        | Key S/R levels for liquidity grab detection              |
-| `active`            | `true`           | false = paused (no pattern detection)                    |
-| `candleTimeframe`   | `3`              | Candle size: 1, 3, 5, or 15 min                          |
-| `optionsMode`       | `true`           | Watch ITM option chart for patterns                      |
-| `itmOverride`       | `null`           | null = auto day rule, 0 = ATM, 1 = ITM-1, 2 = ITM-2      |
-| `trailToCostPoints` | `15`             | Points above entry to trail SL to breakeven (0 = off)    |
-| `ignoreMarketHours` | `false`          | true = run 24/7 (for crypto)                             |
-| `symbol`            | `"BTCUSD"`       | Override instrument (omit for NIFTY/SENSEX auto routing) |
-
-Config changes apply on the next candle close — no restart needed.
+- Parses bias **entry → (exit OR target)** pairs from the alert log, maps up→CE / down→PE.
+- Fetches each option's 1m prices from TradingView, computes entry/exit/SL/target the same way as supertrend.
+- `exitType` records whether the trade closed on `exit` (SL/signal) or `target`; notes auto-classify **TARGET HIT / SL HIT / price reach upto X / EXIT SIGNAL**.
+- Saves to `logs/supertrend/bias/daily-trades-YYYY-MM-DD.json` (same schema as supertrend).
+- View at **`/bias-reports`** — the same reports UI as `/1min-reports`, pointed at bias data (month tabs, filters, P&L, inline edit, Excel export).
 
 ### What It Does NOT Do
 
-- Does not manage Supertrend alerts — that is the Supertrend Monitor's job
-- Does not place orders — only creates TradingView alerts
-- Does not detect bearish patterns (Shooting Star, Bearish Engulfing) for entries — bias determines direction
+- Does not detect candlestick patterns (removed) — direction is manual
+- Does not place orders — only manages TradingView alerts
+- Does not create alerts — the 12 bias alerts must already exist
+- Does not yet draw previous-day H/L levels (planned — phase 2)
 
 ---
 
 ## Supertrend Alert Test (`/test-alerts`)
 
 A dedicated UI page for verifying that all 8 supertrend alerts exist in TradingView and can be updated correctly. Use this after TradingView restarts, after renaming alerts, or when debugging alert update failures.
+
+The page also has a **BIAS ALERTS** section (NIFTY + SENSEX) that tests the 6 bias alerts per instrument (UP=CE entry/exit/target, DOWN=PE entry/exit/target) via `/api/test/bias` — same flow, updating each to its ITM strike at price 0.
 
 ### How to access
 
@@ -353,7 +308,18 @@ When the trade exits, alerts are synced to current ITM strike immediately.
 
 ### Position State
 
-Stored in `config/position.json`. Updated automatically from alert history each tick.
+Stored in `config/position.json`, **grouped by strategy** (one file, two strategies kept separate). Updated automatically from alert history each tick:
+
+```json
+{
+  "date": "2026-06-18",
+  "shared":     { "lastATM", "lastATMUpdateTime", "lastInstrument", "lastITMDepth" },
+  "supertrend": { "enabled", "CE", "PE", "lastCEStrike", "lastPEStrike", "logSnapshot" },
+  "bias":       { "enabled", "position", "direction", "lastStrike", "activatedDir", "entryParked", "logSnapshot" }
+}
+```
+
+All readers (UI pages, EOD report scripts) flatten this with a fallback to the legacy flat format.
 
 **Manual override** via Supertrend UI page or CLI:
 
@@ -367,7 +333,7 @@ node monitors/monitor.js --itm 2    ← force ITM-2
 
 ### Dedicated Chart Tab
 
-The monitor claims one TradingView chart tab on first start, saves ID to `logs/supertrend-tab.json`, and reuses it on restart. If the tab is gone (TV restarted), it scans live tabs and claims the first one not already owned by the pattern monitor.
+The merged monitor (supertrend + bias) claims one TradingView chart tab on first start, saves ID to `logs/supertrend-tab.json`, and reuses it on restart. If the tab is gone (TV restarted), it scans live tabs and claims the first available chart tab.
 
 ---
 

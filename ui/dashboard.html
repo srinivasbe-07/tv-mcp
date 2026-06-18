@@ -564,9 +564,22 @@
         <button class="hdr-btn btn-green" id="btn-tv-toggle" onclick="tvStart()">▶ Start TV</button>
       </div>
 
+      <div class="divider"></div>
+
+      <!-- Monitor (one process — runs Supertrend + Bias) -->
+      <div class="tv-group">
+        <div class="tv-label">MONITOR</div>
+        <div class="status-dot dot-stopped" id="mon-dot"></div>
+        <div class="tv-stat c-gray" id="mon-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-st-toggle" disabled>▶ Start</button>
+        <button class="hdr-btn btn-ghost" id="btn-st-restart" style="display: none" disabled>
+          ↺ Restart
+        </button>
+      </div>
+
       <div class="spacer"></div>
-      <button class="hdr-btn btn-ghost" onclick="window.open('/pattern', '_blank')">
-        Pattern Monitor ↗
+      <button class="hdr-btn btn-ghost" onclick="window.open('/bias', '_blank')">
+        Bias Monitor ↗
       </button>
       <button class="hdr-btn btn-ghost" onclick="window.open('/supertrend', '_blank')">
         Supertrend Monitor ↗
@@ -580,100 +593,47 @@
 
     <!-- MAIN -->
     <div class="main">
-      <!-- ── PATTERN MONITOR ── -->
+      <!-- ── BIAS MONITOR ── -->
       <div class="panel">
         <div class="panel-hdr">
-          <div class="panel-title">Pattern Monitor</div>
-          <div class="chip chip-stopped" id="pat-chip">○ Stopped</div>
+          <div class="panel-title">Bias Monitor</div>
+          <div class="chip chip-stopped" id="bias-chip">○ Off</div>
           <div class="panel-actions">
-            <button class="act-btn act-start" id="btn-mon-toggle" disabled>▶ Start</button>
-            <button
-              class="act-btn act-restart"
-              id="btn-mon-restart"
-              onclick="confirm2('Restart Pattern Monitor?', monRestart)"
-              disabled
-              style="display: none"
-            >
-              ↺ Restart
-            </button>
-            <button class="act-btn act-open" onclick="window.open('/pattern', '_blank')">
+            <button class="act-btn act-open" onclick="window.open('/bias', '_blank')">
               Open ↗
             </button>
           </div>
         </div>
 
         <div class="stats-card">
-          <div class="stat-section">Monitor State</div>
+          <div class="stat-section">Bias State</div>
 
           <div class="stat-row">
-            <div class="stat-key">Bias</div>
-            <div class="stat-val" id="pat-bias">
+            <div class="stat-key">Direction</div>
+            <div class="stat-val" id="bias-dir">
               <span class="bias-pill bias-up">▲ BUY / CALL</span>
             </div>
           </div>
           <div class="stat-row">
-            <div class="stat-key">Price</div>
-            <div class="stat-val v-white" id="pat-price">—</div>
-            <div class="stat-sub" id="pat-price-sub">waiting...</div>
+            <div class="stat-key">Position</div>
+            <div class="stat-val v-gray" id="bias-pos">—</div>
           </div>
 
-          <div class="stat-section">Zone &amp; Levels</div>
-
-          <div class="stat-row">
-            <div class="stat-key">Zone</div>
-            <div class="stat-val v-orange" id="pat-zone">—</div>
-          </div>
-          <div class="stat-row">
-            <div class="stat-key">Target</div>
-            <div class="stat-val v-green" id="pat-target">—</div>
-          </div>
-          <div class="stat-row">
-            <div class="stat-key">Stop Loss</div>
-            <div class="stat-val v-gray" id="pat-sl">—</div>
-          </div>
-
-          <div class="stat-section">Day Levels</div>
+          <div class="stat-section">Strike</div>
 
           <div class="stat-row">
-            <div class="stat-key">Resistance</div>
-            <div class="stat-val v-red" id="pat-resist">—</div>
-            <div class="stat-sub">nearest high above</div>
+            <div class="stat-key">Bias Strike</div>
+            <div class="stat-val v-white" id="bias-strike">—</div>
           </div>
           <div class="stat-row">
-            <div class="stat-key">Support</div>
-            <div class="stat-val v-green" id="pat-support">—</div>
-            <div class="stat-sub">nearest low below</div>
-          </div>
-
-          <div class="stat-section">Options</div>
-
-          <div class="stat-row">
-            <div class="stat-key">Mode</div>
-            <div class="stat-val" id="pat-opt-mode">
-              <span class="pos-pill pos-closed">OFF</span>
-            </div>
-          </div>
-          <div class="pos-row" id="pat-opt-row">
-            <div>
-              <span class="pos-label" id="pat-opt-side">CE</span>
-              <span class="pos-sym" id="pat-opt-sym">—</span>
-            </div>
-            <span class="pos-pill pos-closed" id="pat-opt-status">NO TRADE</span>
-          </div>
-
-          <div class="stat-section">Timing</div>
-
-          <div class="stat-row">
-            <div class="stat-key">Last Tick</div>
-            <div class="stat-val v-yellow" id="pat-tick">—</div>
-            <div class="stat-sub" id="pat-next">—</div>
+            <div class="stat-key">ITM Depth</div>
+            <div class="stat-val v-yellow" id="bias-itm">—</div>
           </div>
         </div>
 
-        <!-- Pattern log — visible only when running -->
-        <div class="log-panel" id="pat-log-panel">
-          <div class="log-hdr" id="pat-log-hdr">Live Log</div>
-          <div class="log-body" id="pat-log-body"></div>
+        <div class="stat-sub" style="padding: 10px 14px; color: #6b7280; line-height: 1.5">
+          Bias runs inside the Supertrend monitor process — start it from the Supertrend panel. Set
+          direction on the <a href="/bias" style="color: #60a5fa">Bias page</a>.
         </div>
       </div>
 
@@ -683,16 +643,6 @@
           <div class="panel-title">Supertrend Monitor</div>
           <div class="chip chip-stopped" id="st-chip">○ Stopped</div>
           <div class="panel-actions">
-            <button class="act-btn act-start" id="btn-st-toggle" disabled>▶ Start</button>
-            <button
-              class="act-btn act-restart"
-              id="btn-st-restart"
-              onclick="confirm2('Restart Supertrend Monitor?', stRestart)"
-              disabled
-              style="display: none"
-            >
-              ↺ Restart
-            </button>
             <button class="act-btn act-open" onclick="window.open('/supertrend', '_blank')">
               Open ↗
             </button>
@@ -791,16 +741,6 @@
       async function tvStop() {
         await fetch('/api/tv/stop', { method: 'POST' });
       }
-      async function monStart() {
-        document.getElementById('btn-mon-toggle').disabled = true;
-        await fetch('/api/monitor/start', { method: 'POST' });
-      }
-      async function monStop() {
-        await fetch('/api/monitor/stop', { method: 'POST' });
-      }
-      async function monRestart() {
-        await fetch('/api/monitor/restart', { method: 'POST' });
-      }
       async function stStart() {
         document.getElementById('btn-st-toggle').disabled = true;
         await fetch('/api/st/start', { method: 'POST' });
@@ -856,57 +796,31 @@
           banner.className = 'tv-banner';
         }
 
-        const tvActive = s.tv === 'running' || s.tv === 'starting';
-
-        // Pattern Monitor — single toggle button
-        const btnMonT = document.getElementById('btn-mon-toggle');
-        const btnMonR = document.getElementById('btn-mon-restart');
-        const patLogPnl = document.getElementById('pat-log-panel');
-        const patLogHdr = document.getElementById('pat-log-hdr');
-        if (s.monitor === 'running') {
-          btnMonT.textContent = '■ Stop';
-          btnMonT.className = 'act-btn act-stop';
-          btnMonT.onclick = () => confirm2('Stop Pattern Monitor?', monStop);
-          btnMonT.disabled = false;
-          btnMonR.style.display = '';
-          btnMonR.disabled = false;
-          patLogPnl.classList.add('visible');
-          patLogHdr.textContent = 'Pattern Monitor — Live Log';
-          if (document.getElementById('pat-chip').textContent === '○ Stopped') setPatChip('active');
-        } else {
-          btnMonT.textContent = '▶ Start';
-          btnMonT.className = 'act-btn act-start';
-          btnMonT.onclick = monStart;
-          btnMonT.disabled = !tvRunning;
-          btnMonR.style.display = 'none';
-          if (tvActive) {
-            patLogPnl.classList.add('visible');
-            patLogHdr.textContent = 'TradingView — Startup Log';
-          } else {
-            patLogPnl.classList.remove('visible');
-          }
-          setPatChip('stopped');
-        }
-
-        // Supertrend Monitor — single toggle button
+        // Monitor (one process — Supertrend + Bias) — header Start/Stop/Restart
         const btnStT = document.getElementById('btn-st-toggle');
         const btnStR = document.getElementById('btn-st-restart');
+        const monDot = document.getElementById('mon-dot');
+        const monStat = document.getElementById('mon-status');
         const stLogPnl = document.getElementById('st-log-panel');
         const stLogHdr = document.getElementById('st-log-hdr');
         stMonRunning = s.st === 'running';
+        monDot.className = 'status-dot dot-' + (stMonRunning ? 'running' : 'stopped');
+        monStat.textContent = stMonRunning ? 'Running' : 'Stopped';
+        monStat.className = 'tv-stat ' + (stMonRunning ? 'c-green' : 'c-gray');
         if (stMonRunning) {
           btnStT.textContent = '■ Stop';
-          btnStT.className = 'act-btn act-stop';
-          btnStT.onclick = () => confirm2('Stop Supertrend Monitor?', stStop);
+          btnStT.className = 'hdr-btn btn-red';
+          btnStT.onclick = () => confirm2('Stop the monitor (Supertrend + Bias)?', stStop);
           btnStT.disabled = false;
           btnStR.style.display = '';
           btnStR.disabled = false;
+          btnStR.onclick = () => confirm2('Restart the monitor (Supertrend + Bias)?', stRestart);
           stLogPnl.classList.add('visible');
-          stLogHdr.textContent = 'Supertrend Monitor — Live Log';
+          stLogHdr.textContent = 'Monitor — Live Log';
           if (document.getElementById('st-chip').textContent === '○ Stopped') setStChip('running');
         } else {
           btnStT.textContent = '▶ Start';
-          btnStT.className = 'act-btn act-start';
+          btnStT.className = 'hdr-btn btn-green';
           btnStT.onclick = stStart;
           btnStT.disabled = !tvRunning;
           btnStR.style.display = 'none';
@@ -918,21 +832,6 @@
           }
           setStChip('stopped');
         }
-      }
-
-      function setPatChip(state) {
-        const el = document.getElementById('pat-chip');
-        const map = {
-          active: ['chip-active', '● Active'],
-          inzone: ['chip-inzone', '📍 In Zone'],
-          signal: ['chip-signal', '⚡ Signal'],
-          trade: ['chip-trade', '🔵 Trade Open'],
-          paused: ['chip-paused', '⏸ Paused'],
-          stopped: ['chip-stopped', '○ Stopped'],
-        };
-        const [cls, txt] = map[state] || map.stopped;
-        el.className = `chip ${cls}`;
-        el.textContent = txt;
       }
 
       function setStChip(state) {
@@ -947,35 +846,54 @@
       }
 
       // ── Load config ───────────────────────────────────────────────────
-      function applyPatternConfig(c) {
-        renderBias(c.bias || 'up');
-        if (c.zone?.length === 2) {
-          const top = Math.max(...c.zone),
-            bot = Math.min(...c.zone);
-          document.getElementById('pat-zone').textContent = `${fmt(bot)} – ${fmt(top)}`;
-        }
-        document.getElementById('pat-target').textContent = c.target ? fmt(c.target) : '—';
-        document.getElementById('pat-sl').textContent = c.sl ? fmt(c.sl) : 'auto';
-        const optMode = document.getElementById('pat-opt-mode');
-        if (c.optionsMode) {
-          optMode.innerHTML = '<span class="pos-pill pos-open">● ON</span>';
-          document.getElementById('pat-opt-side').textContent = c.bias === 'down' ? 'PE' : 'CE';
+      function applyBiasConfig(c) {
+        const dir = c.direction || 'up';
+        renderBias(dir);
+        setBiasChip(dir, c.enabled === true);
+      }
+
+      async function loadBiasConfig() {
+        try {
+          const c = await fetch('/api/bias/config').then((r) => r.json());
+          applyBiasConfig(c);
+        } catch (_) {}
+      }
+
+      function setBiasChip(dir, enabled) {
+        const el = document.getElementById('bias-chip');
+        if (!enabled) {
+          el.className = 'chip chip-stopped';
+          el.textContent = '⏸ Paused';
         } else {
-          optMode.innerHTML = '<span class="pos-pill pos-closed">OFF</span>';
+          el.className = 'chip chip-running';
+          el.textContent = dir === 'down' ? '▼ DOWN' : '▲ UP';
         }
       }
 
-      async function loadPatternConfig() {
-        try {
-          const c = await fetch('/api/config').then((r) => r.json());
-          applyPatternConfig(c);
-        } catch (_) {}
+      // position.json is grouped by strategy { shared, supertrend, bias }.
+      // Flatten to the shape the render code expects (tolerant of legacy flat files).
+      function flatPos(p) {
+        p = p || {};
+        const sh = p.shared || {},
+          st = p.supertrend || {},
+          bi = p.bias || {};
+        return {
+          CE: st.CE ?? p.CE ?? 'closed',
+          PE: st.PE ?? p.PE ?? 'closed',
+          lastATM: sh.lastATM ?? p.lastATM,
+          lastInstrument: sh.lastInstrument ?? p.lastInstrument,
+          lastITMDepth: sh.lastITMDepth ?? p.lastITMDepth,
+          biasDirection: bi.direction ?? p.biasDirection,
+          biasPosition: bi.position ?? p.biasPosition ?? 'closed',
+          lastBiasStrike: bi.lastStrike ?? p.lastBiasStrike,
+        };
       }
 
       async function loadSTPosition() {
         try {
-          const p = await fetch('/api/st/position').then((r) => r.json());
+          const p = flatPos(await fetch('/api/st/position').then((r) => r.json()));
           renderSTPosition(p.CE || 'closed', p.PE || 'closed');
+          applyBiasPosition(p);
           if (p.lastATM) document.getElementById('st-atm').textContent = fmt(p.lastATM);
           if (p.lastInstrument) {
             document.getElementById('st-instr').textContent = p.lastInstrument;
@@ -988,7 +906,7 @@
       }
 
       function renderBias(b) {
-        const el = document.getElementById('pat-bias');
+        const el = document.getElementById('bias-dir');
         if (b === 'down') el.innerHTML = '<span class="bias-pill bias-down">▼ SELL / PUT</span>';
         else el.innerHTML = '<span class="bias-pill bias-up">▲ BUY / CALL</span>';
       }
@@ -1007,15 +925,10 @@
       }
 
       // ── Countdown timers ──────────────────────────────────────────────
-      let patNextSecs = null;
       let stLastTickMs = null;
       const ST_POLL_MS = 60000;
 
       setInterval(() => {
-        if (patNextSecs !== null && patNextSecs > 0) {
-          patNextSecs--;
-          document.getElementById('pat-next').textContent = `next in ${patNextSecs}s`;
-        }
         if (stLastTickMs !== null) {
           const elapsed = Math.floor((Date.now() - stLastTickMs) / 1000);
           const remaining = Math.max(0, Math.floor(ST_POLL_MS / 1000) - elapsed);
@@ -1062,91 +975,29 @@
         bodyEl.scrollTop = bodyEl.scrollHeight;
       }
 
-      // ── Pattern SSE ───────────────────────────────────────────────────
-      const patLogBody = document.getElementById('pat-log-body');
-      let patESConnected = false;
+      // ── Unified SSE (status + position + supertrend log) ──────────────
       const patES = new EventSource('/api/stream');
-      patES.addEventListener('open', () => {
-        patESConnected = true;
-      });
       patES.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
-      patES.addEventListener('config', (e) => applyPatternConfig(JSON.parse(e.data)));
-      patES.addEventListener('log', (e) => {
-        const line = JSON.parse(e.data).line;
-        appendLog(patLogBody, line);
-        parsePatternLine(line);
-      });
-      patES.onerror = () => {
-        patESConnected = false;
-      };
 
-      function parsePatternLine(line) {
-        // Day levels: R=74223  S=73126
-        const rl = line.match(/R=([\d.]+)/);
-        const sl = line.match(/\bS=([\d.]+)/);
-        if (rl) document.getElementById('pat-resist').textContent = fmt(rl[1]);
-        if (sl) document.getElementById('pat-support').textContent = fmt(sl[1]);
-
-        // Candle close price: C:XXXXX
-        const pr = line.match(/\bC:([\d.]+)/);
-        if (pr) {
-          document.getElementById('pat-price').textContent = fmt(pr[1]);
-          const sub = line.includes('in zone')
-            ? '📍 in zone'
-            : line.includes('outside')
-              ? 'outside zone'
-              : 'last candle';
-          document.getElementById('pat-price-sub').textContent = sub;
-        }
-
-        // Status chip
-        if (line.includes('[LONG]') || line.includes('[SHORT]')) setPatChip('trade');
-        else if (line.includes('[SIGNAL]')) setPatChip('signal');
-        else if (line.includes('in zone')) setPatChip('inzone');
-        else if (line.includes('[TARGET HIT]') || line.includes('[SL HIT]')) {
-          setPatChip('active');
-          document.getElementById('pat-opt-status').className = 'pos-pill pos-closed';
-          document.getElementById('pat-opt-status').textContent = 'NO TRADE';
-        } else if (
-          line.includes('Paused') ||
-          line.includes('[ZONE BREAK]') ||
-          line.includes('[FLIP]')
-        )
-          setPatChip('paused');
-        else if (line.includes('outside zone') || pr) setPatChip('active');
-
-        // Option symbol: "Options: will watch NIFTY260603C23550" or "Options mode: NIFTY260603C23550"
-        const optM = line.match(/Options[^:]*:\s+(?:will watch\s+)?([A-Z0-9]+)\s/);
-        if (optM) document.getElementById('pat-opt-sym').textContent = optM[1];
-
-        // Trade open
-        if (line.includes('[LONG]') || line.includes('[SHORT]')) {
-          document.getElementById('pat-opt-status').className = 'pos-pill pos-trade';
-          document.getElementById('pat-opt-status').textContent = 'TRADE OPEN';
-        }
-
-        // Bias from FLIP or MANUAL FLIP
-        const biasM = line.match(/Bias\s*→\s*(UP|DOWN)/i) || line.match(/bias.*?:\s*(up|down)/i);
-        if (biasM) renderBias(biasM[1].toLowerCase());
-
-        // Tick time
-        const tm = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-        if (tm && !line.includes('[UI]') && !line.includes('[TV]')) {
-          document.getElementById('pat-tick').textContent = tm[1];
-        }
-
-        // Next tick countdown
-        const nx = line.match(/Next tick in (\d+)s/);
-        if (nx) {
-          patNextSecs = parseInt(nx[1]);
-        }
+      function applyBiasPosition(p) {
+        if (p.biasDirection) renderBias(p.biasDirection);
+        const pos = p.biasPosition || 'closed';
+        const posEl = document.getElementById('bias-pos');
+        posEl.textContent = pos.toUpperCase();
+        posEl.className = 'stat-val ' + (pos === 'open' ? 'v-yellow' : 'v-gray');
+        document.getElementById('bias-strike').textContent = p.lastBiasStrike
+          ? fmt(p.lastBiasStrike)
+          : '—';
+        document.getElementById('bias-itm').textContent =
+          p.lastITMDepth != null ? `ITM-${p.lastITMDepth}` : '—';
       }
 
       // ── Supertrend events via unified patES ───────────────────────────
       const stLogBody = document.getElementById('st-log-body');
       patES.addEventListener('position', (e) => {
-        const pos = JSON.parse(e.data);
+        const pos = flatPos(JSON.parse(e.data));
         renderSTPosition(pos.CE || 'closed', pos.PE || 'closed');
+        applyBiasPosition(pos);
         if (pos.lastATM) document.getElementById('st-atm').textContent = fmt(pos.lastATM);
         if (pos.lastInstrument) {
           document.getElementById('st-instr').textContent = pos.lastInstrument;
@@ -1209,7 +1060,7 @@
       }
 
       // ── Init ──────────────────────────────────────────────────────────
-      loadPatternConfig();
+      loadBiasConfig();
       loadSTPosition();
       fetch('/api/status')
         .then((r) => r.json())

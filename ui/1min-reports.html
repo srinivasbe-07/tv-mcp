@@ -676,31 +676,170 @@
         background: #2a2d3a;
         border-radius: 2px;
       }
-      .shot-gallery { display:flex; flex-wrap:wrap; gap:8px; padding:6px 0 2px; }
-      .shot-thumb { position:relative; cursor:pointer; border:1px solid #1e293b; border-radius:6px; overflow:hidden; transition:border-color 0.15s; }
-      .shot-thumb:hover { border-color:#4b5563; }
-      .shot-thumb img { display:block; width:220px; height:130px; object-fit:cover; background:#0f172a; }
-      .shot-thumb .shot-label { position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.65); color:#94a3b8; font-size:10px; padding:2px 6px; text-align:center; }
-      .shot-thumb .shot-del { position:absolute; top:4px; right:4px; width:22px; height:22px; border:none; border-radius:4px; background:rgba(0,0,0,0.6); color:#f87171; font-size:14px; line-height:1; cursor:pointer; opacity:0; transition:opacity 0.15s, background 0.15s; }
-      .shot-thumb:hover .shot-del { opacity:1; }
-      .shot-thumb .shot-del:hover { background:#dc2626; color:#fff; }
-      .shot-thumb .shot-open { position:absolute; top:4px; right:30px; width:22px; height:22px; border:none; border-radius:4px; background:rgba(0,0,0,0.6); color:#60a5fa; font-size:13px; line-height:1; cursor:pointer; opacity:0; transition:opacity 0.15s, background 0.15s; }
-      .shot-thumb:hover .shot-open { opacity:1; }
-      .shot-thumb .shot-open:hover { background:#2563eb; color:#fff; }
-      #snap-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:1000; cursor:not-allowed; flex-direction:column; align-items:center; justify-content:center; gap:22px; }
-      #snap-overlay.active { display:flex; }
-      .snap-spinner { position:relative; width:56px; height:56px; }
-      .snap-spinner span { position:absolute; left:50%; top:50%; width:5px; height:16px; margin-left:-2.5px; margin-top:-8px; background:#ccc; border-radius:3px; transform-origin:center 28px; animation:snap-fade 0.9s linear infinite; }
-      .snap-spinner span:nth-child(1) { transform:rotate(0deg);   animation-delay:-0.8s; }
-      .snap-spinner span:nth-child(2) { transform:rotate(45deg);  animation-delay:-0.7s; }
-      .snap-spinner span:nth-child(3) { transform:rotate(90deg);  animation-delay:-0.6s; }
-      .snap-spinner span:nth-child(4) { transform:rotate(135deg); animation-delay:-0.5s; }
-      .snap-spinner span:nth-child(5) { transform:rotate(180deg); animation-delay:-0.4s; }
-      .snap-spinner span:nth-child(6) { transform:rotate(225deg); animation-delay:-0.3s; }
-      .snap-spinner span:nth-child(7) { transform:rotate(270deg); animation-delay:-0.2s; }
-      .snap-spinner span:nth-child(8) { transform:rotate(315deg); animation-delay:-0.1s; }
-      @keyframes snap-fade { 0%{opacity:1} 100%{opacity:0.12} }
-      #snap-status { color:#d1d5db; font-size:14px; font-family:'Segoe UI',system-ui,sans-serif; letter-spacing:0.3px; }
+      .shot-gallery {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 6px 0 2px;
+      }
+      .shot-thumb {
+        position: relative;
+        cursor: pointer;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        overflow: hidden;
+        transition: border-color 0.15s;
+      }
+      .shot-thumb:hover {
+        border-color: #4b5563;
+      }
+      .shot-thumb img {
+        display: block;
+        width: 220px;
+        height: 130px;
+        object-fit: cover;
+        background: #0f172a;
+      }
+      .shot-thumb .shot-label {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.65);
+        color: #94a3b8;
+        font-size: 10px;
+        padding: 2px 6px;
+        text-align: center;
+      }
+      .shot-thumb .shot-del {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 22px;
+        height: 22px;
+        border: none;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #f87171;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0;
+        transition:
+          opacity 0.15s,
+          background 0.15s;
+      }
+      .shot-thumb:hover .shot-del {
+        opacity: 1;
+      }
+      .shot-thumb .shot-del:hover {
+        background: #dc2626;
+        color: #fff;
+      }
+      .shot-thumb .shot-open {
+        position: absolute;
+        top: 4px;
+        right: 30px;
+        width: 22px;
+        height: 22px;
+        border: none;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #60a5fa;
+        font-size: 13px;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0;
+        transition:
+          opacity 0.15s,
+          background 0.15s;
+      }
+      .shot-thumb:hover .shot-open {
+        opacity: 1;
+      }
+      .shot-thumb .shot-open:hover {
+        background: #2563eb;
+        color: #fff;
+      }
+      #snap-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.78);
+        z-index: 1000;
+        cursor: not-allowed;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+      }
+      #snap-overlay.active {
+        display: flex;
+      }
+      .snap-spinner {
+        position: relative;
+        width: 56px;
+        height: 56px;
+      }
+      .snap-spinner span {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 5px;
+        height: 16px;
+        margin-left: -2.5px;
+        margin-top: -8px;
+        background: #ccc;
+        border-radius: 3px;
+        transform-origin: center 28px;
+        animation: snap-fade 0.9s linear infinite;
+      }
+      .snap-spinner span:nth-child(1) {
+        transform: rotate(0deg);
+        animation-delay: -0.8s;
+      }
+      .snap-spinner span:nth-child(2) {
+        transform: rotate(45deg);
+        animation-delay: -0.7s;
+      }
+      .snap-spinner span:nth-child(3) {
+        transform: rotate(90deg);
+        animation-delay: -0.6s;
+      }
+      .snap-spinner span:nth-child(4) {
+        transform: rotate(135deg);
+        animation-delay: -0.5s;
+      }
+      .snap-spinner span:nth-child(5) {
+        transform: rotate(180deg);
+        animation-delay: -0.4s;
+      }
+      .snap-spinner span:nth-child(6) {
+        transform: rotate(225deg);
+        animation-delay: -0.3s;
+      }
+      .snap-spinner span:nth-child(7) {
+        transform: rotate(270deg);
+        animation-delay: -0.2s;
+      }
+      .snap-spinner span:nth-child(8) {
+        transform: rotate(315deg);
+        animation-delay: -0.1s;
+      }
+      @keyframes snap-fade {
+        0% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.12;
+        }
+      }
+      #snap-status {
+        color: #d1d5db;
+        font-size: 14px;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        letter-spacing: 0.3px;
+      }
     </style>
   </head>
   <body>
@@ -718,8 +857,23 @@
     <div id="save-bar" style="display: none"></div>
 
     <script>
-      const DATA_URL = '/api/report/data';
-      const SAVE_URL = '/api/report/save';
+      // Served at both /1min-reports (supertrend) and /bias-reports (bias).
+      // Pick the data source from the URL so the same UI renders either dataset.
+      const IS_BIAS = location.pathname.startsWith('/bias-reports');
+      const DATA_URL = IS_BIAS ? '/api/bias-report/data' : '/api/report/data';
+      const SAVE_URL = IS_BIAS ? '/api/bias-report/save' : '/api/report/save';
+      if (IS_BIAS) {
+        document.title = 'Bias Reports';
+        document.addEventListener('DOMContentLoaded', () => {
+          const h = document.querySelector('h1, .title, header');
+          if (h) {
+            const b = document.createElement('span');
+            b.textContent = ' · BIAS';
+            b.style.cssText = 'color:#34d399;font-weight:800;';
+            h.appendChild(b);
+          }
+        });
+      }
 
       const LOT_SIZES = { NIFTY: 65, SENSEX: 20 };
       const SL_PTS = { NIFTY: 15, SENSEX: 35 };
@@ -1225,8 +1379,7 @@
               pbVals !== null
                 ? Math.round((hasPBEntry ? pbVals.pbTgtPts : (t.tgtPts ?? 0)) * tq)
                 : null;
-            pbNSL =
-              pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
+            pbNSL = pbVals !== null ? Math.round((pbVals.pbExitNSL - effectivePBEntry) * tq) : null;
             pbTgtPtsDisplay = pbVals ? pbVals.pbTgtPts : null;
           }
           if (pbSL !== null) totPBSL += pbSL;
@@ -1599,7 +1752,8 @@
         const wrap = document.createElement('div');
         wrap.className = 'shot-thumb';
         wrap.title = `Click to open full size — ${filename}`;
-        wrap.onclick = () => window.open(`/api/screenshots/${instr}/${dateStr}/${filename}`, '_blank');
+        wrap.onclick = () =>
+          window.open(`/api/screenshots/${instr}/${dateStr}/${filename}`, '_blank');
         const label = filename.replace(/\.png$/, '');
         wrap.innerHTML = `<img src="/api/screenshots/${instr}/${dateStr}/${filename}" loading="lazy" alt="${label}"><div class="shot-label">${label}</div><button class="shot-open" title="Open folder in Explorer">&#128193;</button><button class="shot-del" title="Delete this snapshot">&times;</button>`;
         wrap.querySelector('.shot-del').onclick = (e) => {
@@ -1615,8 +1769,9 @@
 
       async function revealScreenshot(dateStr, filename, instr) {
         try {
-          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}/reveal`, { method: 'POST' })
-            .then(res => res.json());
+          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}/reveal`, {
+            method: 'POST',
+          }).then((res) => res.json());
           if (!r.ok) alert('Could not open folder: ' + (r.error || 'unknown error'));
         } catch (e) {
           alert('Could not open folder: ' + e.message);
@@ -1626,9 +1781,13 @@
       async function deleteScreenshot(dateStr, filename, instr, wrap) {
         if (!confirm(`Delete this snapshot?\n\n${filename}`)) return;
         try {
-          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}`, { method: 'DELETE' })
-            .then(res => res.json());
-          if (!r.ok) { alert('Delete failed: ' + (r.error || 'unknown error')); return; }
+          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}`, {
+            method: 'DELETE',
+          }).then((res) => res.json());
+          if (!r.ok) {
+            alert('Delete failed: ' + (r.error || 'unknown error'));
+            return;
+          }
           const gallery = wrap.parentElement;
           wrap.remove();
           if (gallery && gallery.children.length === 0) gallery.style.display = 'none';
@@ -1646,13 +1805,17 @@
         if (!gallery) return;
         try {
           const instr = (instrument || 'nifty').toLowerCase();
-          const files = await fetch(`/api/report/screenshots/list?date=${dateStr}&instrument=${instr}`).then(r => r.json());
+          const files = await fetch(
+            `/api/report/screenshots/list?date=${dateStr}&instrument=${instr}`
+          ).then((r) => r.json());
           if (_capturingDates.has(dateStr)) return;
           if (!Array.isArray(files) || !files.length) return;
           gallery.innerHTML = '';
           gallery.style.display = 'flex';
-          files.forEach(f => addScreenshotThumb(dateStr, f, instr));
-        } catch { /* silent */ }
+          files.forEach((f) => addScreenshotThumb(dateStr, f, instr));
+        } catch {
+          /* silent */
+        }
       }
 
       function captureScreenshots(dateStr) {
@@ -1669,7 +1832,10 @@
 
         // Clear existing thumbnails from gallery
         const gallery = document.getElementById(`shot-gallery-${dayKey}`);
-        if (gallery) { gallery.innerHTML = ''; gallery.style.display = 'none'; }
+        if (gallery) {
+          gallery.innerHTML = '';
+          gallery.style.display = 'none';
+        }
 
         // Scroll to gallery area first, then show overlay after scroll settles
         if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1703,14 +1869,17 @@
               statusEl.textContent = `Capturing Snapshots… ${captured} / ${total}`;
               addLine(`✓ ${d.name}`, '#4ade80');
               addScreenshotThumb(dateStr, d.name, d.instrument);
-            }
-            else if (d.type === 'done') {
+            } else if (d.type === 'done') {
               addLine(d.msg, d.ok ? '#4ade80' : '#f87171');
               es.close();
               finish();
             }
           };
-          es.onerror = () => { addLine('Connection lost', '#f87171'); es.close(); finish(); };
+          es.onerror = () => {
+            addLine('Connection lost', '#f87171');
+            es.close();
+            finish();
+          };
         } catch (e) {
           addLine('Error: ' + e.message, '#f87171');
           finish();
@@ -2161,8 +2330,8 @@
 
     <div id="snap-overlay">
       <div class="snap-spinner">
-        <span></span><span></span><span></span><span></span>
-        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span> <span></span><span></span><span></span
+        ><span></span>
       </div>
       <div id="snap-status">Capturing Snapshots…</div>
     </div>

@@ -292,6 +292,18 @@
         </div>
         <div id="summary-3min"><div class="empty-msg">Loading…</div></div>
       </div>
+
+      <hr class="divider" />
+
+      <!-- Bias -->
+      <div class="strategy-section">
+        <div class="strategy-header">
+          <span class="strategy-label">&#x1F500; Bias Strategy</span>
+          <span class="strategy-badge" id="badge-bias">—</span>
+          <a class="open-btn green" href="/bias-reports">&#x25B6; Open Detail</a>
+        </div>
+        <div id="summary-bias"><div class="empty-msg">Loading…</div></div>
+      </div>
     </div>
 
     <script>
@@ -313,7 +325,8 @@
       ];
 
       let data1min = {},
-        data3min = {};
+        data3min = {},
+        dataBias = {};
       let activeMonth = null;
 
       function monthLabel(key) {
@@ -505,12 +518,14 @@
           .forEach((c) => c.classList.toggle('active', c.dataset.key === key));
         computeAndRender('1min', data1min, key);
         computeAndRender('3min', data3min, key);
+        computeAndRender('bias', dataBias, key);
       }
 
       function buildMonthChips() {
         const months = new Set();
         for (const date of Object.keys(data1min)) months.add(date.slice(0, 7));
         for (const date of Object.keys(data3min)) months.add(date.slice(0, 7));
+        for (const date of Object.keys(dataBias)) months.add(date.slice(0, 7));
         const allMonths = [...months].sort().reverse();
         const container = document.getElementById('month-chips');
         container.innerHTML = '';
@@ -529,17 +544,21 @@
             '<div class="empty-msg">No data yet.</div>';
           document.getElementById('summary-3min').innerHTML =
             '<div class="empty-msg">No data yet.</div>';
+          document.getElementById('summary-bias').innerHTML =
+            '<div class="empty-msg">No data yet.</div>';
         }
       }
 
       async function load() {
         try {
-          const [d1, d3] = await Promise.all([
+          const [d1, d3, db] = await Promise.all([
             fetch('/api/report/data').then((r) => r.json()),
             fetch('/api/3min-report/data').then((r) => r.json()),
+            fetch('/api/bias-report/data').then((r) => r.json()),
           ]);
           data1min = d1;
           data3min = d3;
+          dataBias = db;
           buildMonthChips();
         } catch (e) {
           document.getElementById('summary-1min').innerHTML =

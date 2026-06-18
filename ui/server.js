@@ -5,6 +5,7 @@
  * Pages:
  *   http://localhost:3000            → Dashboard
  *   http://localhost:3000/supertrend → Supertrend Monitor
+ *   http://localhost:3000/bias       → Bias Monitor (shares the merged monitor.js process)
  *
  * Usage: node ui/server.js
  */
@@ -37,13 +38,17 @@ app.use(express.json());
 // ── Pages (must be before express.static so routes take priority) ─
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'dashboard.html')));
 app.get('/supertrend', (_req, res) => res.sendFile(path.join(__dirname, 'supertrend.html')));
-app.get('/pattern', (_req, res) => res.sendFile(path.join(__dirname, 'pattern.html')));
+app.get('/bias', (_req, res) => res.sendFile(path.join(__dirname, 'bias.html')));
+// Legacy path — the pattern monitor was merged into the bias monitor.
+app.get('/pattern', (_req, res) => res.redirect(301, '/bias'));
 app.get('/test-alerts', (_req, res) => res.sendFile(path.join(__dirname, 'test-alerts.html')));
 app.get('/supertrend-reports', (_req, res) =>
   res.sendFile(path.join(__dirname, 'supertrend-reports.html'))
 );
 app.get('/1min-reports', (_req, res) => res.sendFile(path.join(__dirname, '1min-reports.html')));
 app.get('/3min-reports', (_req, res) => res.sendFile(path.join(__dirname, '3min-reports.html')));
+// Bias EOD report — reuses the 1-min reports UI, pointed at bias data by the page.
+app.get('/bias-reports', (_req, res) => res.sendFile(path.join(__dirname, '1min-reports.html')));
 
 app.use(express.static(__dirname, { index: false }));
 
@@ -79,7 +84,9 @@ serverLogStream.on('error', (e) => console.error('[server.log]', e.message));
 serverLogStream.write(`[${new Date().toTimeString().slice(0, 8)}] === server started ===\n`);
 function serverLog(line) {
   const ts = new Date().toTimeString().slice(0, 8);
-  try { serverLogStream.write(`[${ts}] ${line}\n`); } catch (_e) {}
+  try {
+    serverLogStream.write(`[${ts}] ${line}\n`);
+  } catch (_e) {}
 }
 
 function pushST(line) {
@@ -156,13 +163,13 @@ app.get('/api/st/position', (_req, res) => {
 app.post('/api/st/position', (req, res) => {
   try {
     const current = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
-    const updated = { ...current, ...req.body };
-    fs.writeFileSync(POSITION_FILE, JSON.stringify(updated, null, 2));
+    // Manual CE/PE override → merge into the grouped supertrend section.
+    current.supertrend = { ...(current.supertrend || {}), ...req.body };
+    fs.writeFileSync(POSITION_FILE, JSON.stringify(current, null, 2));
     res.json({ ok: true });
-    broadcastPosition(updated);
-    pushST(
-      `[UI] Position updated — CE:${updated.CE?.toUpperCase()}  PE:${updated.PE?.toUpperCase()}`
-    );
+    broadcastPosition(current);
+    const st = current.supertrend;
+    pushST(`[UI] Position updated — CE:${st.CE?.toUpperCase()}  PE:${st.PE?.toUpperCase()}`);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -177,17 +184,29 @@ function handleStream(req, res) {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
-  patLog.slice(-50).forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
-  stLog.slice(-50).forEach((line) => res.write(`event: stlog\ndata: ${JSON.stringify({ line })}\n\n`));
-  reportLog.slice(-80).forEach((line) => res.write(`event: replog\ndata: ${JSON.stringify({ line })}\n\n`));
+  patLog
+    .slice(-50)
+    .forEach((line) => res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`));
+  stLog
+    .slice(-50)
+    .forEach((line) => res.write(`event: stlog\ndata: ${JSON.stringify({ line })}\n\n`));
+  reportLog
+    .slice(-80)
+    .forEach((line) => res.write(`event: replog\ndata: ${JSON.stringify({ line })}\n\n`));
   res.write(`event: status\ndata: ${JSON.stringify(getStatus())}\n\n`);
   res.write(`event: repstatus\ndata: ${JSON.stringify({ running: reportRunning })}\n\n`);
   try {
     const pos = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
     res.write(`event: position\ndata: ${JSON.stringify(pos)}\n\n`);
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
   allClients.push(res);
-  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (_e) {} }, 20000);
+  const hb = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (_e) {}
+  }, 20000);
   req.on('close', () => {
     clearInterval(hb);
     allClients = allClients.filter((c) => c !== res);
@@ -246,7 +265,11 @@ app.post('/api/tv/start', (_req, res) => {
 
 app.post('/api/tv/stop', (_req, res) => {
   if (tvProc) {
-    try { tvProc.kill(); } catch (_e) { /* already gone */ }
+    try {
+      tvProc.kill();
+    } catch (_e) {
+      /* already gone */
+    }
     tvProc = null;
   }
   exec('taskkill /IM TradingView.exe /F', () => {});
@@ -424,10 +447,13 @@ app.post('/api/test/supertrend', async (req, res) => {
     ];
     const tests = side ? allTests.filter((t) => t.side === side.toUpperCase()) : allTests;
 
-    // Read position — skip open trades (same guard as test-supertrend-alerts.js)
+    // Read position — skip open trades (same guard as test-supertrend-alerts.js).
+    // position.json is grouped by strategy now; read the supertrend section.
     let position = { CE: 'closed', PE: 'closed' };
     try {
-      position = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+      const raw = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+      const st = raw.supertrend || raw; // grouped (new) or flat (legacy)
+      position = { CE: st.CE || 'closed', PE: st.PE || 'closed' };
     } catch (_) {
       /* default closed */
     }
@@ -514,45 +540,206 @@ app.post('/api/test/supertrend', async (req, res) => {
   }
 });
 
-// ── Pattern Monitor API (stub — replace with real implementation) ──
-const PM_CONFIG_FILE = path.join(ROOT, 'config', 'pattern-monitor-config.json');
+// ── Bias Alert Test ───────────────────────────────────────────────
+// Verifies the bias alerts (up=CE entry/exit/target, down=PE entry/exit/target)
+// can be updated. Mirrors /api/test/supertrend but updates symbol + price 0.
+const BIAS_TEST_NAMES = {
+  NIFTY: {
+    up: { entry: '0NiftyBiasEntry', exit: '0NiftyBiasExit', target: '0NiftyBiasTarget' },
+    down: { entry: 'zNiftyBiasEntry', exit: 'zNiftyBiasExit', target: 'zNiftyBiasTarget' },
+  },
+  SENSEX: {
+    up: { entry: '0SensexBiasEntry', exit: '0SensexBiasExit', target: '0SensexBiasTarget' },
+    down: { entry: 'zSensexBiasEntry', exit: 'zSensexBiasExit', target: 'zSensexBiasTarget' },
+  },
+};
 
-function loadPmConfig() {
+app.post('/api/test/bias', async (req, res) => {
+  const { instr = 'NIFTY', spot: spotOverride = null, itmOverride = null, dir = null } = req.body;
+  const instrName = instr.toUpperCase();
+  const cfg = INSTRUMENTS_TEST[instrName];
+  const names = BIAS_TEST_NAMES[instrName];
+  if (!cfg || !names) return res.status(400).json({ error: `Unknown instrument: ${instrName}` });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+  const emit = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const log = (msg) => emit('log', { msg });
+
+  const day = nowIST().getUTCDay();
+  const itmDepth =
+    itmOverride !== null
+      ? itmOverride
+      : instrName === 'SENSEX'
+        ? 2
+        : (NIFTY_ITM_BY_DAY_TEST[day] ?? 2);
+  const exchange = cfg.spotSymbol.split(':')[0];
+
+  let cdp;
   try {
-    return JSON.parse(fs.readFileSync(PM_CONFIG_FILE, 'utf8'));
+    log('Connecting to TradingView CDP...');
+    cdp = new CDPManager();
+    await cdp.connect();
+    log('CDP connected');
+  } catch (e) {
+    emit('done', { error: `CDP connect failed: ${e.message}` });
+    return res.end();
+  }
+  const cdpAlerts = new AlertTools(cdp);
+  const cdpChart = new ChartTools(cdp);
+
+  try {
+    let spot = spotOverride;
+    if (!spot) {
+      log(`Reading ${instrName} spot price from chart...`);
+      await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+      await new Promise((r) => setTimeout(r, 2000));
+      const r = await cdpChart.handle('quote_get', {});
+      const d = JSON.parse(r?.content?.[0]?.text || '{}');
+      spot = d.close || d.price || d.last;
+    }
+    if (!spot) {
+      emit('done', { error: `Could not read ${instrName} spot. Enter it manually.` });
+      return res.end();
+    }
+
+    const atm = calcATMTest(spot, cfg.strikeInterval);
+    // up = CE (strike below ATM), down = PE (strike above ATM)
+    const ceStrike = atm - itmDepth * cfg.strikeInterval;
+    const peStrike = atm + itmDepth * cfg.strikeInterval;
+    const upSymbol = buildSymbolTest(cfg, ceStrike, 'CE');
+    const downSymbol = buildSymbolTest(cfg, peStrike, 'PE');
+    log(`Spot: ${spot}  ATM: ${atm}  ITM-${itmDepth}`);
+    log(`UP → ${upSymbol}   DOWN → ${downSymbol}`);
+
+    const dirs = dir ? [dir.toLowerCase()] : ['up', 'down'];
+    const tests = [];
+    for (const d of dirs) {
+      const sym = d === 'up' ? upSymbol : downSymbol;
+      for (const role of ['entry', 'exit', 'target']) {
+        tests.push({ name: names[d][role], symbol: sym, dir: d, role });
+      }
+    }
+
+    const results = [];
+    for (const t of tests) {
+      try {
+        await cdpAlerts.normalizeAlertsPanel();
+        log(`[${t.dir}:${t.role}] Switching chart to ${t.symbol}...`);
+        await cdpChart.handle('chart_set_symbol', { symbol: `${exchange}:${t.symbol}` });
+        await new Promise((r) => setTimeout(r, 3000));
+        log(`[${t.dir}:${t.role}] Updating "${t.name}" → ${t.symbol} @ 0...`);
+        const r = await cdpAlerts.handle('alert_update', {
+          alertName: t.name,
+          symbol: t.symbol,
+          level: 0,
+        });
+        const rawText = r?.content?.[0]?.text || '{}';
+        let data = {};
+        if (!r?.isError) {
+          try {
+            data = JSON.parse(rawText);
+          } catch (_e) {
+            /* ignore */
+          }
+        }
+        const success = !r?.isError && !!data.success;
+        const message = r?.isError ? rawText : data.message || rawText;
+        log(`[${t.dir}:${t.role}] ${success ? '✓ OK' : '✗ FAIL'} — ${message}`);
+        const result = {
+          name: t.name,
+          symbol: t.symbol,
+          dir: t.dir,
+          role: t.role,
+          success,
+          message,
+        };
+        results.push(result);
+        emit('result', result);
+      } catch (e) {
+        log(`[${t.dir}:${t.role}] ✗ ERROR — ${e.message}`);
+        const result = {
+          name: t.name,
+          symbol: t.symbol,
+          dir: t.dir,
+          role: t.role,
+          success: false,
+          message: e.message,
+        };
+        results.push(result);
+        emit('result', result);
+      }
+      await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    log('Bias test complete — switching back to spot chart');
+    emit('done', { results, spot, atm, itmDepth, upSymbol, downSymbol });
+  } finally {
+    await cdp.disconnect().catch(() => {});
+    res.end();
+  }
+});
+
+// ── Bias Monitor API ──────────────────────────────────────────────
+// The bias monitor runs inside the merged monitor process (monitor.js),
+// so its direction/active live in the bias block of monitor-config.json.
+// Process start/stop is shared with supertrend via /api/st/*.
+function loadStConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(ST_CONFIG, 'utf8'));
   } catch (_e) {
-    return { bias: null, importantLevels: [] };
+    return {};
   }
 }
-function savePmConfig(cfg) {
-  fs.writeFileSync(PM_CONFIG_FILE + '.tmp', JSON.stringify(cfg, null, 2));
-  fs.renameSync(PM_CONFIG_FILE + '.tmp', PM_CONFIG_FILE);
+function saveStConfig(cfg) {
+  fs.writeFileSync(ST_CONFIG + '.tmp', JSON.stringify(cfg, null, 2));
+  fs.renameSync(ST_CONFIG + '.tmp', ST_CONFIG);
 }
 
-app.get('/api/pm/config', (_req, res) => res.json(loadPmConfig()));
-
-app.post('/api/pm/bias', (req, res) => {
-  const { bias } = req.body;
-  if (!['up', 'down'].includes(bias)) return res.json({ ok: false, error: 'Invalid bias' });
-  const cfg = loadPmConfig();
-  cfg.bias = bias;
-  savePmConfig(cfg);
-  res.json({ ok: true });
+// Returns the bias block with safe defaults. Bias is paused by default.
+app.get('/api/bias/config', (_req, res) => {
+  const cfg = loadStConfig();
+  const bias = cfg.bias || {};
+  res.json({ direction: bias.direction || 'up', enabled: bias.enabled === true });
 });
 
-app.post('/api/pm/levels', (req, res) => {
-  const { importantLevels } = req.body;
-  if (!Array.isArray(importantLevels)) return res.json({ ok: false, error: 'Invalid levels' });
-  const cfg = loadPmConfig();
-  cfg.importantLevels = importantLevels.map(Number).filter((n) => n > 0);
-  savePmConfig(cfg);
+app.post('/api/bias/direction', (req, res) => {
+  const { direction } = req.body;
+  if (!['up', 'down'].includes(direction))
+    return res.json({ ok: false, error: 'Invalid direction' });
+  const cfg = loadStConfig();
+  cfg.bias = { ...(cfg.bias || {}), direction };
+  saveStConfig(cfg);
   res.json({ ok: true });
+  pushST(`[UI] Bias direction set to ${direction.toUpperCase()}`);
 });
 
-app.post('/api/pm/start', (_req, res) => res.json({ ok: true }));
-app.post('/api/pm/stop', (_req, res) => res.json({ ok: true }));
-app.post('/api/pm/restart', (_req, res) => res.json({ ok: true }));
-app.get('/api/pm/events', handleStream);
+app.post('/api/bias/enabled', (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.json({ ok: false, error: 'Invalid enabled flag' });
+  const cfg = loadStConfig();
+  cfg.bias = { ...(cfg.bias || {}), enabled };
+  saveStConfig(cfg);
+  res.json({ ok: true });
+  pushST(`[UI] Bias strategy ${enabled ? 'RESUMED' : 'PAUSED'}`);
+});
+
+// Supertrend run/pause. Supertrend is enabled by default (enabled !== false).
+app.get('/api/supertrend/enabled', (_req, res) => {
+  const cfg = loadStConfig();
+  res.json({ enabled: cfg.supertrend?.enabled !== false });
+});
+
+app.post('/api/supertrend/enabled', (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.json({ ok: false, error: 'Invalid enabled flag' });
+  const cfg = loadStConfig();
+  cfg.supertrend = { ...(cfg.supertrend || {}), enabled };
+  saveStConfig(cfg);
+  res.json({ ok: true });
+  pushST(`[UI] Supertrend strategy ${enabled ? 'RESUMED' : 'PAUSED'}`);
+});
 
 // ── EOD Report ────────────────────────────────────────────────────
 const reportLog = [];
@@ -621,7 +808,8 @@ const EXCHANGE_MAP = { NIFTY: 'NSE', SENSEX: 'BSE' };
 
 function istTimeToUnixLocal(timeStr, dateStr) {
   const [h, m, s] = timeStr.split(':').map(Number);
-  const utcMs = new Date(`${dateStr}T00:00:00Z`).getTime() + (h * 60 + m - 330) * 60000 + (s || 0) * 1000;
+  const utcMs =
+    new Date(`${dateStr}T00:00:00Z`).getTime() + (h * 60 + m - 330) * 60000 + (s || 0) * 1000;
   return Math.floor(utcMs / 1000);
 }
 
@@ -637,16 +825,22 @@ app.get('/api/report/screenshots', async (req, res) => {
 
   const emit = (type, data) => res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
   const log = (msg) => emit('log', { msg });
-  const done = (ok, msg) => { emit('done', { ok, msg }); res.end(); };
+  const done = (ok, msg) => {
+    emit('done', { ok, msg });
+    res.end();
+  };
 
   if (shotRunning) return done(false, 'Screenshot capture already running');
 
   const tradeFile = path.join(DIR_1MIN, `daily-trades-${date}.json`);
   let record;
-  try { record = JSON.parse(fs.readFileSync(tradeFile, 'utf8')); }
-  catch { return done(false, `No trade file found for ${date}`); }
+  try {
+    record = JSON.parse(fs.readFileSync(tradeFile, 'utf8'));
+  } catch {
+    return done(false, `No trade file found for ${date}`);
+  }
 
-  const trades = (record.trades || []).filter(t => t.entryTime && t.entrySymbol);
+  const trades = (record.trades || []).filter((t) => t.entryTime && t.entrySymbol);
   if (trades.length === 0) return done(false, 'No trades in file');
 
   const instrument = (record.instrument || 'NIFTY').toLowerCase();
@@ -655,9 +849,12 @@ app.get('/api/report/screenshots', async (req, res) => {
   fs.mkdirSync(screenshotDir, { recursive: true });
   // Clear existing snapshots for this date before re-capturing
   try {
-    fs.readdirSync(screenshotDir).filter(f => f.endsWith('.png'))
-      .forEach(f => fs.unlinkSync(path.join(screenshotDir, f)));
-  } catch { /**/ }
+    fs.readdirSync(screenshotDir)
+      .filter((f) => f.endsWith('.png'))
+      .forEach((f) => fs.unlinkSync(path.join(screenshotDir, f)));
+  } catch {
+    /**/
+  }
 
   let cdp;
   try {
@@ -669,7 +866,6 @@ app.get('/api/report/screenshots', async (req, res) => {
 
     const cdpChart = new ChartTools(cdp);
     const files = [];
-
 
     const doZoom = (from, to) => `(function() {
       const cw = window.TradingViewApi?._activeChartWidgetWV?._value?._chartWidget;
@@ -717,7 +913,7 @@ app.get('/api/report/screenshots', async (req, res) => {
       })()`);
 
       for (let i = 0; i < 5; i++) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 2000));
         const r = await cdp.executeScript(doZoom(from, to));
         if (String(r).startsWith('ok')) return r;
       }
@@ -738,22 +934,30 @@ app.get('/api/report/screenshots', async (req, res) => {
 
       log(`Trade ${label}: switching to ${qualified}...`);
       await cdpChart.handle('chart_set_symbol', { symbol: qualified });
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 3000));
       await cdpChart.handle('chart_set_timeframe', { timeframe: '1' });
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 2000));
 
       // Unpin chart from live mode by pressing Left arrow, then scroll to trade window
-      await cdp.client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft' });
-      await cdp.client.Input.dispatchKeyEvent({ type: 'keyUp',   key: 'ArrowLeft', code: 'ArrowLeft' });
-      await new Promise(r => setTimeout(r, 300));
+      await cdp.client.Input.dispatchKeyEvent({
+        type: 'keyDown',
+        key: 'ArrowLeft',
+        code: 'ArrowLeft',
+      });
+      await cdp.client.Input.dispatchKeyEvent({
+        type: 'keyUp',
+        key: 'ArrowLeft',
+        code: 'ArrowLeft',
+      });
+      await new Promise((r) => setTimeout(r, 300));
 
       let scrollResult = await scrollToRange(from, to);
       log(`  scroll: ${scrollResult}`);
-      await new Promise(r => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, 2500));
       if (!String(scrollResult).startsWith('ok')) {
         scrollResult = await scrollToRange(from, to);
         log(`  scroll retry: ${scrollResult}`);
-        await new Promise(r => setTimeout(r, 2500));
+        await new Promise((r) => setTimeout(r, 2500));
       }
 
       try {
@@ -783,15 +987,24 @@ app.get('/api/report/screenshots/list', (req, res) => {
   if (!date || !instrument) return res.json([]);
   const dir = path.join(DIR_1MIN, instrument.toLowerCase(), date);
   try {
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.png')).sort();
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.png'))
+      .sort();
     res.json(files);
-  } catch { res.json([]); }
+  } catch {
+    res.json([]);
+  }
 });
 
 // Serve a saved screenshot image
 app.get('/api/screenshots/:instrument/:date/:file', (req, res) => {
   const { instrument, date, file } = req.params;
-  if (!/^[a-zA-Z]+$/.test(instrument) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[\w-]+\.png$/.test(file))
+  if (
+    !/^[a-zA-Z]+$/.test(instrument) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    !/^[\w-]+\.png$/.test(file)
+  )
     return res.status(400).send('Invalid');
   const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
   if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
@@ -801,7 +1014,11 @@ app.get('/api/screenshots/:instrument/:date/:file', (req, res) => {
 // Delete a single saved screenshot
 app.delete('/api/screenshots/:instrument/:date/:file', (req, res) => {
   const { instrument, date, file } = req.params;
-  if (!/^[a-zA-Z]+$/.test(instrument) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[\w-]+\.png$/.test(file))
+  if (
+    !/^[a-zA-Z]+$/.test(instrument) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    !/^[\w-]+\.png$/.test(file)
+  )
     return res.status(400).json({ ok: false, error: 'Invalid' });
   const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
   if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'Not found' });
@@ -816,7 +1033,11 @@ app.delete('/api/screenshots/:instrument/:date/:file', (req, res) => {
 // Open a snapshot's folder in Windows Explorer with the file selected
 app.post('/api/screenshots/:instrument/:date/:file/reveal', (req, res) => {
   const { instrument, date, file } = req.params;
-  if (!/^[a-zA-Z]+$/.test(instrument) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[\w-]+\.png$/.test(file))
+  if (
+    !/^[a-zA-Z]+$/.test(instrument) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    !/^[\w-]+\.png$/.test(file)
+  )
     return res.status(400).json({ ok: false, error: 'Invalid' });
   const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
   if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'Not found' });
@@ -899,10 +1120,66 @@ app.post('/api/3min-report/save', (req, res) => {
   }
 });
 
+// ── Bias report endpoints (same schema/UI as supertrend 1-min) ────
+const DIR_BIAS = path.join(ROOT, 'logs', 'supertrend', 'bias');
+
+app.get('/api/bias-report/data', (_req, res) => res.json(readTradesDir(DIR_BIAS)));
+
+app.post('/api/bias-report/save', (req, res) => {
+  const { date, trades, note } = req.body;
+  if (!date || !trades)
+    return res.status(400).json({ ok: false, error: 'date and trades required' });
+  try {
+    saveTradesFile(DIR_BIAS, date, trades, undefined, note);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Run generate-bias-report.js — EOD bias report
+app.post('/api/bias-report/run', (req, res) => {
+  if (reportRunning) return res.json({ ok: false, message: 'Already running' });
+  reportRunning = true;
+  broadcastReportStatus();
+
+  const date = (req.body?.date || '').trim();
+  const dateArg = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+  pushReport(`[BIAS REPORT] Fetching bias trade prices for ${dateArg || 'today'}...`);
+
+  const args = ['scripts/generate-bias-report.js', '--skip-market-check'];
+  if (dateArg) args.push(dateArg);
+  const proc = spawn('node', args, { cwd: ROOT });
+  proc.stdout.on('data', (d) =>
+    d
+      .toString()
+      .split('\n')
+      .forEach((l) => l.trim() && pushReport(l))
+  );
+  proc.stderr.on('data', (d) =>
+    d
+      .toString()
+      .split('\n')
+      .forEach((l) => l.trim() && pushReport(`[ERR] ${l.trim()}`))
+  );
+  proc.on('close', (code) => {
+    if (code === 0) {
+      pushReport('[BIAS REPORT] ✓ Done — opening report...');
+      broadcast(allClients, 'done', {});
+    } else {
+      pushReport(`[BIAS REPORT] ✗ Failed (exit ${code})`);
+    }
+    reportRunning = false;
+    broadcastReportStatus();
+  });
+  res.json({ ok: true });
+});
+
 const server = app.listen(PORT, () => {
   console.log(`UI Server →  http://localhost:${PORT}            (Dashboard)`);
   console.log(`             http://localhost:${PORT}/supertrend (Supertrend Monitor)`);
-  console.log(`             http://localhost:${PORT}/pattern    (Pattern Monitor)`);
+  console.log(`             http://localhost:${PORT}/bias       (Bias Monitor)`);
+  console.log(`             http://localhost:${PORT}/bias-reports (Bias EOD Reports)`);
   console.log(`             http://localhost:${PORT}/test-alerts (Supertrend Alert Test)`);
 });
 

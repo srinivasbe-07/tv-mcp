@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bias Monitor</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #0f1117;
+        color: #d1d5db;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ── */
+      header {
+        background: #1a1d27;
+        border-bottom: 1px solid #2a2d3a;
+        padding: 0 16px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+      .logo {
+        font-size: 14px;
+        font-weight: 700;
+        color: #fff;
+        white-space: nowrap;
+      }
+      .logo span {
+        color: #34d399;
+      }
+      .nav-link {
+        font-size: 11px;
+        color: #6b7280;
+        text-decoration: none;
+        padding: 4px 8px;
+        border-radius: 5px;
+        border: 1px solid #2a2d3a;
+        white-space: nowrap;
+      }
+      .nav-link:hover {
+        color: #d1d5db;
+        border-color: #4b5563;
+      }
+      .divider {
+        width: 1px;
+        height: 24px;
+        background: #2a2d3a;
+      }
+      .proc-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .proc-label {
+        font-size: 11px;
+        color: #6b7280;
+        font-weight: 600;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot-running {
+        background: #4ade80;
+        box-shadow: 0 0 5px #4ade80;
+      }
+      .dot-starting {
+        background: #facc15;
+        animation: pulse 1s infinite;
+      }
+      .dot-stopped {
+        background: #4b5563;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      .proc-status {
+        font-size: 12px;
+        font-weight: 600;
+        min-width: 56px;
+      }
+      .text-green {
+        color: #4ade80;
+      }
+      .text-yellow {
+        color: #facc15;
+      }
+      .text-gray {
+        color: #6b7280;
+      }
+      .hdr-btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        transition: opacity 0.15s;
+        letter-spacing: 0.3px;
+      }
+      .hdr-btn:hover {
+        opacity: 0.8;
+      }
+      .hdr-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      .btn-green {
+        background: #14532d;
+        color: #4ade80;
+      }
+      .btn-red {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .btn-blue {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+      .pos-chips {
+        display: flex;
+        gap: 6px;
+      }
+      .pos-chip {
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .chip-open {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .chip-closed {
+        background: #1c1917;
+        color: #6b7280;
+        border: 1px solid #2a2d3a;
+      }
+
+      /* ── Confirm dialog ── */
+      .confirm-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      }
+      .confirm-overlay.open {
+        display: flex;
+      }
+      .confirm-box {
+        background: #1a1d27;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        padding: 24px 28px;
+        min-width: 260px;
+        text-align: center;
+      }
+      .confirm-box p {
+        color: #e5e7eb;
+        font-size: 14px;
+        margin: 0 0 20px;
+      }
+      .confirm-btns {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+      .confirm-btns button {
+        padding: 7px 20px;
+        border-radius: 8px;
+        border: none;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .confirm-yes {
+        background: #b91c1c;
+        color: #fff;
+      }
+      .confirm-no {
+        background: #374151;
+        color: #d1d5db;
+      }
+
+      /* ── Main ── */
+      .main {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        flex: 1;
+        overflow: hidden;
+      }
+      .left {
+        background: #13151f;
+        border-right: 1px solid #2a2d3a;
+        overflow-y: auto;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .card {
+        background: #1a1d27;
+        border: 1px solid #2a2d3a;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .sec {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #6b7280;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      /* Direction buttons */
+      .dir-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      .dir-btn {
+        padding: 12px 4px;
+        border-radius: 8px;
+        border: 1px solid #2a2d3a;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 800;
+        background: #0f1117;
+        color: #4b5563;
+        transition: all 0.15s;
+        text-align: center;
+      }
+      .dir-btn:hover {
+        border-color: #4b5563;
+        color: #9ca3af;
+      }
+      .dir-up-active {
+        background: rgba(22, 163, 74, 0.15);
+        border-color: #16a34a;
+        color: #4ade80;
+      }
+      .dir-down-active {
+        background: rgba(185, 28, 28, 0.15);
+        border-color: #b91c1c;
+        color: #f87171;
+      }
+      .dir-msg {
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 8px;
+        min-height: 14px;
+      }
+      .err-msg {
+        color: #f87171;
+      }
+      .ok-msg {
+        color: #4ade80;
+      }
+
+      /* Run/Pause toggle switch */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .toggle-row .lbl {
+        font-size: 13px;
+        font-weight: 600;
+        color: #d1d5db;
+      }
+      .switch {
+        position: relative;
+        width: 52px;
+        height: 28px;
+        border-radius: 14px;
+        background: #374151;
+        cursor: pointer;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      .switch.on {
+        background: #16a34a;
+      }
+      .switch.locked {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .switch .knob {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        transition: left 0.15s;
+      }
+      .switch.on .knob {
+        left: 27px;
+      }
+      .itm-hint {
+        font-size: 10px;
+        color: #4b5563;
+        margin-top: 6px;
+        line-height: 1.5;
+      }
+
+      /* EOD Report card */
+      .report-btns {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .report-btn {
+        flex: 1;
+        padding: 8px 6px;
+        border-radius: 7px;
+        border: none;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.15s;
+        letter-spacing: 0.3px;
+      }
+      .report-btn:hover {
+        opacity: 0.8;
+      }
+      .report-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .btn-amber {
+        background: #451a03;
+        color: #fbbf24;
+      }
+      .btn-teal {
+        background: #042f2e;
+        color: #2dd4bf;
+      }
+
+      /* ── Right Panel ── */
+      .right {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        padding: 14px;
+        border-bottom: 1px solid #2a2d3a;
+        background: #13151f;
+      }
+      .stat {
+        background: #1a1d27;
+        border: 1px solid #2a2d3a;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .stat-lbl {
+        font-size: 10px;
+        color: #6b7280;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+      }
+      .stat-val {
+        font-size: 18px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat-sub {
+        font-size: 10px;
+        color: #6b7280;
+        margin-top: 2px;
+      }
+      .c-green {
+        color: #4ade80;
+      }
+      .c-red {
+        color: #f87171;
+      }
+      .c-yellow {
+        color: #facc15;
+      }
+      .c-white {
+        color: #f9fafb;
+      }
+      .c-purple {
+        color: #a78bfa;
+      }
+      .c-gray {
+        color: #6b7280;
+      }
+      .c-blue {
+        color: #60a5fa;
+      }
+
+      /* Log */
+      .log {
+        overflow-y: auto;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .log-row {
+        display: flex;
+        gap: 8px;
+        font-size: 11px;
+        padding: 3px 0;
+        border-bottom: 1px solid #13151f;
+        font-family: 'Consolas', 'Courier New', monospace;
+      }
+      .log-t {
+        color: #374151;
+        flex-shrink: 0;
+        min-width: 52px;
+      }
+      .l-ok {
+        color: #4ade80;
+      }
+      .l-fail {
+        color: #f87171;
+      }
+      .l-bias {
+        color: #34d399;
+        font-weight: 700;
+      }
+      .l-pos {
+        color: #facc15;
+        font-weight: 700;
+      }
+      .l-info {
+        color: #6b7280;
+      }
+      .l-ui {
+        color: #3b82f6;
+      }
+      .l-err {
+        color: #f87171;
+      }
+      .l-warn {
+        color: #f97316;
+      }
+
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2a2d3a;
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="confirm-overlay" id="confirm-overlay">
+      <div class="confirm-box">
+        <p id="confirm-msg">Are you sure?</p>
+        <div class="confirm-btns">
+          <button class="confirm-yes" id="confirm-yes">Yes</button>
+          <button class="confirm-no" onclick="closeConfirm()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <header>
+      <div class="logo">Bias<span>Monitor</span></div>
+      <a class="nav-link" href="/">← Dashboard</a>
+      <a class="nav-link" href="/supertrend">Supertrend</a>
+      <div class="divider"></div>
+
+      <!-- TradingView -->
+      <div class="proc-group">
+        <div class="proc-label">TRADINGVIEW</div>
+        <div class="status-dot dot-stopped" id="tv-dot"></div>
+        <div class="proc-status text-gray" id="tv-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-tv-toggle" onclick="tvStart()">▶ Start TV</button>
+      </div>
+      <div class="divider"></div>
+
+      <!-- Monitor (shared with supertrend) -->
+      <div class="proc-group">
+        <div class="proc-label">MONITOR</div>
+        <div class="status-dot dot-stopped" id="mon-dot"></div>
+        <div class="proc-status text-gray" id="mon-status">Stopped</div>
+        <button class="hdr-btn btn-green" id="btn-mon-toggle" onclick="monStart()" disabled>
+          ▶ Start
+        </button>
+        <button class="hdr-btn btn-blue" id="btn-mon-restart" disabled>↺ Restart</button>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="pos-chips">
+        <div class="pos-chip chip-closed" id="chip-bias">BIAS: —</div>
+      </div>
+    </header>
+
+    <div class="main">
+      <!-- LEFT PANEL -->
+      <div class="left">
+        <!-- Strategy Run/Pause -->
+        <div class="card">
+          <div class="sec">Bias Strategy</div>
+          <div class="toggle-row">
+            <span class="lbl" id="enabled-lbl">Paused</span>
+            <div class="switch" id="enabled-switch" onclick="toggleEnabled()">
+              <div class="knob"></div>
+            </div>
+          </div>
+          <div class="itm-hint">
+            Paused by default (manual trading). Resume = re-enable the chosen 3 alerts + update
+            (symbol + price 0); the opposite direction is disabled. Pause = disable all bias alerts.
+            (Can't pause while a trade is open.)
+          </div>
+        </div>
+
+        <!-- Direction -->
+        <div class="card">
+          <div class="sec">Bias Direction</div>
+          <div class="dir-group">
+            <button class="dir-btn" id="dir-up" onclick="setDir('up')">▲ BUY / CALL</button>
+            <button class="dir-btn" id="dir-down" onclick="setDir('down')">▼ SELL / PUT</button>
+          </div>
+          <div class="dir-msg" id="dir-msg"></div>
+        </div>
+
+        <!-- EOD Report -->
+        <div class="card">
+          <div class="sec">EOD Report</div>
+          <div class="report-btns">
+            <button class="report-btn btn-amber" id="btn-bias-report" onclick="genBiasReport()">
+              📊 Generate Report
+            </button>
+            <button class="report-btn btn-teal" onclick="window.open('/bias-reports', '_blank')">
+              📋 View Reports
+            </button>
+          </div>
+          <div class="itm-hint">Parses bias entry → exit/target trades and fetches prices.</div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL -->
+      <div class="right">
+        <!-- Stats -->
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-lbl">Direction</div>
+            <div class="stat-val c-gray" id="s-dir">—</div>
+            <div class="stat-sub" id="s-dir-sub">up = CE · down = PE</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">Position</div>
+            <div class="stat-val c-gray" id="s-pos">CLOSED</div>
+            <div class="stat-sub" id="s-pos-sub">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">Bias Strike</div>
+            <div class="stat-val c-blue" id="s-strike">—</div>
+            <div class="stat-sub" id="s-strike-sub">ITM option</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">ITM Depth</div>
+            <div class="stat-val c-yellow" id="s-itm">—</div>
+            <div class="stat-sub" id="s-itm-sub">day rule</div>
+          </div>
+        </div>
+
+        <!-- Log -->
+        <div class="log" id="log-panel"></div>
+      </div>
+    </div>
+
+    <script>
+      let dir = 'up';
+      let enabled = false;
+      let biasOpen = false;
+
+      // ── Confirm dialog ──
+      function confirm2(msg, action) {
+        document.getElementById('confirm-msg').textContent = msg;
+        document.getElementById('confirm-yes').onclick = () => {
+          closeConfirm();
+          action();
+        };
+        document.getElementById('confirm-overlay').classList.add('open');
+      }
+      function closeConfirm() {
+        document.getElementById('confirm-overlay').classList.remove('open');
+      }
+      document.getElementById('confirm-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'confirm-overlay') closeConfirm();
+      });
+
+      // ── Config (direction + run/pause) ──
+      async function loadConfig() {
+        try {
+          const c = await fetch('/api/bias/config').then((r) => r.json());
+          dir = c.direction || 'up';
+          enabled = c.enabled === true;
+          renderDir();
+          renderEnabled();
+        } catch (_e) {
+          /* ignore */
+        }
+      }
+      function renderDir() {
+        document.getElementById('dir-up').className =
+          'dir-btn' + (dir === 'up' ? ' dir-up-active' : '');
+        document.getElementById('dir-down').className =
+          'dir-btn' + (dir === 'down' ? ' dir-down-active' : '');
+      }
+      function renderEnabled() {
+        const locked = enabled && biasOpen;
+        const sw = document.getElementById('enabled-switch');
+        sw.className = 'switch' + (enabled ? ' on' : '') + (locked ? ' locked' : '');
+        document.getElementById('enabled-lbl').textContent = enabled
+          ? biasOpen
+            ? 'Running (trade open — can’t pause)'
+            : 'Running'
+          : 'Paused';
+      }
+      function flash(msg, cls) {
+        const el = document.getElementById('dir-msg');
+        el.textContent = msg;
+        el.className = 'dir-msg ' + (cls || '');
+        if (cls === 'ok-msg') setTimeout(() => (el.textContent = ''), 2500);
+      }
+      async function setDir(d) {
+        if (d === dir) return;
+        try {
+          const r = await fetch('/api/bias/direction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ direction: d }),
+          }).then((r) => r.json());
+          if (r.ok) {
+            dir = d;
+            renderDir();
+            flash(`Direction → ${d.toUpperCase()} (applies immediately)`, 'ok-msg');
+          } else flash(r.error || 'Failed', 'err-msg');
+        } catch (e) {
+          flash(e.message, 'err-msg');
+        }
+      }
+      async function toggleEnabled() {
+        if (enabled && biasOpen) {
+          flash('Cannot pause — a bias trade is OPEN. Wait for it to close.', 'err-msg');
+          return;
+        }
+        const next = !enabled;
+        try {
+          const r = await fetch('/api/bias/enabled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: next }),
+          }).then((r) => r.json());
+          if (r.ok) {
+            enabled = next;
+            renderEnabled();
+            flash(`Bias ${enabled ? 'RESUMED' : 'PAUSED'} (applies immediately)`, 'ok-msg');
+          } else flash(r.error || 'Failed', 'err-msg');
+        } catch (e) {
+          flash(e.message, 'err-msg');
+        }
+      }
+
+      // ── EOD report ──
+      async function genBiasReport() {
+        const btn = document.getElementById('btn-bias-report');
+        btn.disabled = true;
+        btn.textContent = '⏳ Generating…';
+        try {
+          const r = await fetch('/api/bias-report/run', { method: 'POST' }).then((r) => r.json());
+          if (!r.ok) {
+            appendLog('[BIAS REPORT] ' + (r.message || 'failed to start'));
+            btn.disabled = false;
+            btn.textContent = '📊 Generate Report';
+          }
+        } catch (e) {
+          appendLog('[BIAS REPORT] ' + e.message);
+          btn.disabled = false;
+          btn.textContent = '📊 Generate Report';
+        }
+      }
+
+      // ── Process controls (shared merged monitor) ──
+      async function tvStart() {
+        document.getElementById('btn-tv-toggle').disabled = true;
+        await fetch('/api/tv/start', { method: 'POST' });
+      }
+      async function tvStop() {
+        await fetch('/api/tv/stop', { method: 'POST' });
+      }
+      async function monStart() {
+        document.getElementById('btn-mon-toggle').disabled = true;
+        await fetch('/api/st/start', { method: 'POST' });
+      }
+      async function monStop() {
+        await fetch('/api/st/stop', { method: 'POST' });
+      }
+      async function monRestart() {
+        await fetch('/api/st/restart', { method: 'POST' });
+      }
+
+      function applyStatus(s) {
+        // TradingView
+        const tvDot = document.getElementById('tv-dot');
+        const tvSt = document.getElementById('tv-status');
+        const tvBtn = document.getElementById('btn-tv-toggle');
+        const tvRunning = s.tv === 'running';
+        if (tvRunning) {
+          tvDot.className = 'status-dot dot-running';
+          tvSt.className = 'proc-status text-green';
+          tvSt.textContent = 'Running';
+          tvBtn.textContent = '■ Stop TV';
+          tvBtn.className = 'hdr-btn btn-red';
+          tvBtn.onclick = () => confirm2('Stop TradingView?', tvStop);
+          tvBtn.disabled = false;
+        } else if (s.tv === 'starting') {
+          tvDot.className = 'status-dot dot-starting';
+          tvSt.className = 'proc-status text-yellow';
+          tvSt.textContent = 'Starting';
+          tvBtn.textContent = '⏹ Cancel';
+          tvBtn.className = 'hdr-btn btn-red';
+          tvBtn.onclick = tvStop;
+          tvBtn.disabled = false;
+        } else {
+          tvDot.className = 'status-dot dot-stopped';
+          tvSt.className = 'proc-status text-gray';
+          tvSt.textContent = 'Stopped';
+          tvBtn.textContent = '▶ Start TV';
+          tvBtn.className = 'hdr-btn btn-green';
+          tvBtn.onclick = tvStart;
+          tvBtn.disabled = false;
+        }
+
+        // Monitor
+        const mDot = document.getElementById('mon-dot');
+        const mSt = document.getElementById('mon-status');
+        const mBtn = document.getElementById('btn-mon-toggle');
+        const mRe = document.getElementById('btn-mon-restart');
+        const running = s.st === 'running';
+        mDot.className = 'status-dot dot-' + (running ? 'running' : 'stopped');
+        mSt.textContent = running ? 'Running' : 'Stopped';
+        mSt.className = 'proc-status text-' + (running ? 'green' : 'gray');
+        if (running) {
+          mBtn.textContent = '■ Stop';
+          mBtn.className = 'hdr-btn btn-red';
+          mBtn.onclick = () => confirm2('Stop the monitor (Supertrend + Bias)?', monStop);
+          mBtn.disabled = false;
+          mRe.disabled = false;
+          mRe.onclick = () => confirm2('Restart the monitor (Supertrend + Bias)?', monRestart);
+        } else {
+          mBtn.textContent = '▶ Start';
+          mBtn.className = 'hdr-btn btn-green';
+          mBtn.onclick = monStart;
+          mBtn.disabled = s.tv !== 'running';
+          mRe.disabled = true;
+        }
+      }
+
+      function applyPosition(raw) {
+        const bi = (raw && raw.bias) || raw || {};
+        const sh = (raw && raw.shared) || raw || {};
+        const d = bi.direction ?? raw?.biasDirection ?? dir ?? '—';
+        const pos = bi.position ?? raw?.biasPosition ?? 'closed';
+        const strike = bi.lastStrike ?? raw?.lastBiasStrike;
+        const itm = sh.lastITMDepth ?? raw?.lastITMDepth;
+
+        const sd = document.getElementById('s-dir');
+        sd.textContent = d === '—' ? '—' : d.toUpperCase();
+        sd.className = 'stat-val ' + (d === 'up' ? 'c-green' : d === 'down' ? 'c-red' : 'c-gray');
+
+        const sp = document.getElementById('s-pos');
+        sp.textContent = pos.toUpperCase();
+        sp.className = 'stat-val ' + (pos === 'open' ? 'c-yellow' : 'c-gray');
+
+        document.getElementById('s-strike').textContent = strike || '—';
+        document.getElementById('s-itm').textContent = itm != null ? 'ITM-' + itm : '—';
+
+        // Header chip + pause lock
+        const chip = document.getElementById('chip-bias');
+        chip.textContent = `BIAS ${d === '—' ? '—' : d.toUpperCase()}: ${pos.toUpperCase()}`;
+        chip.className = 'pos-chip ' + (pos === 'open' ? 'chip-open' : 'chip-closed');
+        biasOpen = pos === 'open';
+        renderEnabled();
+      }
+
+      // ── Log ──
+      function logClass(line) {
+        if (/\[BIAS\]|BIAS /.test(line)) return 'l-bias';
+        if (/\[POSITION\]/.test(line)) return 'l-pos';
+        if (/\[OK\]|✓/.test(line)) return 'l-ok';
+        if (/\[FAIL\]|\[ERR\]|\[ERROR\]|✗/.test(line)) return 'l-err';
+        if (/\[UI\]|\[TV\]/.test(line)) return 'l-ui';
+        if (/cooldown|skipped|waiting|Outside market/.test(line)) return 'l-warn';
+        return 'l-info';
+      }
+      function escHtml(s) {
+        return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      }
+      function appendLog(line) {
+        if (!line.trim()) return;
+        const panel = document.getElementById('log-panel');
+        const atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 40;
+        const t = (line.match(/\[(\d{2}:\d{2}:\d{2})\]/) || [])[1] || '';
+        const text = t ? line.replace(`[${t}]`, '').trim() : line;
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        row.innerHTML = `<span class="log-t">${t}</span><span class="${logClass(line)}">${escHtml(text)}</span>`;
+        panel.appendChild(row);
+        while (panel.childElementCount > 500) panel.removeChild(panel.firstChild);
+        if (atBottom) panel.scrollTop = panel.scrollHeight;
+      }
+
+      function resetReportBtn() {
+        const btn = document.getElementById('btn-bias-report');
+        btn.disabled = false;
+        btn.textContent = '📊 Generate Report';
+      }
+
+      // ── SSE ──
+      function connect() {
+        const es = new EventSource('/api/stream');
+        es.addEventListener('status', (e) => applyStatus(JSON.parse(e.data)));
+        es.addEventListener('position', (e) => applyPosition(JSON.parse(e.data)));
+        es.addEventListener('stlog', (e) => appendLog(JSON.parse(e.data).line));
+        es.addEventListener('replog', (e) => appendLog(JSON.parse(e.data).line));
+        // repstatus fires on BOTH success and failure → always reset the button.
+        es.addEventListener('repstatus', (e) => {
+          if (!JSON.parse(e.data).running) resetReportBtn();
+        });
+        // done fires only on success → reset + open the bias report.
+        es.addEventListener('done', () => {
+          resetReportBtn();
+          window.open('/bias-reports', '_blank');
+        });
+        es.onerror = () => {
+          /* EventSource auto-reconnects */
+        };
+      }
+
+      loadConfig();
+      connect();
+      fetch('/api/status')
+        .then((r) => r.json())
+        .then(applyStatus)
+        .catch(() => {});
+      fetch('/api/st/position')
+        .then((r) => r.json())
+        .then(applyPosition)
+        .catch(() => {});
+    </script>
+  </body>
+</html>

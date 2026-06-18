@@ -274,7 +274,7 @@
       <div class="logo">Alert<span>Test</span></div>
       <a class="nav-link" href="/">← Dashboard</a>
       <a class="nav-link" href="/supertrend">Supertrend →</a>
-      <a class="nav-link" href="/test-pattern-alerts">Pattern Test →</a>
+      <a class="nav-link" href="/bias">Bias →</a>
     </header>
 
     <div class="main">
@@ -423,6 +423,176 @@
           ▶ Test All — NIFTY + SENSEX (CE + PE)
         </button>
       </div>
+
+      <!-- ── BIAS ALERTS ── -->
+      <div
+        style="
+          grid-column: 1 / -1;
+          margin-top: 6px;
+          font-size: 13px;
+          font-weight: 800;
+          color: #34d399;
+          letter-spacing: 1px;
+        "
+      >
+        BIAS ALERTS
+      </div>
+
+      <!-- NIFTY Bias card -->
+      <div class="card" id="card-bias-nifty">
+        <div class="card-title"><span class="instr-badge badge-nifty">NIFTY</span> Bias Alerts</div>
+        <div>
+          <label>Spot Price (blank = read from chart)</label>
+          <input type="number" id="bias-nifty-spot" placeholder="e.g. 23400" step="50" />
+        </div>
+        <div>
+          <label>ITM Override</label>
+          <select id="bias-nifty-itm">
+            <option value="">Auto (day rule)</option>
+            <option value="0">ATM (ITM-0)</option>
+            <option value="1">ITM-1</option>
+            <option value="2">ITM-2</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button
+            class="run-btn run-btn-ce"
+            id="bias-nifty-up-btn"
+            onclick="runBiasTest('NIFTY', 'up')"
+          >
+            ▲ UP only
+          </button>
+          <button
+            class="run-btn run-btn-pe"
+            id="bias-nifty-down-btn"
+            onclick="runBiasTest('NIFTY', 'down')"
+          >
+            ▼ DOWN only
+          </button>
+        </div>
+        <button class="run-btn" id="bias-nifty-btn" onclick="runBiasTest('NIFTY')">
+          ▶ Test Both — UP + DOWN
+        </button>
+        <div class="results" id="bias-nifty-results">
+          <div class="result-row">
+            <span class="result-side side-ce">UP entry</span>
+            <span class="result-name">0NiftyBiasEntry</span>
+            <span class="result-symbol" id="bias-nifty-up-entry-sym">—</span>
+            <span class="result-status s-wait" id="bias-nifty-up-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-ce">UP exit</span>
+            <span class="result-name">0NiftyBiasExit</span>
+            <span class="result-symbol" id="bias-nifty-up-exit-sym">—</span>
+            <span class="result-status s-wait" id="bias-nifty-up-exit-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-ce">UP target</span>
+            <span class="result-name">0NiftyBiasTarget</span>
+            <span class="result-symbol" id="bias-nifty-up-target-sym">—</span>
+            <span class="result-status s-wait" id="bias-nifty-up-target-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">DOWN entry</span>
+            <span class="result-name">zNiftyBiasEntry</span>
+            <span class="result-symbol" id="bias-nifty-down-entry-sym">—</span>
+            <span class="result-status s-wait" id="bias-nifty-down-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">DOWN exit</span>
+            <span class="result-name">zNiftyBiasExit</span>
+            <span class="result-symbol" id="bias-nifty-down-exit-sym">—</span>
+            <span class="result-status s-wait" id="bias-nifty-down-exit-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">DOWN target</span>
+            <span class="result-name">zNiftyBiasTarget</span>
+            <span class="result-symbol" id="bias-nifty-down-target-sym">—</span>
+            <span class="result-status s-wait" id="bias-nifty-down-target-st">·</span>
+          </div>
+        </div>
+        <div class="log-panel hidden" id="bias-nifty-log"></div>
+        <div class="summary sum-idle" id="bias-nifty-summary">Not run yet</div>
+      </div>
+
+      <!-- SENSEX Bias card -->
+      <div class="card" id="card-bias-sensex">
+        <div class="card-title">
+          <span class="instr-badge badge-sensex">SENSEX</span> Bias Alerts
+        </div>
+        <div>
+          <label>Spot Price (blank = read from chart)</label>
+          <input type="number" id="bias-sensex-spot" placeholder="e.g. 79000" step="100" />
+        </div>
+        <div>
+          <label>ITM Override</label>
+          <select id="bias-sensex-itm">
+            <option value="">Auto (ITM-2)</option>
+            <option value="0">ATM (ITM-0)</option>
+            <option value="1">ITM-1</option>
+            <option value="2">ITM-2</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button
+            class="run-btn run-btn-ce"
+            id="bias-sensex-up-btn"
+            onclick="runBiasTest('SENSEX', 'up')"
+          >
+            ▲ UP only
+          </button>
+          <button
+            class="run-btn run-btn-pe"
+            id="bias-sensex-down-btn"
+            onclick="runBiasTest('SENSEX', 'down')"
+          >
+            ▼ DOWN only
+          </button>
+        </div>
+        <button class="run-btn" id="bias-sensex-btn" onclick="runBiasTest('SENSEX')">
+          ▶ Test Both — UP + DOWN
+        </button>
+        <div class="results" id="bias-sensex-results">
+          <div class="result-row">
+            <span class="result-side side-ce">UP entry</span>
+            <span class="result-name">0SensexBiasEntry</span>
+            <span class="result-symbol" id="bias-sensex-up-entry-sym">—</span>
+            <span class="result-status s-wait" id="bias-sensex-up-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-ce">UP exit</span>
+            <span class="result-name">0SensexBiasExit</span>
+            <span class="result-symbol" id="bias-sensex-up-exit-sym">—</span>
+            <span class="result-status s-wait" id="bias-sensex-up-exit-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-ce">UP target</span>
+            <span class="result-name">0SensexBiasTarget</span>
+            <span class="result-symbol" id="bias-sensex-up-target-sym">—</span>
+            <span class="result-status s-wait" id="bias-sensex-up-target-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">DOWN entry</span>
+            <span class="result-name">zSensexBiasEntry</span>
+            <span class="result-symbol" id="bias-sensex-down-entry-sym">—</span>
+            <span class="result-status s-wait" id="bias-sensex-down-entry-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">DOWN exit</span>
+            <span class="result-name">zSensexBiasExit</span>
+            <span class="result-symbol" id="bias-sensex-down-exit-sym">—</span>
+            <span class="result-status s-wait" id="bias-sensex-down-exit-st">·</span>
+          </div>
+          <div class="result-row">
+            <span class="result-side side-pe">DOWN target</span>
+            <span class="result-name">zSensexBiasTarget</span>
+            <span class="result-symbol" id="bias-sensex-down-target-sym">—</span>
+            <span class="result-status s-wait" id="bias-sensex-down-target-st">·</span>
+          </div>
+        </div>
+        <div class="log-panel hidden" id="bias-sensex-log"></div>
+        <div class="summary sum-idle" id="bias-sensex-summary">Not run yet</div>
+      </div>
     </div>
 
     <script>
@@ -482,6 +652,12 @@
           'sensex-pe-btn',
           'sensex-btn',
           'all-btn',
+          'bias-nifty-up-btn',
+          'bias-nifty-down-btn',
+          'bias-nifty-btn',
+          'bias-sensex-up-btn',
+          'bias-sensex-down-btn',
+          'bias-sensex-btn',
         ].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.disabled = disabled;
@@ -591,6 +767,98 @@
           activeRoles.forEach((r) => setStatus(instr, r, '', '✗', 's-fail'));
           document.getElementById(`${i}-summary`).className = 'summary sum-fail';
           document.getElementById(`${i}-summary`).textContent = 'Server error: ' + e.message;
+        }
+      }
+
+      // ── Bias alert test ──
+      const BIAS_ROLES = [
+        'up-entry',
+        'up-exit',
+        'up-target',
+        'down-entry',
+        'down-exit',
+        'down-target',
+      ];
+
+      async function runBiasTest(instr, dir = null) {
+        setAllBtns(true);
+        try {
+          await runBiasInner(instr, dir);
+        } finally {
+          setAllBtns(false);
+        }
+      }
+
+      async function runBiasInner(instr, dir) {
+        const key = 'bias-' + instr.toLowerCase(); // e.g. "bias-nifty"
+        const activeRoles = dir ? BIAS_ROLES.filter((r) => r.startsWith(dir + '-')) : BIAS_ROLES;
+        activeRoles.forEach((r) => setStatus(key, r, '', '…', 's-running'));
+        const logEl = document.getElementById(`${key}-log`);
+        logEl.innerHTML = '';
+        logEl.classList.add('hidden');
+        const sumEl = document.getElementById(`${key}-summary`);
+        sumEl.className = 'summary sum-idle';
+        sumEl.textContent = 'Running...';
+
+        const spot = parseFloat(document.getElementById(`${key}-spot`).value) || null;
+        const itmVal = document.getElementById(`${key}-itm`).value;
+        const itmOverride = itmVal !== '' ? parseInt(itmVal) : null;
+        const total = activeRoles.length;
+
+        try {
+          const response = await fetch('/api/test/bias', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instr, spot, itmOverride, dir }),
+          });
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let passed = 0,
+            failed = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop();
+            for (const part of parts) {
+              const eventMatch = part.match(/^event:\s*(.+)/m);
+              const dataMatch = part.match(/^data:\s*(.+)/m);
+              if (!dataMatch) continue;
+              const eventType = eventMatch?.[1]?.trim() || 'message';
+              let parsed;
+              try {
+                parsed = JSON.parse(dataMatch[1]);
+              } catch (_) {
+                continue;
+              }
+              if (eventType === 'log') {
+                appendLog(key, parsed.msg);
+              } else if (eventType === 'result') {
+                const role = `${parsed.dir}-${parsed.role}`;
+                const ok = parsed.success;
+                setStatus(key, role, parsed.symbol, ok ? '✓' : '✗', ok ? 's-ok' : 's-fail');
+                ok ? passed++ : failed++;
+              } else if (eventType === 'done') {
+                if (parsed.error) {
+                  activeRoles.forEach((r) => setStatus(key, r, '', '✗', 's-fail'));
+                  sumEl.className = 'summary sum-fail';
+                  sumEl.textContent = parsed.error;
+                } else if (failed === 0) {
+                  sumEl.className = 'summary sum-ok';
+                  sumEl.textContent = `All ${total} alerts updated ✓  (spot: ${parsed.spot}  ATM: ${parsed.atm}  ITM-${parsed.itmDepth})`;
+                } else {
+                  sumEl.className = 'summary sum-fail';
+                  sumEl.textContent = `${passed} passed, ${failed} failed — check alert names in TradingView`;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          activeRoles.forEach((r) => setStatus(key, r, '', '✗', 's-fail'));
+          sumEl.className = 'summary sum-fail';
+          sumEl.textContent = 'Server error: ' + e.message;
         }
       }
     </script>

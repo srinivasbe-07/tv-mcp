@@ -76,7 +76,9 @@ function buildSymbol(cfg, strike, type) {
 // ── Read position.json ────────────────────────────────────────────────────────
 function loadPosition() {
   try {
-    return JSON.parse(fs.readFileSync('./config/position.json', 'utf8'));
+    const p = JSON.parse(fs.readFileSync('./config/position.json', 'utf8'));
+    const st = p.supertrend || p; // grouped (new) or flat (legacy)
+    return { CE: st.CE || 'closed', PE: st.PE || 'closed' };
   } catch {
     return { CE: 'closed', PE: 'closed' };
   }

@@ -838,7 +838,13 @@ export class AlertTools {
               node = node.parentElement;
             }
 
-            const tryActivate = () => {
+            const hover = (el) => {
+              ['pointerover','pointerenter','mouseover','mouseenter','mousemove'].forEach(type => {
+                try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })); } catch (_) {}
+              });
+            };
+
+            const tryActivate = async () => {
               const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
               const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
               if (!target) return false;
@@ -847,34 +853,51 @@ export class AlertTools {
                 if (container.querySelector('[data-name="alert-delete-button"]')) break;
                 container = container.parentElement;
               }
-              // Restart button: TV uses data-name="alert-toggle-button" or a play-icon button.
-              // Exclude edit and delete buttons — pick the remaining action button.
+              if (!container) return false;
+              // The Restart button only renders on hover — simulate it, then wait a beat.
+              hover(target); hover(container);
+              await new Promise(r => setTimeout(r, 180));
+              // Already active? An active alert shows a Stop (not Restart) button — skip toggling.
+              const statusEl = container.querySelector('[data-name="alert-item-status"]');
+              const status = (statusEl?.innerText || '').trim().toLowerCase();
+              if (status.includes('active') || status.includes('working') || status.includes('running')) {
+                return 'already_active';
+              }
+              // Restart control is a div/span with a data-name (not a <button>).
+              // A stopped alert shows a restart/start button instead of the stop button.
               const restartBtn =
-                container?.querySelector('[data-name="alert-toggle-button"]') ||
-                container?.querySelector('[data-name="alert-play-button"]') ||
-                Array.from(container?.querySelectorAll('button') || []).find(b =>
-                  b !== container.querySelector('[data-name="alert-edit-button"]') &&
-                  b !== container.querySelector('[data-name="alert-delete-button"]') &&
-                  b.offsetParent !== null
-                );
+                container.querySelector('[data-name="alert-restart-button"]') ||
+                container.querySelector('[data-name="alert-start-button"]') ||
+                container.querySelector('[data-name="alert-play-button"]') ||
+                container.querySelector('[data-name="alert-toggle-button"]');
               if (!restartBtn) return false;
               restartBtn.click();
               return true;
             };
 
-            if (tryActivate()) return { success: true, alertId: '${alertId}' };
-
+            // Virtualized list: scroll to the TOP first, then sweep the full range so
+            // off-screen alert rows get rendered before we search for them.
+            const tryAtPos = async (pos) => {
+              if (scroller) {
+                scroller.scrollTop = pos;
+                scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 450));
+              }
+              return await tryActivate();
+            };
+            let ar = await tryAtPos(0);
+            if (ar === 'already_active') return { success: true, alertId: '${alertId}', message: 'Already active' };
+            if (ar) return { success: true, alertId: '${alertId}' };
             if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
               const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
-              for (let pos = step; pos <= maxScroll; pos += step) {
-                scroller.scrollTop = pos;
-                await new Promise(r => setTimeout(r, 600));
-                if (tryActivate()) return { success: true, alertId: '${alertId}' };
+              const step = Math.max(80, Math.floor(scroller.clientHeight * 0.5));
+              for (let pos = step; ; pos += step) {
+                const at = Math.min(pos, maxScroll);
+                ar = await tryAtPos(at);
+                if (ar === 'already_active') return { success: true, alertId: '${alertId}', message: 'Already active' };
+                if (ar) return { success: true, alertId: '${alertId}' };
+                if (at >= maxScroll) break;
               }
-              scroller.scrollTop = maxScroll;
-              await new Promise(r => setTimeout(r, 600));
-              if (tryActivate()) return { success: true, alertId: '${alertId}' };
               scroller.scrollTop = 0;
             }
 
@@ -908,7 +931,13 @@ export class AlertTools {
               node = node.parentElement;
             }
 
-            const tryDeactivate = () => {
+            const hover = (el) => {
+              ['pointerover','pointerenter','mouseover','mouseenter','mousemove'].forEach(type => {
+                try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })); } catch (_) {}
+              });
+            };
+
+            const tryDeactivate = async () => {
               const nameEls = Array.from(document.querySelectorAll('[data-name="alert-item-name"]'));
               const target = nameEls.find(el => el.innerText?.trim() === '${alertId}');
               if (!target) return false;
@@ -917,44 +946,50 @@ export class AlertTools {
                 if (container.querySelector('[data-name="alert-delete-button"]')) break;
                 container = container.parentElement;
               }
+              if (!container) return false;
+              // The Stop button only renders on hover — simulate it, then wait a beat.
+              hover(target); hover(container);
+              await new Promise(r => setTimeout(r, 180));
               // Check current state — skip if already stopped/paused
-              const statusEl = container?.querySelector('[data-name="alert-item-status"]');
+              const statusEl = container.querySelector('[data-name="alert-item-status"]');
               const status = (statusEl?.innerText || '').trim().toLowerCase();
               if (status.includes('stop') || status.includes('pause')) {
                 return 'already_stopped';
               }
-              // Stop button uses the same toggle selector as the restart button
+              // The Stop control is a div/span with data-name="alert-stop-button"
+              // (not a <button>). Click it directly.
               const stopBtn =
-                container?.querySelector('[data-name="alert-toggle-button"]') ||
-                Array.from(container?.querySelectorAll('button') || []).find(b =>
-                  b !== container.querySelector('[data-name="alert-edit-button"]') &&
-                  b !== container.querySelector('[data-name="alert-delete-button"]') &&
-                  b.offsetParent !== null
-                );
+                container.querySelector('[data-name="alert-stop-button"]') ||
+                container.querySelector('[data-name="alert-toggle-button"]') ||
+                container.querySelector('[data-name="alert-pause-button"]');
               if (!stopBtn) return false;
               stopBtn.click();
               return true;
             };
 
-            const r = tryDeactivate();
-            if (r === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
-            if (r) return { success: true, alertId: '${alertId}' };
-
+            // Virtualized list: scroll to the TOP first, then sweep the full range so
+            // off-screen alert rows get rendered before we search for them.
+            const tryAtPos = async (pos) => {
+              if (scroller) {
+                scroller.scrollTop = pos;
+                scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 450));
+              }
+              return await tryDeactivate();
+            };
+            let rr = await tryAtPos(0);
+            if (rr === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
+            if (rr) return { success: true, alertId: '${alertId}' };
             if (scroller && scroller.scrollHeight > scroller.clientHeight + 10) {
               const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-              const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
-              for (let pos = step; pos <= maxScroll; pos += step) {
-                scroller.scrollTop = pos;
-                await new Promise(r => setTimeout(r, 600));
-                const r2 = tryDeactivate();
-                if (r2 === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
-                if (r2) return { success: true, alertId: '${alertId}' };
+              const step = Math.max(80, Math.floor(scroller.clientHeight * 0.5));
+              for (let pos = step; ; pos += step) {
+                const at = Math.min(pos, maxScroll);
+                rr = await tryAtPos(at);
+                if (rr === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
+                if (rr) return { success: true, alertId: '${alertId}' };
+                if (at >= maxScroll) break;
               }
-              scroller.scrollTop = maxScroll;
-              await new Promise(r => setTimeout(r, 600));
-              const r3 = tryDeactivate();
-              if (r3 === 'already_stopped') return { success: true, alertId: '${alertId}', message: 'Already stopped' };
-              if (r3) return { success: true, alertId: '${alertId}' };
               scroller.scrollTop = 0;
             }
 

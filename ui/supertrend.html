@@ -322,6 +322,48 @@
         line-height: 1.5;
       }
 
+      /* Run/Pause toggle switch (matches the Bias page) */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .toggle-row .lbl {
+        font-size: 13px;
+        font-weight: 600;
+        color: #d1d5db;
+      }
+      .switch {
+        position: relative;
+        width: 52px;
+        height: 28px;
+        border-radius: 14px;
+        background: #374151;
+        cursor: pointer;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      .switch.on {
+        background: #16a34a;
+      }
+      .switch.locked {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .switch .knob {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        transition: left 0.15s;
+      }
+      .switch.on .knob {
+        left: 27px;
+      }
+
       label {
         display: block;
         font-size: 11px;
@@ -582,6 +624,21 @@
     <div class="main">
       <!-- LEFT PANEL -->
       <div class="left">
+        <!-- Strategy Run/Pause -->
+        <div class="card">
+          <div class="sec">Supertrend Strategy</div>
+          <div class="toggle-row">
+            <span class="lbl" id="st-enabled-lbl">Running</span>
+            <div class="switch" id="st-enabled-switch" onclick="toggleStEnabled()">
+              <div class="knob"></div>
+            </div>
+          </div>
+          <div class="itm-hint">
+            Pause = disable the 4 supertrend alerts. Resume = re-enable + update immediately.
+            Default: enabled. (Can't pause while a CE/PE trade is open.)
+          </div>
+        </div>
+
         <!-- ITM Override -->
         <div class="card">
           <div class="sec">ITM Override</div>
@@ -729,9 +786,64 @@
         } catch (_) {}
       }
 
+      // ── Supertrend Run/Pause ──
+      let stEnabled = true;
+      async function loadStEnabled() {
+        try {
+          const c = await fetch('/api/supertrend/enabled').then((r) => r.json());
+          stEnabled = c.enabled !== false;
+          renderStEnabled();
+        } catch (_) {}
+      }
+      function renderStEnabled() {
+        const open = ceState === 'open' || peState === 'open';
+        const locked = stEnabled && open; // can't pause while a trade is open
+        const sw = document.getElementById('st-enabled-switch');
+        sw.className = 'switch' + (stEnabled ? ' on' : '') + (locked ? ' locked' : '');
+        document.getElementById('st-enabled-lbl').textContent = stEnabled
+          ? open
+            ? 'Running (trade open — can’t pause)'
+            : 'Running'
+          : 'Paused';
+      }
+      async function toggleStEnabled() {
+        // Can't pause while a supertrend trade is open.
+        if (stEnabled && (ceState === 'open' || peState === 'open')) {
+          alert('Cannot pause Supertrend — a CE/PE trade is OPEN. Wait for it to close.');
+          return;
+        }
+        const next = !stEnabled;
+        try {
+          const r = await fetch('/api/supertrend/enabled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: next }),
+          }).then((r) => r.json());
+          if (r.ok) {
+            stEnabled = next;
+            renderStEnabled();
+          }
+        } catch (_) {}
+      }
+
+      // position.json is grouped by strategy { shared, supertrend, ... }.
+      // Flatten to the supertrend fields (tolerant of legacy flat files).
+      function flatPos(p) {
+        p = p || {};
+        const sh = p.shared || {},
+          st = p.supertrend || {};
+        return {
+          CE: st.CE ?? p.CE ?? 'closed',
+          PE: st.PE ?? p.PE ?? 'closed',
+          lastATM: sh.lastATM ?? p.lastATM,
+          lastInstrument: sh.lastInstrument ?? p.lastInstrument,
+          lastITMDepth: sh.lastITMDepth ?? p.lastITMDepth,
+        };
+      }
+
       async function loadPosition() {
         try {
-          const pos = await fetch('/api/st/position').then((r) => r.json());
+          const pos = flatPos(await fetch('/api/st/position').then((r) => r.json()));
           ceState = pos.CE || 'closed';
           peState = pos.PE || 'closed';
           renderPosition();
@@ -796,6 +908,9 @@
         document.getElementById('chip-pe').className =
           'pos-chip ' + (pe === 'open' ? 'chip-open' : 'chip-closed');
         document.getElementById('chip-pe').textContent = `PE: ${pe.toUpperCase()}`;
+
+        // Lock the Run/Pause button while a trade is open
+        renderStEnabled();
       }
 
       async function saveConfig() {
@@ -1059,7 +1174,7 @@
       es.addEventListener('done', () => window.open('/supertrend-reports', '_blank'));
       es.onerror = () => {};
       es.addEventListener('position', (e) => {
-        const pos = JSON.parse(e.data);
+        const pos = flatPos(JSON.parse(e.data));
         ceState = pos.CE || 'closed';
         peState = pos.PE || 'closed';
         renderPosition();
@@ -1073,6 +1188,7 @@
       es.onerror = () => {};
 
       loadConfig();
+      loadStEnabled();
       loadPosition();
       fetch('/api/status')
         .then((r) => r.json())
