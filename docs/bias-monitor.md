@@ -132,40 +132,40 @@ stateDiagram-v2
 
 ### Run / Pause
 
-| Scenario                              | Behaviour                                                                   |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| Monitor starts (bias default)         | Bias **reset to paused**; on the first force tick all 6 bias alerts disabled |
+| Scenario                              | Behaviour                                                                     |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| Monitor starts (bias default)         | Bias **reset to paused**; on the first force tick all 6 bias alerts disabled  |
 | Resume bias (no open trade)           | Re-activate chosen 3 + update (symbol→ITM strike, price 0); opposite disabled |
-| Pause bias (no open trade)            | All 6 bias alerts deactivated; block stops managing                          |
-| Pause requested while a trade is OPEN | **Blocked** (UI) / **deferred** (monitor) until the trade closes             |
-| Toggle in UI                          | Applies within ~1s (config-file watch runs a force tick)                     |
+| Pause bias (no open trade)            | All 6 bias alerts deactivated; block stops managing                           |
+| Pause requested while a trade is OPEN | **Blocked** (UI) / **deferred** (monitor) until the trade closes              |
+| Toggle in UI                          | Applies within ~1s (config-file watch runs a force tick)                      |
 
 ### Direction / flip
 
-| Scenario                        | Behaviour                                                          |
-| ------------------------------- | ------------------------------------------------------------------ |
-| Flip direction, no open trade   | Deactivate old 3, activate + update new 3 (price 0)                |
-| Flip direction while trade OPEN | **Deferred** — applied automatically once the position closes      |
-| First reconcile (startup)       | Deactivate the opposite direction; chosen assumed already active   |
+| Scenario                        | Behaviour                                                        |
+| ------------------------------- | ---------------------------------------------------------------- |
+| Flip direction, no open trade   | Deactivate old 3, activate + update new 3 (price 0)              |
+| Flip direction while trade OPEN | **Deferred** — applied automatically once the position closes    |
+| First reconcile (startup)       | Deactivate the opposite direction; chosen assumed already active |
 
 ### Alert update / trade
 
-| Scenario                     | Behaviour                                                           |
-| ---------------------------- | ------------------------------------------------------------------- |
-| ATM shifts, no open trade    | Chosen 3 updated to new strike (shares ST 120s cooldown)            |
-| Entry fires (trade opens)    | Entry **parked**: price 0 + disabled; exit/target left running      |
-| Trade running (steady)       | Alerts untouched                                                    |
-| Exit or target fires (close) | Re-enable entry; sync 3 alerts to current strike                    |
-| Update fails                 | `retryNextTick.bias = true` — retries next tick                     |
+| Scenario                     | Behaviour                                                      |
+| ---------------------------- | -------------------------------------------------------------- |
+| ATM shifts, no open trade    | Chosen 3 updated to new strike (shares ST 120s cooldown)       |
+| Entry fires (trade opens)    | Entry **parked**: price 0 + disabled; exit/target left running |
+| Trade running (steady)       | Alerts untouched                                               |
+| Exit or target fires (close) | Re-enable entry; sync 3 alerts to current strike               |
+| Update fails                 | `retryNextTick.bias = true` — retries next tick                |
 
 ---
 
 ## 8. Strike routing
 
-| Direction | Option | Strike formula              |
-| --------- | ------ | --------------------------- |
-| up        | CE     | ATM − (itmDepth × step)     |
-| down      | PE     | ATM + (itmDepth × step)     |
+| Direction | Option | Strike formula          |
+| --------- | ------ | ----------------------- |
+| up        | CE     | ATM − (itmDepth × step) |
+| down      | PE     | ATM + (itmDepth × step) |
 
 Instrument / day / ITM-depth routing is shared with supertrend (see `supertrend-monitor.md`).
 
@@ -197,13 +197,13 @@ records whether the trade closed on `exit` (SL/signal) or `target`.
 
 ## 11. State fields (in `config/position.json` → `bias` section)
 
-| Field           | Meaning                                                |
-| --------------- | ------------------------------------------------------ |
-| `enabled`       | last-seen run/pause flag (edge detection)              |
-| `position`      | active-direction trade state (open/closed)             |
-| `direction`     | direction being operated on (up/down)                  |
-| `lastStrike`    | strike the 3 bias alerts were last set to              |
-| `activatedDir`  | direction whose alerts are currently activated         |
-| `entryParked`   | entry was price→0'd + disabled during an open trade    |
+| Field          | Meaning                                             |
+| -------------- | --------------------------------------------------- |
+| `enabled`      | last-seen run/pause flag (edge detection)           |
+| `position`     | active-direction trade state (open/closed)          |
+| `direction`    | direction being operated on (up/down)               |
+| `lastStrike`   | strike the 3 bias alerts were last set to           |
+| `activatedDir` | direction whose alerts are currently activated      |
+| `entryParked`  | entry was price→0'd + disabled during an open trade |
 
 (The bias log diff-baseline is in-memory only — not persisted.)
