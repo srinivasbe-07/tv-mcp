@@ -15,12 +15,12 @@ npm run ui
 
 Then open **http://localhost:3000** in the browser.
 
-| Step | Action                                                                     |
-| ---- | -------------------------------------------------------------------------- |
-| 1    | Click **▶ Start TV** — waits until TradingView CDP is ready (green banner) |
+| Step | Action                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------ |
+| 1    | Click **▶ Start TV** — waits until TradingView CDP is ready (green banner)                 |
 | 2    | Click **▶ Start** on the Supertrend Monitor (this one process runs both Supertrend + Bias) |
-| 3    | Live status + logs appear in each panel                                    |
-| 4    | Click **Open ↗** to open the full control page in a new tab                |
+| 3    | Live status + logs appear in each panel                                                    |
+| 4    | Click **Open ↗** to open the full control page in a new tab                                |
 
 > **Note:** Supertrend and Bias are now **one merged process** (`monitors/monitor.js`) sharing a single TradingView window/tab. There is no separate Bias process to start — starting the Supertrend monitor runs both. The `/bias` page just sets the bias direction. Bias runs whenever a `bias.direction` is configured (no separate on/off).
 
@@ -29,8 +29,8 @@ Then open **http://localhost:3000** in the browser.
 | URL                                        | Purpose                                                                |
 | ------------------------------------------ | ---------------------------------------------------------------------- |
 | `http://localhost:3000`                    | Dashboard — overview + start/stop the monitor                          |
-| `http://localhost:3000/bias`               | Bias Monitor — manual up/down direction, live status, EOD report        |
-| `http://localhost:3000/bias-reports`       | **Bias EOD Reports** — same UI as 1-min reports, bias trades            |
+| `http://localhost:3000/bias`               | Bias Monitor — manual up/down direction, live status, EOD report       |
+| `http://localhost:3000/bias-reports`       | **Bias EOD Reports** — same UI as 1-min reports, bias trades           |
 | `http://localhost:3000/supertrend`         | Supertrend Monitor — ITM override, CE/PE position, generate EOD report |
 | `http://localhost:3000/test-alerts`        | **Supertrend Alert Test** — verify NIFTY & SENSEX alerts               |
 | `http://localhost:3000/supertrend-reports` | **Trade Reports Dashboard** — consolidated P&L for both strategies     |
@@ -43,13 +43,13 @@ Then open **http://localhost:3000** in the browser.
 
 Edit and save — changes apply on the next 60s tick (no restart needed).
 
-| Field                  | Example  | Notes                                                          |
-| ---------------------- | -------- | -------------------------------------------------------------- |
-| `itmOverride`          | `null`   | null = day rule, 0 = ATM, 1 = ITM-1, 2 = ITM-2 (both strats)    |
-| `supertrend.enabled`   | `true`   | Supertrend Run/Pause — **default enabled** (paused only if false) |
-| `bias.enabled`         | `false`  | Bias Run/Pause — **default paused** (runs only when `true`)     |
-| `bias.direction`       | `"up"`   | `up` = buy CE/call, `down` = buy PE/put                        |
-| `ignoreMarketHours`    | `false`  | `true` = run ticks 24/7 (off-hours testing / crypto)           |
+| Field                | Example | Notes                                                             |
+| -------------------- | ------- | ----------------------------------------------------------------- |
+| `itmOverride`        | `null`  | null = day rule, 0 = ATM, 1 = ITM-1, 2 = ITM-2 (both strats)      |
+| `supertrend.enabled` | `true`  | Supertrend Run/Pause — **default enabled** (paused only if false) |
+| `bias.enabled`       | `false` | Bias Run/Pause — **default paused** (runs only when `true`)       |
+| `bias.direction`     | `"up"`  | `up` = buy CE/call, `down` = buy PE/put                           |
+| `ignoreMarketHours`  | `false` | `true` = run ticks 24/7 (off-hours testing / crypto)              |
 
 **Run/Pause per strategy** (toggle on each page): both strategies share one monitor process.
 
@@ -72,12 +72,12 @@ It runs **inside the merged monitor process** (`monitors/monitor.js`) — supert
 
 6 per instrument — 3 for `up` (CE), 3 for `down` (PE). Only the today-instrument's chosen direction is active; the opposite direction's 3 alerts are **deactivated**.
 
-| Instrument | Direction | Entry             | Exit             | Target             |
-| ---------- | --------- | ----------------- | ---------------- | ------------------ |
-| NIFTY      | up        | `0NiftyBiasEntry` | `0NiftyBiasExit` | `0NiftyBiasTarget` |
-| NIFTY      | down      | `zNiftyBiasEntry` | `zNiftyBiasExit` | `zNiftyBiasTarget` |
-| SENSEX     | up        | `0SensexBiasEntry`| `0SensexBiasExit`| `0SensexBiasTarget`|
-| SENSEX     | down      | `zSensexBiasEntry`| `zSensexBiasExit`| `zSensexBiasTarget`|
+| Instrument | Direction | Entry              | Exit              | Target              |
+| ---------- | --------- | ------------------ | ----------------- | ------------------- |
+| NIFTY      | up        | `0NiftyBiasEntry`  | `0NiftyBiasExit`  | `0NiftyBiasTarget`  |
+| NIFTY      | down      | `zNiftyBiasEntry`  | `zNiftyBiasExit`  | `zNiftyBiasTarget`  |
+| SENSEX     | up        | `0SensexBiasEntry` | `0SensexBiasExit` | `0SensexBiasTarget` |
+| SENSEX     | down      | `zSensexBiasEntry` | `zSensexBiasExit` | `zSensexBiasTarget` |
 
 (`0` prefix sorts up-alerts to the top of the Alerts panel; `z` sorts down-alerts to the bottom.)
 
