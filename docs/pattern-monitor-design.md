@@ -1,5 +1,9 @@
 # Pattern Monitor — Design Document
 
+> **⚠️ SUPERSEDED (2026-06).** The pattern monitor was removed and merged into the
+> **bias monitor** (manual direction, no candle-pattern detection). See `CLAUDE.md`
+> → "Bias Monitor". This document is kept for historical reference only.
+
 ## Strategy Overview
 
 - Everything runs on **15-min candles**

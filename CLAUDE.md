@@ -51,7 +51,12 @@ Edit and save — changes apply on the next 60s tick (no restart needed).
 | `bias.direction`       | `"up"`   | `up` = buy CE/call, `down` = buy PE/put                        |
 | `ignoreMarketHours`    | `false`  | `true` = run ticks 24/7 (off-hours testing / crypto)           |
 
-**Run/Pause per strategy** (toggle on each page): both strategies share one monitor process. **Pause** disables that strategy's alerts (deactivates all of them) and stops managing them. **Resume** re-enables the alerts and immediately updates them (next tick). Supertrend defaults to running; Bias defaults to paused (manual trading).
+**Run/Pause per strategy** (toggle on each page): both strategies share one monitor process.
+
+- **Pause** disables that strategy's alerts (deactivates all of them) and stops managing them. **Resume** re-enables the alerts and immediately updates them.
+- Changes apply **immediately** — the monitor watches `monitor-config.json` and runs a tick the moment you toggle (no 60s wait).
+- Supertrend defaults to running; **Bias defaults to paused and is reset to paused on every monitor start/restart** (manual trading — resume it explicitly each session).
+- **You can't pause a strategy while one of its trades is OPEN** — the toggle is disabled in the UI, and the monitor defers the disable until the trade closes (so a running trade never loses its exit/target alerts).
 
 ---
 
