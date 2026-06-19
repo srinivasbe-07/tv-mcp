@@ -12,6 +12,7 @@ import {
   calcBiasStrike,
   biasAlertPlan,
   processBiasHistory,
+  deriveBiasStatus,
   INSTRUMENTS,
 } from '../monitors/monitor.js';
 import { classify, parseTrades, parseOpenTrades } from '../scripts/generate-bias-report.js';
@@ -258,6 +259,49 @@ test('snapshot sealed to top-30', () => {
   const items = Array.from({ length: 40 }, (_, i) => ({ name: `n${i}`, symbol: '' }));
   processBiasHistory(items, s, 'NIFTY', 'up');
   return s.lastBiasLogSnapshot.length === 30;
+});
+
+// ---------------------------------------------------------------------------
+// deriveBiasStatus — UI status from the alert log, direction-agnostic (scans both
+// up & down sets; newest relevant fire wins). Used by the UI-only bias monitor.
+// ---------------------------------------------------------------------------
+const N = BIAS_ALERT_NAMES.NIFTY;
+section('deriveBiasStatus');
+test('up entry → open/up', () => {
+  const r = deriveBiasStatus([{ name: N.up.entry }], 'NIFTY');
+  return r.position === 'open' && r.direction === 'up';
+});
+test('down entry → open/down', () => {
+  const r = deriveBiasStatus([{ name: N.down.entry }], 'NIFTY');
+  return r.position === 'open' && r.direction === 'down';
+});
+test('up exit → closed/up', () => {
+  const r = deriveBiasStatus([{ name: N.up.exit }], 'NIFTY');
+  return r.position === 'closed' && r.direction === 'up';
+});
+test('down target → closed/down', () => {
+  const r = deriveBiasStatus([{ name: N.down.target }], 'NIFTY');
+  return r.position === 'closed' && r.direction === 'down';
+});
+test('newest relevant fire wins (down entry above up exit)', () => {
+  const r = deriveBiasStatus([{ name: N.down.entry }, { name: N.up.exit }], 'NIFTY');
+  return r.position === 'open' && r.direction === 'down';
+});
+test('non-bias rows ignored → first bias wins', () => {
+  const r = deriveBiasStatus([{ name: 'niftySupertrendLongEntry' }, { name: N.up.entry }], 'NIFTY');
+  return r.position === 'open' && r.direction === 'up';
+});
+test('no bias alerts → closed/null', () => {
+  const r = deriveBiasStatus([{ name: 'niftySupertrendLongEntry' }], 'NIFTY');
+  return r.position === 'closed' && r.direction === null;
+});
+test('empty history → closed/null', () => {
+  const r = deriveBiasStatus([], 'NIFTY');
+  return r.position === 'closed' && r.direction === null;
+});
+test('unknown instrument → closed/null', () => {
+  const r = deriveBiasStatus([{ name: N.up.entry }], 'BANKNIFTY');
+  return r.position === 'closed' && r.direction === null;
 });
 
 // ---------------------------------------------------------------------------

@@ -347,8 +347,18 @@ function loadState() {
 function saveState() {
   try {
     state.lastDate = todayIST();
+    // Preserve the UI-owned dayLines selection living in position.json — the monitor
+    // reads it (loadDayLines) but never authoritatively writes it, so pass through.
+    let dayLines = [];
+    try {
+      const prev = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+      if (Array.isArray(prev.dayLines)) dayLines = prev.dayLines;
+    } catch (_e) {
+      /* ignore */
+    }
     const out = {
       date: state.lastDate,
+      dayLines,
       shared: {
         lastATM: state.lastATM,
         lastATMUpdateTime: state.lastATMUpdateTime,
@@ -708,120 +718,10 @@ async function verifyAlertStatus(cdpAlerts, instrName) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Bias alert updates — point the 3 active-direction alerts at one ITM option
-// symbol AND set their price level to 0 via alert_update.
-// ---------------------------------------------------------------------------
-async function updateBiasAlerts(cdpChart, cdpAlerts, direction, strike, optType, cfg, instrName) {
-  const set = BIAS_ALERT_NAMES[instrName]?.[direction];
-  if (!set) return [];
-  const symbol = buildSymbol(cfg, strike, optType);
-  const exchange = cfg.spotSymbol.split(':')[0];
-  const qualifiedSymbol = `${exchange}:${symbol}`;
-
-  const currentSymbol = await cdpChart.cdp
-    .executeScript(`window.TradingViewApi?._activeChartWidgetWV?._value?.symbol?.() || ''`)
-    .catch(() => '');
-  if (currentSymbol !== qualifiedSymbol) {
-    await cdpAlerts.normalizeAlertsPanel();
-    log(`  [BIAS] Loading ${qualifiedSymbol} on chart tab...`);
-    await cdpChart.handle('chart_set_symbol', { symbol: qualifiedSymbol });
-    await new Promise((r) => setTimeout(r, 3000));
-  } else {
-    log(`  [BIAS] Chart tab already on ${qualifiedSymbol}`);
-  }
-
-  const results = [];
-  for (const [role, name] of Object.entries(set)) {
-    log(`  [BIAS:${direction}:${role}] "${name}" → ${symbol} @ 0`);
-    let result;
-    try {
-      const r = await cdpAlerts.handle('alert_update', { alertName: name, symbol, level: 0 });
-      if (r?.isError) {
-        result = { name, symbol, success: false, error: r?.content?.[0]?.text || 'unknown error' };
-      } else {
-        const data = JSON.parse(r?.content?.[0]?.text || '{}');
-        result = { name, symbol, success: data.success, message: data.message };
-      }
-    } catch (e) {
-      result = { name, symbol, success: false, error: e.message };
-    }
-    const detail = result?.message || result?.error || '';
-    if (result?.success) log(`  [OK]   "${name}" → ${symbol} @ 0${detail ? ' — ' + detail : ''}`);
-    else log(`  [FAIL] "${name}" not updated${detail ? ' — ' + detail : ''}`);
-    results.push(result);
-    await new Promise((r) => setTimeout(r, 1500));
-  }
-  return results;
-}
-
-// When a bias trade is OPEN, the entry alert already fired: set its price to 0
-// and disable it (don't change its symbol). Exit + Target are left untouched so
-// the running trade can still close.
-async function parkBiasEntry(cdpAlerts, instrName, direction, entrySymbol) {
-  const set = BIAS_ALERT_NAMES[instrName]?.[direction];
-  if (!set) return;
-  await cdpAlerts.normalizeAlertsPanel();
-  try {
-    const r = await cdpAlerts.handle('alert_update', {
-      alertName: set.entry,
-      symbol: entrySymbol,
-      level: 0,
-    });
-    const d = JSON.parse(r?.content?.[0]?.text || '{}');
-    log(`  [BIAS] entry "${set.entry}" price→0 — ${d.success ? 'OK' : d.message || 'fail'}`);
-  } catch (e) {
-    log(`  [BIAS] entry price→0 error: ${e.message}`);
-  }
-  await new Promise((r) => setTimeout(r, 500));
-  try {
-    const r = await cdpAlerts.handle('alert_deactivate', { alertId: set.entry });
-    const d = JSON.parse(r?.content?.[0]?.text || '{}');
-    log(`  [BIAS] disable entry "${set.entry}" — ${d.success ? 'OK' : d.message || 'fail'}`);
-  } catch (e) {
-    log(`  [BIAS] disable entry error: ${e.message}`);
-  }
-}
-
-// Re-enable a bias entry alert that was parked+disabled during a trade.
-async function reactivateBiasEntry(cdpAlerts, instrName, direction) {
-  const set = BIAS_ALERT_NAMES[instrName]?.[direction];
-  if (!set) return;
-  await cdpAlerts.normalizeAlertsPanel();
-  try {
-    const r = await cdpAlerts.handle('alert_activate', { alertId: set.entry });
-    const d = JSON.parse(r?.content?.[0]?.text || '{}');
-    log(`  [BIAS] re-enable entry "${set.entry}" — ${d.success ? 'OK' : d.message || 'fail'}`);
-  } catch (e) {
-    log(`  [BIAS] re-enable entry error: ${e.message}`);
-  }
-}
-
-// Deactivate the opposite direction's 3 alerts. Only today's instrument is touched.
-// The chosen direction's 3 alerts are re-activated ONLY when flipping back to a
-// direction that may have been deactivated by a prior flip (activateChosen=true).
-// On first reconcile the chosen alerts are assumed already active, so we leave them
-// alone — avoids redundant "already active" activate calls.
-async function applyBiasActivation(cdpAlerts, instrName, direction, activateChosen = false) {
-  const plan = biasAlertPlan(instrName, direction);
-  if (!plan.deactivate.length) return;
-  await cdpAlerts.normalizeAlertsPanel();
-  const apply = async (tool, name) => {
-    try {
-      const r = await cdpAlerts.handle(tool, { alertId: name });
-      const d = JSON.parse(r?.content?.[0]?.text || '{}');
-      const verb = tool === 'alert_activate' ? 'activate' : 'deactivate';
-      log(`  [BIAS] ${verb} "${name}" — ${d.success ? 'OK' : d.message || 'fail'}`);
-    } catch (e) {
-      log(`  [BIAS] ${tool} "${name}" error: ${e.message}`);
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  };
-  for (const name of plan.deactivate) await apply('alert_deactivate', name);
-  if (activateChosen) {
-    for (const name of plan.activate) await apply('alert_activate', name);
-  }
-}
+// Bias alert symbol/price updates were removed: the monitor no longer edits bias
+// alert symbols or prices (that caused TV to auto-fill the current price on a symbol
+// change and trigger immediately). Bias now only enables the chosen direction and
+// disables the opposite — see the bias block in tick(). You set strikes manually.
 
 // Disable (deactivate) all of a strategy's alerts — used when a strategy is PAUSED.
 async function deactivateAlerts(cdpAlerts, names, tag) {
@@ -842,11 +742,6 @@ async function deactivateAlerts(cdpAlerts, names, tag) {
 function supertrendAlertNames(instrName) {
   const n = ALERT_NAMES[instrName];
   return n ? [n.CE.entry, n.CE.exit, n.PE.entry, n.PE.exit] : [];
-}
-
-function biasAlertNames(instrName) {
-  const s = BIAS_ALERT_NAMES[instrName];
-  return s ? [s.up.entry, s.up.exit, s.up.target, s.down.entry, s.down.exit, s.down.target] : [];
 }
 
 export function processHistoryForPositionChanges(historyItems, stateObj, instrument = null) {
@@ -1023,6 +918,257 @@ export function processBiasHistory(historyItems, stateObj, instrument, direction
 }
 
 // ---------------------------------------------------------------------------
+// Day H/L line drawing (user-selected days)
+//
+// The user picks a list of day offsets (position.json → dayLines), e.g. [0,1,2]:
+//   0 = today's H/L, 1 = previous day's H/L, 2 = 2 days prior, …
+// The monitor draws a HIGH (red) and LOW (green) line for each selected day, on the
+// spot chart. Only our own lines are removed before redrawing (manual drawings are
+// left untouched). Drawing happens on an IDLE tick (supertrend not updating), i.e.
+// during the cooldown, so it never clashes with supertrend's chart/alert work.
+// ---------------------------------------------------------------------------
+const DRAWN_IDS_FILE = './logs/drawn-ids.json';
+let MONITOR_TAB_ID = ''; // chart tab the monitor draws on (for diagnostics)
+let lastDayLinesKey = ''; // signature of what's drawn — skip redraw when unchanged
+let lastDayLinesDrawAt = 0; // throttle today's developing-H/L refresh
+
+function loadDrawnIds() {
+  try {
+    return JSON.parse(fs.readFileSync(DRAWN_IDS_FILE, 'utf8'));
+  } catch (_e) {
+    return { levelIds: [] };
+  }
+}
+let drawnLevelIds = loadDrawnIds().levelIds || [];
+function saveDrawnIds() {
+  try {
+    fs.writeFileSync(DRAWN_IDS_FILE, JSON.stringify({ levelIds: drawnLevelIds }));
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+// Read the user's day-line offsets from position.json (UI-owned). e.g. [0,1,2].
+function loadDayLines() {
+  try {
+    const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const arr = Array.isArray(p.dayLines) ? p.dayLines : [];
+    return arr.map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
+  } catch (_e) {
+    return [];
+  }
+}
+
+// Bias position/direction for the UI — derived from the alert log across BOTH
+// directions (no direction config anymore). Newest relevant fire wins:
+// entry → open, exit/target → closed.
+export function deriveBiasStatus(historyItems, instrName) {
+  const sets = BIAS_ALERT_NAMES[instrName];
+  if (!sets) return { position: 'closed', direction: null };
+  for (const item of historyItems || []) {
+    const n = item.name;
+    for (const dir of ['up', 'down']) {
+      const s = sets[dir];
+      if (!s) continue;
+      if (n === s.entry) return { position: 'open', direction: dir };
+      if (n === s.exit || n === s.target) return { position: 'closed', direction: dir };
+    }
+  }
+  return { position: 'closed', direction: null };
+}
+
+// Fetch daily bars by briefly switching the tab to the spot symbol on the Daily
+// timeframe and restoring it — atomic inside one evaluate so the read never lands
+// mid-switch (the bug that put option prices in the levels array).
+async function fetchDailyBars(cdp, symbol, limit, tf = 'D') {
+  const script = `
+    (async function() {
+      try {
+        const widget = window.TradingViewApi?._activeChartWidgetWV?._value;
+        if (!widget) return { bars: [], error: 'No chart widget' };
+        const prevSymbol = widget.symbol?.() || '';
+        const prevTf     = widget.resolution?.() || '';
+        const needSymbol = prevSymbol !== '${symbol}';
+        const needTf     = prevTf !== '${tf}';
+        if (needSymbol) {
+          for (const m of ['setSymbol','changeSymbol','setTicker']) {
+            if (typeof widget[m] === 'function') { widget[m]('${symbol}'); break; }
+          }
+          await new Promise(r => setTimeout(r, 1800));
+        }
+        if (needTf) {
+          for (const m of ['setResolution','setInterval','changeResolution']) {
+            if (typeof widget[m] === 'function') { widget[m]('${tf}'); break; }
+          }
+          await new Promise(r => setTimeout(r, 1800));
+        }
+        let bars = [];
+        const store = widget?._chartWidget?._modelWV?._value?.mainSeries?.()?.bars?.();
+        if (store && store.size() > 0) {
+          const last = store.lastIndex();
+          const first = store.firstIndex();
+          const from = Math.max(first, last - ${limit} + 1);
+          for (let i = from; i <= last; i++) {
+            const b = store.valueAt(i);
+            if (!b) continue;
+            const v = Array.isArray(b) ? b : (b.value || []);
+            if (v.length >= 5)
+              bars.push({ time: v[0], high: +v[2], low: +v[3], close: +v[4] });
+          }
+        }
+        if (needTf) {
+          for (const m of ['setResolution','setInterval','changeResolution']) {
+            if (typeof widget[m] === 'function') { widget[m](prevTf); break; }
+          }
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (needSymbol) {
+          for (const m of ['setSymbol','changeSymbol','setTicker']) {
+            if (typeof widget[m] === 'function') { widget[m](prevSymbol); break; }
+          }
+          await new Promise(r => setTimeout(r, 500));
+        }
+        return { bars };
+      } catch (e) { return { bars: [], error: e.message }; }
+    })()
+  `;
+  const result = await cdp.executeScript(script).catch(() => null);
+  return result?.bars || [];
+}
+
+// Cache the last `days` completed daily bars once per day (refetch if `days`
+// changes); also capture today's developing bar for the include-today option.
+// True once window.TradingViewApi.activeChart().createShape exists — the chart can
+// take ~tens of seconds to expose the drawing API after a tab (re)load.
+async function drawingApiReady(cdp) {
+  return (
+    (await cdp
+      .executeScript(`typeof window.TradingViewApi?.activeChart?.()?.createShape === 'function'`)
+      .catch(() => false)) === true
+  );
+}
+async function waitForDrawingApi(cdp, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await drawingApiReady(cdp)) return true;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return false;
+}
+
+// Remove our previously-drawn lines and draw the new ones in ONE atomic script.
+// The authoritative list of OUR entity IDs lives in the page (window.__biasLevelIds)
+// so removeEntity always gets the exact original id (correct type — coercing it to a
+// String, as before, broke removeEntity for non-string ids and orphaned old lines
+// like the D-2/D-3 levels). drawn-ids.json is a best-effort fallback used only to
+// clear lines left over from a previous run after a TV/tab reload.
+async function drawLevels(cdp, levelObjects, spotSymbol) {
+  const persisted = JSON.stringify(drawnLevelIds);
+  const spot = JSON.stringify(spotSymbol || '');
+  const script = `
+    (async function() {
+      try {
+        const chart = window.TradingViewApi?.activeChart?.();
+        if (!chart || typeof chart.createShape !== 'function') return { ready: false };
+        // The price-anchored lines only render on the SPOT chart — on an option chart
+        // (price range ~hundreds vs ~24000) createShape returns null and nothing shows.
+        // Force the chart onto spot here, inside the same script, so the draw is reliable.
+        const __spot = ${spot};
+        const __w = window.TradingViewApi?._activeChartWidgetWV?._value;
+        if (__spot && __w && __w.symbol && __w.symbol() !== __spot) {
+          for (const m of ['setSymbol','changeSymbol','setTicker']) {
+            if (typeof __w[m] === 'function') { __w[m](__spot); break; }
+          }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        window.__biasLevelIds = window.__biasLevelIds || [];
+        // Remove ALL horizontal lines first — ours AND any orphans left by older runs
+        // (we no longer have their ids). Other drawing types are left untouched. This
+        // is the reliable way to stop stale D-2/D-3 lines lingering on the chart.
+        let __removed = 0;
+        if (typeof chart.getAllShapes === 'function') {
+          for (const s of (chart.getAllShapes() || [])) {
+            if (s && s.name === 'horizontal_line') { try { chart.removeEntity(s.id); __removed++; } catch(_e) {} }
+          }
+        } else {
+          for (const id of window.__biasLevelIds.concat(${persisted})) { try { chart.removeEntity(id); } catch(_e) {} }
+        }
+        window.__biasLevelIds = [];
+        const levels = ${JSON.stringify(levelObjects)};
+        const serializable = [];
+        for (const { price, label, color } of levels) {
+          try {
+            const id = await chart.createShape(
+              { price },
+              { shape: 'horizontal_line', lock: false,
+                overrides: { linecolor: color, linewidth: 1, linestyle: 2, showLabel: true, text: label } }
+            );
+            if (id != null) {
+              window.__biasLevelIds.push(id); // keep the REAL id (any type) in the page
+              if (typeof id === 'string' || typeof id === 'number') serializable.push(id);
+            }
+          } catch(_e) {}
+        }
+        return { ready: true, ids: serializable, count: window.__biasLevelIds.length, removed: __removed, symbol: chart.symbol?.() || '' };
+      } catch(e) { return { ready: false, error: e.message }; }
+    })()
+  `;
+  const result = await cdp.executeScript(script).catch((e) => ({ ready: false, error: e.message }));
+  if (!result?.ready) {
+    log(
+      `[LEVELS] draw skipped — drawing API not ready${result?.error ? ` (${result.error})` : ''}`
+    );
+    return false; // keep drawnLevelIds; caller keeps its key so it retries next tick
+  }
+  drawnLevelIds = result.ids || []; // persist only serializable ids (best-effort)
+  saveDrawnIds();
+  log(
+    `[LEVELS] drew ${result.count} line(s) (cleared ${result.removed ?? 0} old) on chart "${result.symbol}" (tab ${MONITOR_TAB_ID})`
+  );
+  return true;
+}
+
+// Draw H/L lines for the user-selected day offsets (position.json → dayLines).
+// offset 0 = today (developing bar), 1 = previous day, 2 = 2 days prior, …
+// Redraws when the selection changes, on force (startup), or — if "today" (0) is
+// selected — every few minutes so today's developing H/L stays current. Completed
+// days are static, so a no-today selection draws once. Empty selection clears all.
+async function updateDayLines(cdp, spotSymbol, force = false) {
+  const offsets = loadDayLines();
+  const key = 'days:' + offsets.join(',');
+  const offsetsChanged = key !== lastDayLinesKey;
+  const refreshToday = offsets.includes(0) && Date.now() - lastDayLinesDrawAt > 2 * 60_000;
+  if (!force && !offsetsChanged && !refreshToday) return;
+
+  let levels = [];
+  if (offsets.length) {
+    const maxOff = Math.max(...offsets);
+    const bars = await fetchDailyBars(cdp, spotSymbol, maxOff + 3); // oldest → newest
+    if (bars.length < 1) {
+      log('[LINES] no daily bars yet — will retry');
+      return;
+    }
+    for (const off of offsets) {
+      const idx = bars.length - 1 - off; // 0 = last bar (today)
+      if (idx < 0) {
+        log(`[LINES] day ${off}: not enough history`);
+        continue;
+      }
+      const b = bars[idx];
+      const label = off === 0 ? 'Today' : `D-${off}`;
+      levels.push({ price: b.high, label: `${label} H`, color: '#FF4444' });
+      levels.push({ price: b.low, label: `${label} L`, color: '#22BB44' });
+    }
+  }
+
+  const drew = await drawLevels(cdp, levels, spotSymbol);
+  if (!drew) return; // API not ready — retry next idle tick
+  lastDayLinesKey = key;
+  lastDayLinesDrawAt = Date.now();
+  log(`[LINES] drew day lines for offsets [${offsets.join(', ')}]`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -1039,20 +1185,8 @@ async function main() {
 
   loadState();
 
-  // Bias always starts PAUSED — it's manual trading, so it must be resumed
-  // explicitly each session. Reset bias.enabled to false in the config on every
-  // start/restart (the first force tick then disables the bias alerts).
-  try {
-    const cfgPath = './config/monitor-config.json';
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    if (cfg.bias?.enabled === true) {
-      cfg.bias.enabled = false;
-      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-      console.log('[BIAS] reset to PAUSED on startup — resume explicitly when ready');
-    }
-  } catch (_e) {
-    /* ignore */
-  }
+  // Bias run state on startup is decided AFTER reading TV history below: RUNNING if a
+  // bias position is open (a mid-trade restart keeps managing it), otherwise PAUSED.
 
   const todayInstr = INSTRUMENTS[DAY_INSTRUMENT[nowIST().getUTCDay()] || 'NIFTY'];
   console.log('\n=== Intraday Alert Monitor (NIFTY / SENSEX) ===');
@@ -1098,6 +1232,7 @@ async function main() {
   try {
     // Merged monitor (supertrend + bias) owns a single chart tab.
     const tabId = await CDPManager.ensureMonitorTab('./logs/supertrend-tab.json', 9222);
+    MONITOR_TAB_ID = tabId.slice(0, 16);
     cdp = new CDPManager(tabId, './logs/supertrend-tab.json');
     await cdp.connect();
     log(`CDP connected (tab: ${tabId.slice(0, 16)})`);
@@ -1111,21 +1246,41 @@ async function main() {
   const cdpAlerts = new AlertTools(cdp);
   const cdpChart = new ChartTools(cdp);
 
-  // ── Market-hours restart: re-derive CE/PE from TV alert history immediately ──
-  // loadState() loaded CE/PE from file which may be stale (monitor was down when
-  // an alert fired). Read history now so position.json is correct before the first
-  // tick — don't wait for waitForAlertsReady which can take up to 120s.
+  // ── Draw the user's day H/L lines immediately on connect ─────────
+  // Drawing needs only the chart + daily bars, not the alerts panel — so do it now,
+  // BEFORE waitForAlertsReady (which can take up to 120s). Lines are drawn from the
+  // persisted day-offset selection (position.json → dayLines).
+  try {
+    await cdpChart.handle('chart_set_symbol', { symbol: todayInstr.spotSymbol });
+    log('[LINES] waiting for chart drawing API...');
+    const ready = await waitForDrawingApi(cdp, 60000);
+    if (!ready) {
+      log('[LINES] drawing API not ready after 60s — will draw on a later tick');
+    } else {
+      await updateDayLines(cdp, todayInstr.spotSymbol, true);
+      log('[LINES] startup draw complete');
+    }
+  } catch (e) {
+    log(`[LINES] startup draw failed: ${e.message}`);
+  }
+
+  // ── Startup state from TV history (before the alerts-panel wait / first tick) ──
+  // Re-derive CE/PE and the bias position (UI status only) from the live alert log so
+  // position.json (and the UI, which watches it) is correct immediately — don't wait
+  // for waitForAlertsReady (up to 120s).
   if (isMarketHours()) {
-    log('[STATE] Market hours restart — reading TV alert history to re-derive position...');
+    log('[STATE] Market-hours start — reading TV alert history to re-derive positions...');
     try {
       const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
       const historyItems =
         historyResult?.items ?? (Array.isArray(historyResult) ? historyResult : []);
       if (historyItems.length > 0) {
         processHistoryForPositionChanges(historyItems, state, todayInstr.name);
-        saveState();
+        const bs = deriveBiasStatus(historyItems, todayInstr.name);
+        state.biasPosition = bs.position;
+        state.biasDirection = bs.direction;
         log(
-          `[STATE] Position re-derived: CE=${state.CE.toUpperCase()} PE=${state.PE.toUpperCase()}`
+          `[STATE] Re-derived: CE=${state.CE.toUpperCase()} PE=${state.PE.toUpperCase()} BIAS=${state.biasPosition.toUpperCase()}`
         );
       } else {
         log('[STATE] No alert history found — keeping loaded state');
@@ -1133,7 +1288,11 @@ async function main() {
     } catch (e) {
       log(`[STATE] Could not read alert history on startup: ${e.message}`);
     }
+  } else {
+    // Pre/off-market: no trade can be open.
+    state.biasPosition = 'closed';
   }
+  saveState();
 
   // ── Wait for Alerts panel to sync from cloud after TV restart ────────────
   // Polls alert_list every 5s until all 4 supertrend alerts for today's
@@ -1297,39 +1456,12 @@ async function main() {
       if (CEjustClosed) log('[POSITION] CE closed — will sync CE alerts to current strike');
       if (PEjustClosed) log('[POSITION] PE closed — will sync PE alerts to current strike');
 
-      // 2b. Bias monitor — manual direction with deferred flip while a trade is open.
-      const biasCfg = config.bias || {};
-      // Bias is PAUSED by default (manual trading) — runs only when explicitly
-      // enabled AND a direction is configured.
-      const biasEnabled =
-        biasCfg.enabled === true && (biasCfg.direction === 'up' || biasCfg.direction === 'down');
-      let biasJustClosed = false;
-      let biasJustOpened = false;
-      let biasEffectiveDir = null;
-      let biasDirectionFlip = false;
-      if (biasEnabled) {
-        const requestedDir = biasCfg.direction === 'down' ? 'down' : 'up';
-        const prevDir = state.biasDirection || null;
-        // Track the position on the direction we were operating on (prevDir), else requested.
-        const trackDir = prevDir || requestedDir;
-        const prevBiasPos = state.biasPosition || 'closed';
-        processBiasHistory(historyItems, state, instrName, trackDir);
-        biasJustClosed = prevBiasPos === 'open' && state.biasPosition === 'closed';
-        biasJustOpened = prevBiasPos === 'closed' && state.biasPosition === 'open';
-        // Deferred flip: while a position is open, stay locked on the open direction.
-        if (state.biasPosition === 'open' && prevDir) {
-          biasEffectiveDir = prevDir;
-          if (requestedDir !== prevDir)
-            log(
-              `[BIAS] flip to ${requestedDir.toUpperCase()} pending — position OPEN on ${prevDir.toUpperCase()}`
-            );
-        } else {
-          biasEffectiveDir = requestedDir;
-        }
-        biasDirectionFlip = prevDir !== null && prevDir !== biasEffectiveDir;
-        if (biasJustClosed) log('[BIAS] position closed — will sync bias alerts to current strike');
-        if (biasDirectionFlip) log(`[BIAS] direction flip ${prevDir} → ${biasEffectiveDir}`);
-      }
+      // 2b. Bias is now UI-only: the monitor NEVER touches bias alerts. It just
+      // derives the bias position (open/closed) + last direction from the alert log
+      // for the UI status and EOD reports.
+      const bs = deriveBiasStatus(historyItems, instrName);
+      state.biasPosition = bs.position;
+      state.biasDirection = bs.direction;
 
       // 3. Get spot price — tab is on NIFTY, reads directly without switching.
       const spot = await getSpot(cdp, cfg.spotSymbol);
@@ -1377,38 +1509,20 @@ async function main() {
       // (so a strategy that starts paused, e.g. bias by default, gets its alerts off).
       const stJustPaused = state.stEnabledLast === true && !stEnabled;
       const stJustResumed = state.stEnabledLast === false && stEnabled;
-      const biasJustPaused = state.biasEnabledLast === true && !biasEnabled;
-      const biasJustResumed = state.biasEnabledLast === false && biasEnabled;
       state.stEnabledLast = stEnabled;
-      state.biasEnabledLast = biasEnabled;
 
-      // Safety net: never disable a strategy's alerts while a trade is OPEN —
-      // that would strand the running trade's exit/target. The UI also blocks
-      // pausing while open; this guards against direct config edits.
+      // Supertrend: never disable while a trade is OPEN (would strand exit/target).
       const stOpen = state.CE === 'open' || state.PE === 'open';
-      const biasOpen = state.biasPosition === 'open';
       const stWantDisable = (stJustPaused || (force && !stEnabled)) && !stOpen;
-      const biasWantDisable = (biasJustPaused || (force && !biasEnabled)) && !biasOpen;
       if ((stJustPaused || (force && !stEnabled)) && stOpen)
         log('[SUPERTREND] pause deferred — a trade is OPEN; alerts kept until it closes');
-      if ((biasJustPaused || (force && !biasEnabled)) && biasOpen)
-        log('[BIAS] pause deferred — a trade is OPEN; alerts kept until it closes');
 
-      if (stWantDisable || biasWantDisable) {
-        // Park the chart on spot first so the Alerts panel shows all alerts with
-        // their Stop buttons — same setup the working reconcile/update path uses.
+      if (stWantDisable) {
+        // Park the chart on spot first so the Alerts panel shows all alerts.
         await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
         await new Promise((r) => setTimeout(r, 1500));
-      }
-      if (stWantDisable) {
         log('[SUPERTREND] paused — disabling its 4 alerts');
         await deactivateAlerts(cdpAlerts, supertrendAlertNames(instrName), 'ST');
-      }
-      if (biasWantDisable) {
-        log('[BIAS] paused — disabling its alerts');
-        await deactivateAlerts(cdpAlerts, biasAlertNames(instrName), 'BIAS');
-        state.lastBiasActivatedDir = null; // force full reconcile (re-enable) on resume
-        state.biasEntryParked = false;
       }
 
       // Shared ATM-driven trigger (also covers instrument/depth change + force).
@@ -1424,17 +1538,14 @@ async function main() {
           (!cooldownBlocksATM &&
             (atmShifted || depthChanged || instrChanged || force || CEjustClosed || PEjustClosed)));
 
-      // Bias has work? Flip / just-opened / just-closed / resume / retry bypass the cooldown.
-      const biasHasWork =
-        biasEnabled &&
-        (biasDirectionFlip ||
-          biasJustClosed ||
-          biasJustOpened ||
-          biasJustResumed ||
-          atmDriven ||
-          retryNextTick.bias);
-
-      if (!stHasWork && !biasHasWork) {
+      // Supertrend idle this tick → draw the day H/L lines now, during the cooldown,
+      // so the line drawing never clashes with supertrend's chart/alert work.
+      if (!stHasWork) {
+        try {
+          await updateDayLines(cdp, cfg.spotSymbol, force);
+        } catch (e) {
+          log(`[LINES] ${e.message}`);
+        }
         saveState();
         return;
       }
@@ -1511,81 +1622,6 @@ async function main() {
         }
       } // end stHasWork (supertrend block)
 
-      // 5b. Bias alert updates — manual direction, 3 alerts on one ITM strike.
-      if (biasHasWork) {
-        const { strike: biasStrike, optType } = calcBiasStrike(
-          atm,
-          itmDepth,
-          cfg.strikeInterval,
-          biasEffectiveDir
-        );
-        // Flip / resume / first reconcile: deactivate the opposite direction.
-        // Re-activate the chosen 3 on a flip-back or a resume (they were disabled).
-        if (
-          biasDirectionFlip ||
-          biasJustResumed ||
-          state.lastBiasActivatedDir !== biasEffectiveDir
-        ) {
-          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-          await new Promise((r) => setTimeout(r, 1000));
-          await applyBiasActivation(
-            cdpAlerts,
-            instrName,
-            biasEffectiveDir,
-            biasDirectionFlip || biasJustResumed
-          );
-          state.lastBiasActivatedDir = biasEffectiveDir;
-          if (biasDirectionFlip) {
-            // New direction starts flat — reset position + seal its log snapshot.
-            state.biasPosition = 'closed';
-            state.lastBiasLogSnapshot = historyItems.slice(0, 30);
-          }
-        }
-        if (state.biasPosition === 'open') {
-          // Trade running on the chosen direction. Don't move symbols.
-          // On entry fire: set entry price→0 + disable it; leave exit/target running.
-          if (biasJustOpened && !state.biasEntryParked) {
-            const entrySymbol = buildSymbol(cfg, state.lastBiasStrike ?? biasStrike, optType);
-            log(
-              `BIAS trade OPENED (${biasEffectiveDir.toUpperCase()}) — parking entry (price→0 + disable); exit/target left running`
-            );
-            await parkBiasEntry(cdpAlerts, instrName, biasEffectiveDir, entrySymbol);
-            state.biasEntryParked = true;
-          } else {
-            log('BIAS trade RUNNING — alerts untouched (entry parked, exit/target running)');
-          }
-        } else {
-          // Position closed — update all 3 alerts: symbol → ITM strike, price → 0.
-          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-          await new Promise((r) => setTimeout(r, 1000));
-          if (retryNextTick.bias)
-            log(`Retrying BIAS ${biasEffectiveDir.toUpperCase()} alerts → strike: ${biasStrike}`);
-          else
-            log(
-              `Updating BIAS ${biasEffectiveDir.toUpperCase()} alerts → ${optType} ITM-${itmDepth} strike: ${biasStrike} @ 0`
-            );
-          const biasResults = await updateBiasAlerts(
-            cdpChart,
-            cdpAlerts,
-            biasEffectiveDir,
-            biasStrike,
-            optType,
-            cfg,
-            instrName
-          );
-          const biasFailed = biasResults.some((r) => !r?.success);
-          retryNextTick.bias = biasFailed;
-          if (!biasFailed) state.lastBiasStrike = biasStrike;
-          // Re-enable the entry alert if it was parked+disabled during a prior trade.
-          if (state.biasEntryParked) {
-            await reactivateBiasEntry(cdpAlerts, instrName, biasEffectiveDir);
-            state.biasEntryParked = false;
-          }
-          await cdpChart.handle('chart_set_symbol', { symbol: cfg.spotSymbol });
-        }
-        state.biasDirection = biasEffectiveDir;
-      }
-
       // 6. Verify supertrend alerts are active after updates (3s delay lets TV self-recover).
       //    Skipped when supertrend is paused — we don't manage its alerts then.
       if (stEnabled) await verifyAlertStatus(cdpAlerts, instrName);
@@ -1619,11 +1655,20 @@ async function main() {
   await tick(cdp, cdpChart, cdpAlerts, forceFirst);
   forceFirst = false;
 
-  // Poll loop — skip tick if previous one is still running
+  // Poll loop — skip tick if previous one is still running. A config-triggered
+  // force tick (pause/resume/direction/itm change) that arrives mid-tick is NOT
+  // dropped: it's queued and run as soon as the current tick finishes, so UI
+  // toggles always apply promptly instead of waiting up to 60s for the next poll.
   let tickRunning = false;
+  let pendingForce = false;
   async function runTickSafe(force) {
     if (tickRunning) {
-      log('Tick skipped — previous still running');
+      if (force) {
+        pendingForce = true;
+        log('Tick busy — queued an immediate re-run for the config change');
+      } else {
+        log('Tick skipped — previous still running');
+      }
       return;
     }
     tickRunning = true;
@@ -1631,6 +1676,10 @@ async function main() {
       await tick(cdp, cdpChart, cdpAlerts, force);
     } finally {
       tickRunning = false;
+    }
+    if (pendingForce) {
+      pendingForce = false;
+      await runTickSafe(true);
     }
   }
 

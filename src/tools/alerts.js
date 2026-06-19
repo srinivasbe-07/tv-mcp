@@ -1298,38 +1298,79 @@ export class AlertTools {
         );
       }
 
-      // Step 4: Update price level
+      // Step 4: Set the price to ${level} using REAL keystrokes.
+      // The symbol change makes TV auto-fill the current price. We (a) wait for that
+      // auto-fill, (b) tag the price input, (c) click + Ctrl+A + Delete + type
+      // ${level} via the CDP Input API so React's state actually updates (setting the
+      // DOM .value alone is ignored by React on Save — that's why it "looked" 0 but
+      // saved the current price), then (d) verify it stuck. Retries a few times in
+      // case TV re-fills it. Price 0 is critical for bias alerts.
       await this.cdp.delay(300);
-      const levelResult = await this.cdp.executeScript(`
+      const tagRes = await this.cdp.executeScript(`
         (async function() {
-          try {
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            let priceInput = document.querySelector('input.input-gr1VjUfr');
-            if (!priceInput) {
-              priceInput = Array.from(document.querySelectorAll('input')).find(i =>
-                i.offsetParent !== null && !['checkbox', 'radio', 'hidden'].includes(i.type)
-              );
-            }
-            if (!priceInput) return { found: false };
-            priceInput.focus();
-            await new Promise(r => setTimeout(r, 100));
-            nativeSetter.call(priceInput, '');
-            priceInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 100));
-            nativeSetter.call(priceInput, String(${level}));
-            priceInput.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-            priceInput.dispatchEvent(new Event('change', { bubbles: true }));
-            priceInput.blur();
-            await new Promise(r => setTimeout(r, 300));
-            return { found: true, verified: priceInput.value === String(${level}) };
-          } catch(e) {
-            return { error: e.message };
+          const want = parseFloat(String(${level}));
+          const findPrice = () => {
+            let p = document.querySelector('input.input-gr1VjUfr');
+            if (!p) p = Array.from(document.querySelectorAll('input')).find(i =>
+              i.offsetParent !== null && !['checkbox','radio','hidden'].includes(i.type));
+            return p || null;
+          };
+          // Wait for TV's post-symbol auto-fill to land before we overwrite it.
+          let autoFilled = '';
+          for (let i = 0; i < 12; i++) {
+            const p = findPrice();
+            const v = p ? parseFloat(p.value) : NaN;
+            if (p && p.value !== '' && !(Number.isFinite(v) && Math.abs(v - want) < 1e-9)) { autoFilled = p.value; break; }
+            await new Promise(r => setTimeout(r, 150));
           }
+          const p = findPrice();
+          if (!p) return { found:false };
+          p.setAttribute('data-mcp-price','1');
+          return { found:true, autoFilled };
         })()
       `);
 
-      // Step 5: Click Save
-      await this.cdp.delay(300);
+      const readPrice = () =>
+        this.cdp.executeScript(`
+          (function(){
+            const p = document.querySelector('[data-mcp-price="1"]') || document.querySelector('input.input-gr1VjUfr');
+            if (!p) return { value:null, ok:false };
+            const v = parseFloat(p.value);
+            return { value:p.value, ok: Number.isFinite(v) && Math.abs(v - ${level}) < 1e-9 };
+          })()
+        `);
+
+      let priceOk = false;
+      let lastVal = null;
+      if (tagRes?.found) {
+        for (let i = 0; i < 4 && !priceOk; i++) {
+          const typed = await this.cdp.clearAndType('[data-mcp-price="1"]', level);
+          if (!typed) break;
+          await this.cdp.delay(350); // let any async TV reset land
+          const chk = await readPrice();
+          lastVal = chk?.value;
+          priceOk = chk?.ok === true;
+        }
+      }
+
+      // Step 5: Save ONLY if the price is confirmed ${level}; otherwise CANCEL so the
+      // alert is never saved at the current price (which triggers immediately).
+      if (!priceOk) {
+        await this.cdp
+          .executeScript(
+            `(function(){
+              const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
+              const cancel = [...(dialog?.querySelectorAll('button') || [])].find(b => b.textContent?.trim() === 'Cancel');
+              if (cancel) cancel.click();
+            })()`
+          )
+          .catch(() => {});
+        return this.error(
+          `Price not set to ${level} for "${alertName}" ` +
+            `(field "${lastVal}", TV auto-filled "${tagRes?.autoFilled ?? '?'}"). Cancelled — not saved.`
+        );
+      }
+
       const saveResult = await this.cdp.executeScript(`
         (async function() {
           const dialog = document.querySelector('[class*="dialog-"][class*="popup-"]');
@@ -1356,9 +1397,11 @@ export class AlertTools {
         previousSymbol: selectResult?.currentSymbol,
         newSymbol: symbol,
         level,
-        levelSet: levelResult?.found && levelResult?.verified,
+        levelSet: priceOk,
+        priceValue: lastVal,
+        autoFilled: tagRes?.autoFilled,
         shownInDialog: saveResult?.shownSymbol,
-        message: saveResult?.msg || 'Unknown',
+        message: `${saveResult?.msg || 'Unknown'} @ ${lastVal}`,
       });
     } catch (error) {
       return this.error(`Failed to update alert: ${error.message}`);

@@ -291,6 +291,38 @@ export class CDPManager {
     await Input.insertText({ text });
   }
 
+  // Dispatch a real key press (keyDown + keyUp) via CDP Input API.
+  // modifiers bitmask: 1=Alt, 2=Ctrl, 4=Meta/Cmd, 8=Shift.
+  async pressKey(key, code, keyCode, modifiers = 0) {
+    const { Input } = this.client;
+    const base = {
+      key,
+      code,
+      windowsVirtualKeyCode: keyCode,
+      nativeVirtualKeyCode: keyCode,
+      modifiers,
+    };
+    await Input.dispatchKeyEvent({ type: 'keyDown', ...base });
+    await Input.dispatchKeyEvent({ type: 'keyUp', ...base });
+  }
+
+  // Focus a field, select-all (Ctrl+A), delete, and type `text` as REAL keystrokes
+  // so React's controlled-input state actually updates (DOM .value alone is ignored
+  // by React on save). Returns false if the element wasn't found.
+  async clearAndType(selector, text) {
+    const coords = await this.getElementCenter(selector).catch(() => null);
+    if (!coords) return false;
+    await this.clickAt(coords.x, coords.y);
+    await this.delay(80);
+    await this.pressKey('a', 'KeyA', 65, 2); // Ctrl+A — select all
+    await this.delay(40);
+    await this.pressKey('Delete', 'Delete', 46); // clear selection
+    await this.delay(40);
+    await this.insertText(String(text));
+    await this.delay(80);
+    return true;
+  }
+
   // Get an element's center screen coordinates via CDP DOM API
   async getElementCenter(selector) {
     const { DOM } = this.client;

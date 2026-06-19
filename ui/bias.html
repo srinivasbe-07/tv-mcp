@@ -273,6 +273,10 @@
         border-color: #b91c1c;
         color: #f87171;
       }
+      .dir-btn.locked {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
       .dir-msg {
         font-size: 11px;
         color: #6b7280;
@@ -332,6 +336,51 @@
         color: #4b5563;
         margin-top: 6px;
         line-height: 1.5;
+      }
+
+      /* Prev-day levels */
+      .levels-box {
+        margin-top: 8px;
+      }
+      .lv-near {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .lv-pill {
+        flex: 1;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 11px;
+        background: #111827;
+        border: 1px solid #1f2937;
+      }
+      .lv-pill .k {
+        font-size: 9px;
+        color: #6b7280;
+        text-transform: uppercase;
+      }
+      .lv-pill .v {
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .lv-res .v {
+        color: #f87171;
+      }
+      .lv-sup .v {
+        color: #34d399;
+      }
+      .lv-list {
+        max-height: 120px;
+        overflow-y: auto;
+        font-size: 10px;
+        color: #9ca3af;
+      }
+      .lv-list .row {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 0;
+        border-bottom: 1px solid #111827;
       }
 
       /* EOD Report card */
@@ -533,30 +582,38 @@
     <div class="main">
       <!-- LEFT PANEL -->
       <div class="left">
-        <!-- Strategy Run/Pause -->
+        <!-- Day H/L Lines -->
         <div class="card">
-          <div class="sec">Bias Strategy</div>
+          <div class="sec">Day H/L Lines</div>
           <div class="toggle-row">
-            <span class="lbl" id="enabled-lbl">Paused</span>
-            <div class="switch" id="enabled-switch" onclick="toggleEnabled()">
-              <div class="knob"></div>
-            </div>
+            <span class="lbl">Days to plot</span>
+            <span style="display: flex; gap: 6px; align-items: center">
+              <input
+                type="text"
+                id="day-lines"
+                placeholder="0 1 2"
+                style="
+                  width: 90px;
+                  padding: 4px 6px;
+                  background: #0f1117;
+                  border: 1px solid #2a2d3a;
+                  border-radius: 6px;
+                  color: #d1d5db;
+                  font-size: 13px;
+                "
+              />
+              <button class="report-btn btn-teal" id="btn-day-lines" onclick="applyDayLines()">
+                Apply
+              </button>
+            </span>
           </div>
           <div class="itm-hint">
-            Paused by default (manual trading). Resume = re-enable the chosen 3 alerts + update
-            (symbol + price 0); the opposite direction is disabled. Pause = disable all bias alerts.
-            (Can't pause while a trade is open.)
+            Enter day offsets separated by space/comma: <b>0</b> = today's H/L, <b>1</b> = previous
+            day, <b>2</b> = 2 days prior, … (e.g. <b>0 1 2</b>). The monitor draws a HIGH (red) and
+            LOW (green) line per day, on its cooldown so it never clashes with supertrend. Saved to
+            disk — redrawn on restart. Empty = no lines.
           </div>
-        </div>
-
-        <!-- Direction -->
-        <div class="card">
-          <div class="sec">Bias Direction</div>
-          <div class="dir-group">
-            <button class="dir-btn" id="dir-up" onclick="setDir('up')">▲ BUY / CALL</button>
-            <button class="dir-btn" id="dir-down" onclick="setDir('down')">▼ SELL / PUT</button>
-          </div>
-          <div class="dir-msg" id="dir-msg"></div>
+          <div class="dir-msg" id="day-lines-msg"></div>
         </div>
 
         <!-- EOD Report -->
@@ -607,8 +664,6 @@
 
     <script>
       let dir = 'up';
-      let enabled = false;
-      let biasOpen = false;
 
       // ── Confirm dialog ──
       function confirm2(msg, action) {
@@ -626,76 +681,42 @@
         if (e.target.id === 'confirm-overlay') closeConfirm();
       });
 
-      // ── Config (direction + run/pause) ──
-      async function loadConfig() {
+      // ── Day H/L lines ──
+      function flashDayLines(msg, cls) {
+        const el = document.getElementById('day-lines-msg');
+        el.textContent = msg;
+        el.className = 'dir-msg ' + (cls || '');
+        if (cls === 'ok-msg') setTimeout(() => (el.textContent = ''), 3000);
+      }
+      async function loadDayLines() {
         try {
-          const c = await fetch('/api/bias/config').then((r) => r.json());
-          dir = c.direction || 'up';
-          enabled = c.enabled === true;
-          renderDir();
-          renderEnabled();
+          const r = await fetch('/api/bias/daylines').then((r) => r.json());
+          if (r.ok) document.getElementById('day-lines').value = (r.dayLines || []).join(' ');
         } catch (_e) {
           /* ignore */
         }
       }
-      function renderDir() {
-        document.getElementById('dir-up').className =
-          'dir-btn' + (dir === 'up' ? ' dir-up-active' : '');
-        document.getElementById('dir-down').className =
-          'dir-btn' + (dir === 'down' ? ' dir-down-active' : '');
-      }
-      function renderEnabled() {
-        const locked = enabled && biasOpen;
-        const sw = document.getElementById('enabled-switch');
-        sw.className = 'switch' + (enabled ? ' on' : '') + (locked ? ' locked' : '');
-        document.getElementById('enabled-lbl').textContent = enabled
-          ? biasOpen
-            ? 'Running (trade open — can’t pause)'
-            : 'Running'
-          : 'Paused';
-      }
-      function flash(msg, cls) {
-        const el = document.getElementById('dir-msg');
-        el.textContent = msg;
-        el.className = 'dir-msg ' + (cls || '');
-        if (cls === 'ok-msg') setTimeout(() => (el.textContent = ''), 2500);
-      }
-      async function setDir(d) {
-        if (d === dir) return;
+      async function applyDayLines() {
+        const raw = document.getElementById('day-lines').value || '';
+        const days = raw
+          .split(/[\s,]+/)
+          .map((s) => parseInt(s, 10))
+          .filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
         try {
-          const r = await fetch('/api/bias/direction', {
+          const r = await fetch('/api/bias/daylines', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ direction: d }),
+            body: JSON.stringify({ dayLines: days }),
           }).then((r) => r.json());
           if (r.ok) {
-            dir = d;
-            renderDir();
-            flash(`Direction → ${d.toUpperCase()} (applies immediately)`, 'ok-msg');
-          } else flash(r.error || 'Failed', 'err-msg');
+            document.getElementById('day-lines').value = (r.dayLines || []).join(' ');
+            flashDayLines(
+              `Saved [${(r.dayLines || []).join(', ')}] — monitor redraws on its cooldown tick`,
+              'ok-msg'
+            );
+          } else flashDayLines(r.error || 'Failed', 'err-msg');
         } catch (e) {
-          flash(e.message, 'err-msg');
-        }
-      }
-      async function toggleEnabled() {
-        if (enabled && biasOpen) {
-          flash('Cannot pause — a bias trade is OPEN. Wait for it to close.', 'err-msg');
-          return;
-        }
-        const next = !enabled;
-        try {
-          const r = await fetch('/api/bias/enabled', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: next }),
-          }).then((r) => r.json());
-          if (r.ok) {
-            enabled = next;
-            renderEnabled();
-            flash(`Bias ${enabled ? 'RESUMED' : 'PAUSED'} (applies immediately)`, 'ok-msg');
-          } else flash(r.error || 'Failed', 'err-msg');
-        } catch (e) {
-          flash(e.message, 'err-msg');
+          flashDayLines(e.message, 'err-msg');
         }
       }
 
@@ -813,12 +834,10 @@
         document.getElementById('s-strike').textContent = strike || '—';
         document.getElementById('s-itm').textContent = itm != null ? 'ITM-' + itm : '—';
 
-        // Header chip + pause lock
+        // Header chip
         const chip = document.getElementById('chip-bias');
         chip.textContent = `BIAS ${d === '—' ? '—' : d.toUpperCase()}: ${pos.toUpperCase()}`;
         chip.className = 'pos-chip ' + (pos === 'open' ? 'chip-open' : 'chip-closed');
-        biasOpen = pos === 'open';
-        renderEnabled();
       }
 
       // ── Log ──
@@ -875,7 +894,7 @@
         };
       }
 
-      loadConfig();
+      loadDayLines();
       connect();
       fetch('/api/status')
         .then((r) => r.json())

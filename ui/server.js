@@ -701,32 +701,40 @@ function saveStConfig(cfg) {
   fs.renameSync(ST_CONFIG + '.tmp', ST_CONFIG);
 }
 
-// Returns the bias block with safe defaults. Bias is paused by default.
-app.get('/api/bias/config', (_req, res) => {
-  const cfg = loadStConfig();
-  const bias = cfg.bias || {};
-  res.json({ direction: bias.direction || 'up', enabled: bias.enabled === true });
+// ── Bias day H/L lines ────────────────────────────────────────────
+// Bias is UI-only now (no alert ops, no run/pause, no direction). Position/direction
+// status reaches the page via the position SSE. The only setting is which days' H/L
+// to draw — a list of day offsets persisted in position.json (0=today, 1=prev day,…).
+// The monitor reads position.json.dayLines and draws on its cooldown (idle) tick.
+app.get('/api/bias/daylines', (_req, res) => {
+  try {
+    const p = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    res.json({ ok: true, dayLines: Array.isArray(p.dayLines) ? p.dayLines : [] });
+  } catch (_e) {
+    res.json({ ok: true, dayLines: [] });
+  }
 });
 
-app.post('/api/bias/direction', (req, res) => {
-  const { direction } = req.body;
-  if (!['up', 'down'].includes(direction))
-    return res.json({ ok: false, error: 'Invalid direction' });
-  const cfg = loadStConfig();
-  cfg.bias = { ...(cfg.bias || {}), direction };
-  saveStConfig(cfg);
-  res.json({ ok: true });
-  pushST(`[UI] Bias direction set to ${direction.toUpperCase()}`);
-});
-
-app.post('/api/bias/enabled', (req, res) => {
-  const { enabled } = req.body;
-  if (typeof enabled !== 'boolean') return res.json({ ok: false, error: 'Invalid enabled flag' });
-  const cfg = loadStConfig();
-  cfg.bias = { ...(cfg.bias || {}), enabled };
-  saveStConfig(cfg);
-  res.json({ ok: true });
-  pushST(`[UI] Bias strategy ${enabled ? 'RESUMED' : 'PAUSED'}`);
+app.post('/api/bias/daylines', (req, res) => {
+  let days = req.body.dayLines;
+  if (!Array.isArray(days)) return res.json({ ok: false, error: 'dayLines must be an array' });
+  days = days.map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
+  days = [...new Set(days)].sort((a, b) => a - b);
+  try {
+    let p = {};
+    try {
+      p = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
+    } catch (_e) {
+      /* new file */
+    }
+    p.dayLines = days;
+    fs.writeFileSync(POSITION_FILE + '.tmp', JSON.stringify(p, null, 2));
+    fs.renameSync(POSITION_FILE + '.tmp', POSITION_FILE);
+    res.json({ ok: true, dayLines: days });
+    pushST(`[UI] Day lines set to [${days.join(', ')}] — monitor will redraw on cooldown`);
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
 });
 
 // Supertrend run/pause. Supertrend is enabled by default (enabled !== false).
@@ -1185,6 +1193,9 @@ const server = app.listen(PORT, () => {
   console.log(`             http://localhost:${PORT}/bias       (Bias Monitor)`);
   console.log(`             http://localhost:${PORT}/bias-reports (Bias EOD Reports)`);
   console.log(`             http://localhost:${PORT}/test-alerts (Supertrend Alert Test)`);
+  console.log(`             http://localhost:${PORT}/supertrend-reports (Trade Reports Dashboard)`);
+  console.log(`             http://localhost:${PORT}/1min-reports (1-Min Reports)`);
+  console.log(`             http://localhost:${PORT}/3min-reports (3-Min Reports)`);
 });
 
 server.on('error', (e) => {
