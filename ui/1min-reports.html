@@ -101,7 +101,9 @@
       }
       .summary {
         display: grid;
-        grid-template-columns: 160px repeat(4, 1fr);
+        /* auto-fit collapses empty tracks, so hidden cards (bias hides Exit w/oSL
+           + PB) never leave a gap — the visible cards always fill the width. */
+        grid-template-columns: 160px repeat(auto-fit, minmax(150px, 1fr));
         gap: 12px;
         padding: 16px 0 20px;
       }
@@ -862,9 +864,36 @@
       const IS_BIAS = location.pathname.startsWith('/bias-reports');
       const DATA_URL = IS_BIAS ? '/api/bias-report/data' : '/api/report/data';
       const SAVE_URL = IS_BIAS ? '/api/bias-report/save' : '/api/report/save';
+      // Screenshot endpoints are shared; route them to the bias folder when in bias mode.
+      // STRAT_QS = only query param (?…), STRAT_QA = appended to an existing query (&…).
+      const STRAT_QS = IS_BIAS ? '?strategy=bias' : '';
+      const STRAT_QA = IS_BIAS ? '&strategy=bias' : '';
+      // Bias hides 3 columns (Exit w/oSL=7, Candle=9, P&L w/oSL=13). display:none
+      // removes them from the table grid, so footer/add-row colspans must shrink to
+      // match the visible column count — otherwise they over-span and distort the
+      // whole table. CS_FULL = a full-width row; CS_LABEL = footer label up to the
+      // P&L columns; CS_PNL = the merged P&L cell in the edit row.
+      const CS_FULL = IS_BIAS ? 11 : 14;
+      const CS_LABEL = IS_BIAS ? 8 : 10;
+      const CS_PNL = IS_BIAS ? 2 : 3;
       if (IS_BIAS) {
         document.title = 'Bias Reports';
+        // Bias drops the "Exit w/oSL" model — hide those columns (CSS: .col-wosl).
+        const _hideWosl = () => {
+          document.body.classList.add('is-bias');
+          if (!document.getElementById('bias-col-style')) {
+            const st = document.createElement('style');
+            st.id = 'bias-col-style';
+            st.textContent =
+              'body.is-bias .col-wosl{display:none !important;}' +
+              'body.is-bias .col-pb{display:none !important;}' +
+              'body.is-bias .col-candle{display:none !important;}';
+            document.head.appendChild(st);
+          }
+        };
+        if (document.body) _hideWosl();
         document.addEventListener('DOMContentLoaded', () => {
+          _hideWosl();
           const h = document.querySelector('h1, .title, header');
           if (h) {
             const b = document.createElement('span');
@@ -1005,11 +1034,11 @@
         <div class="time-section">
           <span class="time-section-label">NOTES</span>
           <label class="note-chip" id="nc-${monthKey}-sl"><input type="checkbox" id="nc-cb-${monthKey}-sl"> SL HIT</label>
-          <label class="note-chip" id="nc-${monthKey}-pine"><input type="checkbox" id="nc-cb-${monthKey}-pine"> PINE SCRIPT SL</label>
+          ${IS_BIAS ? '' : `<label class="note-chip" id="nc-${monthKey}-pine"><input type="checkbox" id="nc-cb-${monthKey}-pine"> PINE SCRIPT SL</label>`}
           <span class="reach-label" style="margin-left:8px;">REACH &ge;</span>
           <input type="number" class="reach-input" id="rf-${monthKey}" min="0" step="1" placeholder="pts">
-          <span class="reach-label" style="margin-left:8px;">CANDLE &ge;</span>
-          <input type="number" class="reach-input" id="cf-${monthKey}" min="0" step="0.5" placeholder="pts">
+          <span class="reach-label col-candle" style="margin-left:8px;">CANDLE &ge;</span>
+          <input type="number" class="reach-input col-candle" id="cf-${monthKey}" min="0" step="0.5" placeholder="pts">
           <button class="add-range-btn" onclick="applyNotesFilter('${monthKey}')">&#x25BA; Apply</button>
           <button class="time-clear-all" id="nf-clear-${monthKey}" onclick="clearNotesFilter('${monthKey}')">&#x2715; Clear</button>
         </div>
@@ -1053,11 +1082,19 @@
           pbTradeCount = 0,
           pbExplicitCount = 0;
         const dayDates = [];
+        let totalBrokerage = 0,
+          brokNIFTY = 0,
+          brokSENSEX = 0;
         for (const day of dates.sort((a, b) => (a.date < b.date ? -1 : 1))) {
           let dSL = 0,
             dNSL = 0,
             dTgt = 0;
           const filteredTrades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
+          // Per-day brokerage (₹200 × trades, or an explicit override), split by instrument.
+          const dayBrok = brokerageFor(day, filteredTrades.length);
+          totalBrokerage += dayBrok;
+          if ((day.instrument || '').toUpperCase() === 'SENSEX') brokSENSEX += dayBrok;
+          else brokNIFTY += dayBrok;
           for (const t of filteredTrades) {
             const tq = qty(day.instrument, t.lots);
             if (t.exitSL !== null && t.entryPrice !== null) dSL += (t.exitSL - t.entryPrice) * tq;
@@ -1163,31 +1200,47 @@
         const wrPBSL = pbTradeCount ? Math.round((winPBSL / pbTradeCount) * 100) : 0;
         const wrPBNSL = pbTradeCount ? Math.round((winPBNSL / pbTradeCount) * 100) : 0;
         const wrPBTgt = pbTradeCount ? Math.round((winPBTgt / pbTradeCount) * 100) : 0;
-        const capSL = INITIAL_CAPITAL + netSL,
-          capNSL = INITIAL_CAPITAL + netNSL,
-          capTgt = INITIAL_CAPITAL + netTgt,
-          capPBSL = INITIAL_CAPITAL + netPBSL,
-          capPBNSL = INITIAL_CAPITAL + netPBNSL,
-          capPBTgt = INITIAL_CAPITAL + netPBTgt;
+        // Brokerage reduces every P&L type: Net (after) = gross net − total brokerage.
+        const netSLAfter = netSL - totalBrokerage,
+          netNSLAfter = netNSL - totalBrokerage,
+          netTgtAfter = netTgt - totalBrokerage,
+          netPBSLAfter = netPBSL - totalBrokerage,
+          netPBNSLAfter = netPBNSL - totalBrokerage,
+          netPBTgtAfter = netPBTgt - totalBrokerage;
+        const capSL = INITIAL_CAPITAL + netSLAfter,
+          capNSL = INITIAL_CAPITAL + netNSLAfter,
+          capTgt = INITIAL_CAPITAL + netTgtAfter,
+          capPBSL = INITIAL_CAPITAL + netPBSLAfter,
+          capPBNSL = INITIAL_CAPITAL + netPBNSLAfter,
+          capPBTgt = INITIAL_CAPITAL + netPBTgtAfter;
         el.innerHTML = `
-    <div class="summary" style="grid-template-columns:160px repeat(4,1fr)">
+    <div class="summary">
       <div class="scard">
         <div class="scard-lbl">Capital</div>
         <div class="scard-val c-white">${fmtCapital(INITIAL_CAPITAL)}</div>
         <div class="scard-sub">Opening this month</div>
         <div style="margin-top:10px;">${statRow('Trades', `${totalTrades}`, 'c-white', `${dates.length} day(s)`)}</div>
+        <div style="margin-top:8px;border-top:1px solid #2a2a3a;padding-top:8px;">
+          ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange', `₹${BROKERAGE_PER_TRADE}/trade`)}
+          ${statRow('· NIFTY', fmtRs(-brokNIFTY), 'c-orange')}
+          ${statRow('· SENSEX', fmtRs(-brokSENSEX), 'c-orange')}
+        </div>
       </div>
       <div class="scard">
         <div class="scard-lbl">Exit w/ SL</div>
         ${statRow('Net P&amp;L', fmtRs(netSL), pnlClass(netSL))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netSLAfter), pnlClass(netSLAfter))}
         ${statRow('Net Capital', fmtCapital(capSL), pnlClass(capSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrSL}%`, 'c-purple', `${winSL} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddSL < 0 ? fmtRs(ddSL) : '—', 'c-orange', ddSLDate ? fmtDateShort(ddSLDate) : '')}
         ${statRow('Max Run-Up', duSL > 0 && duSL !== netSL ? fmtRs(duSL) : '—', 'c-green', duSL > 0 && duSL !== netSL && duSLDate ? fmtDateShort(duSLDate) : '')}
       </div>
-      <div class="scard">
+      <div class="scard col-wosl">
         <div class="scard-lbl">Exit w/o SL</div>
         ${statRow('Net P&amp;L', fmtRs(netNSL), pnlClass(netNSL))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netNSLAfter), pnlClass(netNSLAfter))}
         ${statRow('Net Capital', fmtCapital(capNSL), pnlClass(capNSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrNSL}%`, 'c-purple', `${winNSL} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddNSL < 0 ? fmtRs(ddNSL) : '—', 'c-orange', ddNSLDate ? fmtDateShort(ddNSLDate) : '')}
@@ -1196,12 +1249,14 @@
       <div class="scard">
         <div class="scard-lbl">Target Pts</div>
         ${statRow('Net P&amp;L', fmtRs(netTgt), pnlClass(netTgt))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netTgtAfter), pnlClass(netTgtAfter))}
         ${statRow('Net Capital', fmtCapital(capTgt), pnlClass(capTgt - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrTgt}%`, 'c-purple', `${winTgt} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddTgt < 0 ? fmtRs(ddTgt) : '—', 'c-orange', ddTgtDate ? fmtDateShort(ddTgtDate) : '')}
         ${statRow('Max Run-Up', duTgt > 0 && duTgt !== netTgt ? fmtRs(duTgt) : '—', 'c-green', duTgt > 0 && duTgt !== netTgt && duTgtDate ? fmtDateShort(duTgtDate) : '')}
       </div>
-      <div class="scard" style="border-color:#4b3d7a">
+      <div class="scard col-pb" style="border-color:#4b3d7a">
         <div class="scard-lbl" style="color:#a78bfa;display:flex;align-items:center;gap:6px">PB Entry
           <select style="font-size:10px;background:#1e1e2e;color:#a78bfa;border:1px solid #4b3d7a;border-radius:4px;padding:1px 4px;cursor:pointer"
                   onchange="togglePBCard('${monthKey}', this.value)">
@@ -1215,6 +1270,8 @@
             ? `<div class="scard-sub" style="margin-top:10px;color:#4b5563">No pullback entries yet</div>`
             : `<div id="pb-stats-${monthKey}-tgt">
         ${statRow('Net P&amp;L', fmtRs(netPBTgt), pnlClass(netPBTgt))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netPBTgtAfter), pnlClass(netPBTgtAfter))}
         ${statRow('Net Capital', fmtCapital(capPBTgt), pnlClass(capPBTgt - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrPBTgt}%`, 'c-purple', `${winPBTgt} of ${pbTradeCount}`)}
         ${statRow('Max Drawdown', ddPBTgt < 0 ? fmtRs(ddPBTgt) : '—', 'c-orange', ddPBTgtDate ? fmtDateShort(ddPBTgtDate) : '')}
@@ -1222,6 +1279,8 @@
         </div>
         <div id="pb-stats-${monthKey}-sl" style="display:none">
         ${statRow('Net P&amp;L', fmtRs(netPBSL), pnlClass(netPBSL))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netPBSLAfter), pnlClass(netPBSLAfter))}
         ${statRow('Net Capital', fmtCapital(capPBSL), pnlClass(capPBSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrPBSL}%`, 'c-purple', `${winPBSL} of ${pbTradeCount}`)}
         ${statRow('Max Drawdown', ddPBSL < 0 ? fmtRs(ddPBSL) : '—', 'c-orange', ddPBSLDate ? fmtDateShort(ddPBSLDate) : '')}
@@ -1229,6 +1288,8 @@
         </div>
         <div id="pb-stats-${monthKey}-nsl" style="display:none">
         ${statRow('Net P&amp;L', fmtRs(netPBNSL), pnlClass(netPBNSL))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netPBNSLAfter), pnlClass(netPBNSLAfter))}
         ${statRow('Net Capital', fmtCapital(capPBNSL), pnlClass(capPBNSL - INITIAL_CAPITAL))}
         ${statRow('Win Rate', `${wrPBNSL}%`, 'c-purple', `${winPBNSL} of ${pbTradeCount}`)}
         ${statRow('Max Drawdown', ddPBNSL < 0 ? fmtRs(ddPBNSL) : '—', 'c-orange', ddPBNSLDate ? fmtDateShort(ddPBNSLDate) : '')}
@@ -1292,9 +1353,9 @@
         <table>
           <thead><tr>
             <th>Time</th><th style="text-align:left">Symbol</th><th>Lots</th>
-            <th>Entry</th><th>Exit w/SL</th><th>Exit w/Tgt</th><th>Exit w/oSL</th>
-            <th>Tgt Pts</th><th>Candle</th><th style="text-align:left">Notes</th>
-            <th>P&amp;L w/SL &#x20B9;</th><th>P&amp;L w/Tgt &#x20B9;</th><th>P&amp;L w/oSL &#x20B9;</th>
+            <th>Entry</th><th>Exit w/SL</th><th>Exit w/Tgt</th><th class="col-wosl">Exit w/oSL</th>
+            <th>Tgt Pts</th><th class="col-candle">Candle</th><th style="text-align:left">Notes</th>
+            <th>P&amp;L w/SL &#x20B9;</th><th>P&amp;L w/Tgt &#x20B9;</th><th class="col-wosl">P&amp;L w/oSL &#x20B9;</th>
             <th style="text-align:center">Actions</th>
           </tr></thead>
           <tbody id="tbody-${dayKey}"></tbody>
@@ -1393,7 +1454,7 @@
 
           const addTr = document.createElement('tr');
           addTr.className = 'add-row-tr';
-          addTr.innerHTML = `<td colspan="14" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${idx})">+ Add Row Here</button></td>`;
+          addTr.innerHTML = `<td colspan="${CS_FULL}" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${idx})">+ Add Row Here</button></td>`;
           tbody.appendChild(addTr);
 
           const tr = document.createElement('tr');
@@ -1405,13 +1466,13 @@
       <td>${fmt(t.entryPrice)}${hasPBEntry ? `<div style="color:#a78bfa;font-size:10px">${fmt(t.pbEntry)}</div>` : ''}</td>
       <td>${fmt(t.exitSL)}${hasPBEntry && pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>
       <td>${fmt(t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : null)}${hasPBEntry && pbVals ? pb(pbVals.pbExitTgt, false) : ''}</td>
-      <td>${fmt(t.exitNSL)}</td>
+      <td class="col-wosl">${fmt(t.exitNSL)}</td>
       <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}${hasPBEntry && pbTgtPtsDisplay !== null ? `<div class="${pnlClass(pbTgtPtsDisplay)}" style="font-size:10px">${fmtPts(pbTgtPtsDisplay)}</div>` : ''}</td>
-      <td style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
+      <td class="col-candle" style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
       <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}${t.pbNotes ? `<div style="color:#a78bfa;font-size:10px;margin-top:2px">${t.pbNotes}</div>` : ''}</td>
       <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${hasPBEntry && pbSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
       <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${hasPBEntry && pbTgt !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
-      <td class="${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
+      <td class="col-wosl ${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
       <td style="text-align:center">
         <button class="act-btn" onclick="editRow('${dateStr}', '${t.id}', this)">&#x270F; Edit</button>
         <button class="act-btn del" onclick="deleteRow('${dateStr}', '${t.id}')">&#x2715;</button>
@@ -1421,34 +1482,52 @@
 
         const addTrEnd = document.createElement('tr');
         addTrEnd.className = 'add-row-tr';
-        addTrEnd.innerHTML = `<td colspan="14" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${trades.length})">+ Add Row Here</button></td>`;
+        addTrEnd.innerHTML = `<td colspan="${CS_FULL}" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${trades.length})">+ Add Row Here</button></td>`;
         tbody.appendChild(addTrEnd);
 
         const { maxDown: dSL, maxUp: uSL } = calcDayPeaks(seriesSL);
         const { maxDown: dTgt, maxUp: uTgt } = calcDayPeaks(seriesTgt);
         const { maxDown: dNSL, maxUp: uNSL } = calcDayPeaks(seriesNSL);
         const pbSubTot = (v) =>
-          v !== 0 ? `<div style="color:#a78bfa;font-size:10px">${fmtRs(v)}</div>` : '';
+          !IS_BIAS && v !== 0 ? `<div style="color:#a78bfa;font-size:10px">${fmtRs(v)}</div>` : '';
 
         const totTr = document.createElement('tr');
         totTr.className = 'total-row';
-        totTr.innerHTML = `<td colspan="10">Day Total</td><td class="${pnlClass(totSL)}">${fmtRs(totSL)}${pbSubTot(totPBSL)}</td><td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}${pbSubTot(totPBTgt)}</td><td class="${pnlClass(totNSL)}">${fmtRs(totNSL)}${pbSubTot(totPBNSL)}</td><td></td>`;
+        totTr.innerHTML = `<td colspan="${CS_LABEL}">Day Total</td><td class="${pnlClass(totSL)}">${fmtRs(totSL)}${pbSubTot(totPBSL)}</td><td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}${pbSubTot(totPBTgt)}</td><td class="col-wosl ${pnlClass(totNSL)}">${fmtRs(totNSL)}${pbSubTot(totPBNSL)}</td><td></td>`;
         tbody.appendChild(totTr);
+
+        // Per-day brokerage (editable) — default ₹200 × trades, deducted from every P&L column.
+        const dayBrok = brokerageFor(day, trades.length);
+        const brokOverridden = Number.isFinite(day.brokerage);
+        const brokTr = document.createElement('tr');
+        brokTr.className = 'total-row';
+        brokTr.innerHTML = `<td colspan="${CS_LABEL}" style="color:#fbbf24;">Brokerage
+          <input type="number" value="${dayBrok}" min="0" step="50" title="Default ₹${BROKERAGE_PER_TRADE} × ${trades.length} trades — edit to override"
+            onchange="saveBrokerage('${dateStr}', this.value, ${trades.length})"
+            style="width:96px;margin-left:8px;background:#1e1e2e;color:#fbbf24;border:1px solid #4b3d22;border-radius:4px;padding:2px 6px;font-size:12px">
+          ${brokOverridden ? '<span style="color:#64748b;font-size:10px;margin-left:6px">edited · ₹' + BROKERAGE_PER_TRADE + '×' + trades.length + '=' + fmtRs(BROKERAGE_PER_TRADE * trades.length) + ' default</span>' : ''}</td>
+          <td class="c-orange">${fmtRs(-dayBrok)}</td><td class="c-orange">${fmtRs(-dayBrok)}</td><td class="col-wosl c-orange">${fmtRs(-dayBrok)}</td><td></td>`;
+        tbody.appendChild(brokTr);
+
+        const netTr = document.createElement('tr');
+        netTr.className = 'total-row';
+        netTr.innerHTML = `<td colspan="${CS_LABEL}" style="font-weight:700">Net after Brokerage</td><td class="${pnlClass(totSL - dayBrok)}">${fmtRs(totSL - dayBrok)}</td><td class="${pnlClass(totTgt - dayBrok)}">${fmtRs(totTgt - dayBrok)}</td><td class="col-wosl ${pnlClass(totNSL - dayBrok)}">${fmtRs(totNSL - dayBrok)}</td><td></td>`;
+        tbody.appendChild(netTr);
 
         const ddTr = document.createElement('tr');
         ddTr.className = 'total-row';
-        ddTr.innerHTML = `<td colspan="10" style="color:#fb923c;">Max Drawdown</td><td class="c-orange">${dSL < 0 ? fmtRs(dSL) : '—'}</td><td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td><td class="c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td><td></td>`;
+        ddTr.innerHTML = `<td colspan="${CS_LABEL}" style="color:#fb923c;">Max Drawdown</td><td class="c-orange">${dSL < 0 ? fmtRs(dSL) : '—'}</td><td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td><td class="col-wosl c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td><td></td>`;
         tbody.appendChild(ddTr);
 
         const duTr = document.createElement('tr');
         duTr.className = 'total-row';
-        duTr.innerHTML = `<td colspan="10" style="color:#4ade80;">Max Run-Up</td><td class="c-green">${uSL > 0 ? fmtRs(uSL) : '—'}</td><td class="c-green">${uTgt > 0 ? fmtRs(uTgt) : '—'}</td><td class="c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td><td></td>`;
+        duTr.innerHTML = `<td colspan="${CS_LABEL}" style="color:#4ade80;">Max Run-Up</td><td class="c-green">${uSL > 0 ? fmtRs(uSL) : '—'}</td><td class="c-green">${uTgt > 0 ? fmtRs(uTgt) : '—'}</td><td class="col-wosl c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td><td></td>`;
         tbody.appendChild(duTr);
 
         const pnlEl = document.getElementById(`day-pnl-${dayKey}`);
         if (pnlEl) {
-          pnlEl.innerHTML = `${fmtRs(totSL)} w/SL`;
-          pnlEl.className = `day-pnl ${pnlClass(totSL)}`;
+          pnlEl.innerHTML = `${fmtRs(totSL - dayBrok)} w/SL`;
+          pnlEl.className = `day-pnl ${pnlClass(totSL - dayBrok)}`;
         }
         loadScreenshots(dateStr, allData[dateStr]?.instrument);
       }
@@ -1496,22 +1575,22 @@
     <td ${fc('e-time')}><input class="edit-input sm" id="e-time" value="${(t.entryTime || t.time || '').slice(0, 5)}"></td>
     <td ${fc('e-sym')}><input class="edit-input wide" id="e-sym" value="${t.entrySymbol || ''}"></td>
     <td ${fc('e-lots')}><input class="edit-input sm" id="e-lots" value="${t.lots}" type="number" oninput="recalcEditRow()"></td>
-    <td ${fc('e-entry')}><input class="edit-input" id="e-entry" value="${t.entryPrice ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"><br><input class="edit-input" id="e-pbEntry" value="${t.pbEntry ?? ''}" type="number" step="0.05" placeholder="PB entry" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()"></td>
+    <td ${fc('e-entry')}><input class="edit-input" id="e-entry" value="${t.entryPrice ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"><span class="col-pb"><br><input class="edit-input" id="e-pbEntry" value="${t.pbEntry ?? ''}" type="number" step="0.05" placeholder="PB entry" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()"></span></td>
     <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitTgt" value="${t.pbExitTgt ?? (t.pbEntry !== null && t.pbTgtPts !== null ? parseFloat((t.pbEntry + t.pbTgtPts).toFixed(2)) : '')}" type="number" step="0.05" placeholder="PB w/Tgt" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
-    <td ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    <td class="col-wosl" ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
     <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbTgtPts" value="${t.pbTgtPts ?? ''}" type="number" step="0.05" placeholder="PB tgt pts" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
-    <td ${fc('e-candle')}><input class="edit-input" id="e-candle" value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
+    <td class="col-candle" ${fc('e-candle')}><input class="edit-input" id="e-candle" value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
     <td>
       <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
         <option value="" ${sel('')}>—</option>
         <option value="SL HIT" ${sel('SL HIT')}>SL HIT</option>
-        <option value="PINE SCRIPT SL" ${sel('PINE SCRIPT SL')}>PINE SCRIPT SL</option>
+        ${IS_BIAS ? '' : `<option value="PINE SCRIPT SL" ${sel('PINE SCRIPT SL')}>PINE SCRIPT SL</option>`}
         <option value="reach" ${sel('reach')}>price reach upto</option>
       </select>
       <input type="number" id="e-notes-pts" class="edit-input reach-pts" min="0" step="0.5" placeholder="pts" value="${notPts}" style="display:${reachVisible}" oninput="applyNotesType()">
       <input type="hidden" id="e-notes" value="${existingNotes}">
-      <div style="margin-top:4px">
+      <div class="col-pb" style="margin-top:4px">
         <select id="e-pb-notes-sel" class="edit-select" style="border-color:#4b3d7a;color:#a78bfa" onchange="applyPBNotesType()">
           <option value="" ${pbSel('')}>— PB —</option>
           <option value="SL HIT" ${pbSel('SL HIT')}>SL HIT</option>
@@ -1522,7 +1601,7 @@
         <input type="hidden" id="e-pb-notes" value="${existingPBNotes}">
       </div>
     </td>
-    <td colspan="3" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
+    <td colspan="${CS_PNL}" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
     <td style="text-align:center">
       <button class="act-btn save" onclick="saveRow('${dateStr}','${id}',this)">&#x2713; Save</button>
       <button class="act-btn cancel" onclick="renderDay('${dateStr}')">&#x2717;</button>
@@ -1728,6 +1807,11 @@
               trades: allData[dateStr].trades,
               instrument: allData[dateStr].instrument,
               note: allData[dateStr].note || '',
+              // Persist an explicit brokerage override; null clears it back to the
+              // ₹200 × trade-count default.
+              brokerage: Number.isFinite(allData[dateStr].brokerage)
+                ? allData[dateStr].brokerage
+                : null,
             }),
           });
           const j = await r.json();
@@ -1736,6 +1820,29 @@
         } catch (e) {
           showToast('Save error: ' + e.message, true);
         }
+      }
+
+      // Per-day brokerage (paper-trading cost). Default ₹200 per trade; an explicit
+      // numeric override on the day record wins. `n` is the trade count to charge.
+      const BROKERAGE_PER_TRADE = 200;
+      function brokerageFor(day, n) {
+        return day && Number.isFinite(day.brokerage) ? day.brokerage : BROKERAGE_PER_TRADE * n;
+      }
+
+      // Edit handler for the per-day Brokerage input in the day footer.
+      async function saveBrokerage(dateStr, raw, defaultCount) {
+        const day = allData[dateStr];
+        if (!day) return;
+        const v = parseFloat(raw);
+        // Blank or equal to the default → clear the override (revert to ₹200 × trades).
+        if (raw === '' || !Number.isFinite(v) || v === BROKERAGE_PER_TRADE * defaultCount) {
+          delete day.brokerage;
+        } else {
+          day.brokerage = Math.round(v);
+        }
+        await persistDay(dateStr);
+        renderDay(dateStr);
+        renderSummary(dateStr.slice(0, 7));
       }
 
       function toggleDay(hdr) {
@@ -1753,9 +1860,9 @@
         wrap.className = 'shot-thumb';
         wrap.title = `Click to open full size — ${filename}`;
         wrap.onclick = () =>
-          window.open(`/api/screenshots/${instr}/${dateStr}/${filename}`, '_blank');
+          window.open(`/api/screenshots/${instr}/${dateStr}/${filename}${STRAT_QS}`, '_blank');
         const label = filename.replace(/\.png$/, '');
-        wrap.innerHTML = `<img src="/api/screenshots/${instr}/${dateStr}/${filename}" loading="lazy" alt="${label}"><div class="shot-label">${label}</div><button class="shot-open" title="Open folder in Explorer">&#128193;</button><button class="shot-del" title="Delete this snapshot">&times;</button>`;
+        wrap.innerHTML = `<img src="/api/screenshots/${instr}/${dateStr}/${filename}${STRAT_QS}" loading="lazy" alt="${label}"><div class="shot-label">${label}</div><button class="shot-open" title="Open folder in Explorer">&#128193;</button><button class="shot-del" title="Delete this snapshot">&times;</button>`;
         wrap.querySelector('.shot-del').onclick = (e) => {
           e.stopPropagation();
           deleteScreenshot(dateStr, filename, instr, wrap);
@@ -1769,9 +1876,12 @@
 
       async function revealScreenshot(dateStr, filename, instr) {
         try {
-          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}/reveal`, {
-            method: 'POST',
-          }).then((res) => res.json());
+          const r = await fetch(
+            `/api/screenshots/${instr}/${dateStr}/${filename}/reveal${STRAT_QS}`,
+            {
+              method: 'POST',
+            }
+          ).then((res) => res.json());
           if (!r.ok) alert('Could not open folder: ' + (r.error || 'unknown error'));
         } catch (e) {
           alert('Could not open folder: ' + e.message);
@@ -1781,7 +1891,7 @@
       async function deleteScreenshot(dateStr, filename, instr, wrap) {
         if (!confirm(`Delete this snapshot?\n\n${filename}`)) return;
         try {
-          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}`, {
+          const r = await fetch(`/api/screenshots/${instr}/${dateStr}/${filename}${STRAT_QS}`, {
             method: 'DELETE',
           }).then((res) => res.json());
           if (!r.ok) {
@@ -1806,7 +1916,7 @@
         try {
           const instr = (instrument || 'nifty').toLowerCase();
           const files = await fetch(
-            `/api/report/screenshots/list?date=${dateStr}&instrument=${instr}`
+            `/api/report/screenshots/list?date=${dateStr}&instrument=${instr}${STRAT_QA}`
           ).then((r) => r.json());
           if (_capturingDates.has(dateStr)) return;
           if (!Array.isArray(files) || !files.length) return;
@@ -1860,7 +1970,7 @@
         };
 
         try {
-          const es = new EventSource(`/api/report/screenshots?date=${dateStr}`);
+          const es = new EventSource(`/api/report/screenshots?date=${dateStr}${STRAT_QA}`);
           es.onmessage = (e) => {
             const d = JSON.parse(e.data);
             if (d.type === 'log') addLine(d.msg);
@@ -2135,8 +2245,7 @@
           wrFmt(winNSL),
           wrFmt(winTgt),
         ]);
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [
+        let cols = [
           { wch: 12 },
           { wch: 10 },
           { wch: 10 },
@@ -2149,9 +2258,18 @@
           { wch: 14 },
           { wch: 12 },
         ];
+        // Bias has no "Exit w/oSL" model — drop those two columns (indices 6 & 9).
+        let outRows = rows;
+        if (IS_BIAS) {
+          const drop = new Set([6, 9]);
+          outRows = rows.map((r) => r.filter((_, i) => !drop.has(i)));
+          cols = cols.filter((_, i) => !drop.has(i));
+        }
+        const ws = XLSX.utils.aoa_to_sheet(outRows);
+        ws['!cols'] = cols;
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, monthLabel(monthKey));
-        const fileName = `1Min_Trades_${monthKey}.xlsx`;
+        const fileName = `${IS_BIAS ? 'Bias' : '1Min'}_Trades_${monthKey}.xlsx`;
         XLSX.writeFile(wb, fileName);
         showToast(`Downloaded ${fileName}`);
       }

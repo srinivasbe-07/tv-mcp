@@ -4,7 +4,7 @@
  *
  * Mirrors generate-daily-report.js (supertrend) but parses the manual-bias
  * alerts: entry → (exit OR target) pairs, mapping up→CE and down→PE.
- * Writes logs/supertrend/bias/daily-trades-YYYY-MM-DD.json in the SAME schema
+ * Writes logs/bias/1min/daily-trades-YYYY-MM-DD.json in the SAME schema
  * as the supertrend report, so the reports UI can render it identically.
  *
  * Usage:
@@ -16,6 +16,7 @@
 
 import { CDPManager } from '../src/cdp.js';
 import { ChartTools } from '../src/tools/chart.js';
+import { isMarketOff, readLiveAlertLog, lastTradingDay } from './read-live-log.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -44,7 +45,7 @@ function checkMarketClosed() {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const LOGS_DIR = path.join(ROOT, 'logs', 'supertrend', 'bias');
+const LOGS_DIR = path.join(ROOT, 'logs', 'bias', '1min');
 const POSITION_FILE = path.join(ROOT, 'config', 'position.json');
 const SUPERTREND_TAB = path.join(ROOT, 'logs', 'supertrend-tab.json');
 
@@ -63,9 +64,12 @@ const ALERT_NAMES = {
 const EXCHANGE = { NIFTY: 'NSE', SENSEX: 'BSE' };
 const LOT_SIZES = { NIFTY: 65, SENSEX: 20 };
 const LOTS = { NIFTY: 10, SENSEX: 15 };
-const SL = { NIFTY: 15, SENSEX: 35 };
-const TARGET_G = { NIFTY: 50, SENSEX: 100 };
-const TARGET_L = { NIFTY: 31, SENSEX: 70 };
+const SL = { NIFTY: 15, SENSEX: 35 }; // initial stop-loss (points)
+// Exit w/SL is a stepped trailing stop: for every TRAIL_STEP points of favourable
+// movement, the stop ratchets up to TRAIL_GAP points behind that milestone.
+const TRAIL_STEP = { NIFTY: 10, SENSEX: 22 };
+const TRAIL_GAP = { NIFTY: 12, SENSEX: 25 };
+const TARGET_L = { NIFTY: 31, SENSEX: 35 }; // Exit w/Tgt fixed target (points)
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -89,22 +93,46 @@ async function scrollChartToRange(cdp, fromUnix, toUnix) {
   return result?.result?.value ?? result;
 }
 
-function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
+// Bias exit model:
+//  • Exit w/SL  — stepped trailing stop. Initial stop = entry − SL. Each time the
+//    running high clears another TRAIL_STEP-point milestone above entry, the stop
+//    ratchets up to (milestone − TRAIL_GAP); it never moves down. The trade exits
+//    at the stop if a bar's low breaches it, otherwise at the actual exit price.
+//  • Exit w/Tgt — fixed bracket: target hit intraday → +TARGET_L; else the actual
+//    exit clamped to [−SL, +TARGET_L].
+// tradeBars must be chronological (oldest → newest) and carry high/low/close.
+export function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
   if (entry === null || exitRaw === null) {
-    return { exitSL: null, exitNSL: exitRaw, tgtPts: null };
+    return { exitSL: null, exitTgt: null, exitNSL: exitRaw, tgtPts: null };
   }
-  const sl = SL[instrument] || 15;
-  const tgG = TARGET_G[instrument] || 50;
-  const tgL = TARGET_L[instrument] || 31;
+  const sl = SL[instrument] ?? 15;
+  const step = TRAIL_STEP[instrument] ?? 10;
+  const gap = TRAIL_GAP[instrument] ?? 12;
+  const tgL = TARGET_L[instrument] ?? 31;
 
-  let exitSLPrice = clamp(exitRaw, entry - sl, entry + tgG);
+  // ── Exit w/SL: stepped trailing stop ──
+  let stop = entry - sl;
+  let maxHigh = entry;
+  let exitSLPrice = exitRaw;
+  let stopped = false;
   for (const bar of tradeBars) {
-    if (bar.high >= entry + tgG) {
-      exitSLPrice = entry + tgG;
+    // The stop reflects highs seen on prior bars — check this bar's low against it first.
+    if (bar.low <= stop) {
+      exitSLPrice = stop;
+      stopped = true;
       break;
     }
+    if (bar.high > maxHigh) maxHigh = bar.high;
+    const steps = Math.floor((maxHigh - entry) / step);
+    if (steps >= 1) {
+      const newStop = entry + steps * step - gap;
+      if (newStop > stop) stop = newStop;
+    }
   }
+  // Never stopped out → exit at the actual price, but never worse than the locked stop.
+  if (!stopped && exitRaw < stop) exitSLPrice = stop;
 
+  // ── Exit w/Tgt: fixed SL/target bracket ──
   let tgtHit = false;
   for (const bar of tradeBars) {
     if (bar.high >= entry + tgL) {
@@ -112,7 +140,7 @@ function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
       break;
     }
   }
-  const tgtPts = tgtHit ? tgL : parseFloat((exitSLPrice - entry).toFixed(2));
+  const tgtPts = tgtHit ? tgL : parseFloat(clamp(exitRaw - entry, -sl, tgL).toFixed(2));
   const exitTgtPrice = parseFloat((entry + tgL).toFixed(2));
 
   return {
@@ -264,31 +292,19 @@ async function fetchBarsForSymbol(cdp, cdpChart, qualifiedSymbol, fromUnix, toUn
 
 async function main() {
   const dateArg = process.argv.slice(2).find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
-  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-  const today = dateArg || istNow.toISOString().slice(0, 10);
+  // Default to the last completed trading session, not the calendar date — the
+  // alert log has no date, so a report run after close / weekend / holiday must
+  // be dated to the session the fires belong to (e.g. Sat run → Fri's trades).
+  const today = dateArg || lastTradingDay();
   console.log(`Generating BIAS report for: ${today}\n`);
 
   const position = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
   // The supertrend logSnapshot is the full Alerts Log tab — it contains bias fires too.
-  const snapshot = position.supertrend?.logSnapshot || position.lastLogSnapshot || [];
-  if (snapshot.length === 0) {
-    console.error('position.json has no alert snapshot — nothing to parse');
-    process.exit(1);
-  }
-
+  let snapshot = position.supertrend?.logSnapshot || position.lastLogSnapshot || [];
   const instrFilter = position.shared?.lastInstrument || position.lastInstrument || 'NIFTY';
-  const trades = parseTrades(snapshot, instrFilter);
-  const openTrades = parseOpenTrades(snapshot, trades.length + 1, instrFilter);
-  const allTrades = [...trades, ...openTrades];
 
-  if (allTrades.length === 0) {
-    console.log('No bias trade pairs found in the alert snapshot');
-    process.exit(0);
-  }
-  console.log(`Bias trades found: ${allTrades.length}`);
-  for (const t of allTrades)
-    console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${t.exitTime} (${t.exitType})`);
-
+  // Connect to TradingView first — needed both for the live-log fallback below
+  // and for fetching option bars later.
   let tabId = null;
   try {
     tabId = JSON.parse(fs.readFileSync(SUPERTREND_TAB, 'utf8')).targetId;
@@ -298,13 +314,47 @@ async function main() {
   const cdp = new CDPManager(tabId);
   try {
     await cdp.connect();
-    console.log('\nCDP connected');
+    console.log('CDP connected');
   } catch (e) {
     console.error('CDP connect failed:', e.message);
     console.error('Start TradingView first:  .\\launch-tv.ps1');
     process.exit(1);
   }
   const cdpChart = new ChartTools(cdp);
+
+  // The monitor only writes logSnapshot to position.json during live market-hours
+  // ticks. When the market is off (weekend / holiday / after close) it's empty —
+  // read the Alerts Log tab live from TradingView instead. Gated on isMarketOff()
+  // so we never switch the Log tab while the monitor is actively trading.
+  if (snapshot.length === 0 && isMarketOff()) {
+    console.log('position.json has no alert snapshot — reading Alerts Log tab live...');
+    try {
+      snapshot = await readLiveAlertLog(cdp);
+      console.log(`  read ${snapshot.length} alert log item(s) live`);
+    } catch (e) {
+      console.error('  live alert log read failed:', e.message);
+    }
+  }
+  if (snapshot.length === 0) {
+    console.error(
+      'No alert snapshot to parse — position.json is empty and no live log was available.'
+    );
+    await cdp.disconnect();
+    process.exit(1);
+  }
+
+  const trades = parseTrades(snapshot, instrFilter);
+  const openTrades = parseOpenTrades(snapshot, trades.length + 1, instrFilter);
+  const allTrades = [...trades, ...openTrades];
+
+  if (allTrades.length === 0) {
+    console.log('No bias trade pairs found in the alert snapshot');
+    await cdp.disconnect();
+    process.exit(0);
+  }
+  console.log(`Bias trades found: ${allTrades.length}`);
+  for (const t of allTrades)
+    console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${t.exitTime} (${t.exitType})`);
 
   const symWindows = {};
   for (const t of allTrades) {

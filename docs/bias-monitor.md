@@ -188,7 +188,7 @@ Instrument / day / ITM-depth routing is shared with supertrend (see `supertrend-
 
 `scripts/generate-bias-report.js` — parses **entry → exit/target** pairs from the alert log,
 maps up→CE / down→PE, fetches each option's 1m prices from TradingView, and writes
-`logs/supertrend/bias/daily-trades-YYYY-MM-DD.json` in the same schema as the supertrend
+`logs/bias/1min/daily-trades-YYYY-MM-DD.json` in the same schema as the supertrend
 report. View at `/bias-reports` (the 1-min reports UI pointed at bias data); the Trade
 Reports dashboard (`/supertrend-reports`) lists it as a third strategy card. `exitType`
 records whether the trade closed on `exit` (SL/signal) or `target`.

@@ -978,11 +978,19 @@
           winNSL = 0,
           winTgt = 0;
         const dayDates = [];
+        let totalBrokerage = 0,
+          brokNIFTY = 0,
+          brokSENSEX = 0;
         for (const day of dates.sort((a, b) => (a.date < b.date ? -1 : 1))) {
           let dSL = 0,
             dNSL = 0,
             dTgt = 0;
           const filteredTrades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
+          // Per-day brokerage (₹200 × trades, or an explicit override), split by instrument.
+          const dayBrok = brokerageFor(day, filteredTrades.length);
+          totalBrokerage += dayBrok;
+          if ((day.instrument || '').toUpperCase() === 'SENSEX') brokSENSEX += dayBrok;
+          else brokNIFTY += dayBrok;
           for (const t of filteredTrades) {
             const tq = qty(day.instrument, t.lots);
             if (t.exitSL !== null && t.entryPrice !== null) dSL += (t.exitSL - t.entryPrice) * tq;
@@ -1024,15 +1032,19 @@
         const wrSL = totalTrades ? Math.round((winSL / totalTrades) * 100) : 0;
         const wrNSL = totalTrades ? Math.round((winNSL / totalTrades) * 100) : 0;
         const wrTgt = totalTrades ? Math.round((winTgt / totalTrades) * 100) : 0;
-        const capSL = INITIAL_CAPITAL + netSL,
-          capNSL = INITIAL_CAPITAL + netNSL,
-          capTgt = INITIAL_CAPITAL + netTgt;
+        // Brokerage reduces every P&L type: Net (after) = gross net − total brokerage.
+        const netSLAfter = netSL - totalBrokerage,
+          netNSLAfter = netNSL - totalBrokerage,
+          netTgtAfter = netTgt - totalBrokerage;
+        const capSL = INITIAL_CAPITAL + netSLAfter,
+          capNSL = INITIAL_CAPITAL + netNSLAfter,
+          capTgt = INITIAL_CAPITAL + netTgtAfter;
         el.innerHTML = `
     <div class="summary">
-      <div class="scard"><div class="scard-lbl">Capital</div><div class="scard-val c-white">${fmtCapital(INITIAL_CAPITAL)}</div><div class="scard-sub">Opening this month</div><div style="margin-top:10px;">${statRow('Trades', `${totalTrades}`, 'c-white', `${dates.length} day(s)`)}</div></div>
-      <div class="scard"><div class="scard-lbl">Exit w/ SL</div>${statRow('Net P&amp;L', fmtRs(netSL), pnlClass(netSL))}${statRow('Net Capital', fmtCapital(capSL), pnlClass(capSL - INITIAL_CAPITAL))}${statRow('Win Rate', `${wrSL}%`, 'c-purple', `${winSL} of ${totalTrades}`)}${statRow('Max Drawdown', ddSL < 0 ? fmtRs(ddSL) : '—', 'c-orange', ddSLDate ? fmtDateShort(ddSLDate) : '')}${statRow('Max Run-Up', duSL > 0 ? fmtRs(duSL) : '—', 'c-green', duSLDate ? fmtDateShort(duSLDate) : '')}</div>
-      <div class="scard"><div class="scard-lbl">Exit w/o SL</div>${statRow('Net P&amp;L', fmtRs(netNSL), pnlClass(netNSL))}${statRow('Net Capital', fmtCapital(capNSL), pnlClass(capNSL - INITIAL_CAPITAL))}${statRow('Win Rate', `${wrNSL}%`, 'c-purple', `${winNSL} of ${totalTrades}`)}${statRow('Max Drawdown', ddNSL < 0 ? fmtRs(ddNSL) : '—', 'c-orange', ddNSLDate ? fmtDateShort(ddNSLDate) : '')}${statRow('Max Run-Up', duNSL > 0 ? fmtRs(duNSL) : '—', 'c-green', duNSLDate ? fmtDateShort(duNSLDate) : '')}</div>
-      <div class="scard"><div class="scard-lbl">Target Pts</div>${statRow('Net P&amp;L', fmtRs(netTgt), pnlClass(netTgt))}${statRow('Net Capital', fmtCapital(capTgt), pnlClass(capTgt - INITIAL_CAPITAL))}${statRow('Win Rate', `${wrTgt}%`, 'c-purple', `${winTgt} of ${totalTrades}`)}${statRow('Max Drawdown', ddTgt < 0 ? fmtRs(ddTgt) : '—', 'c-orange', ddTgtDate ? fmtDateShort(ddTgtDate) : '')}${statRow('Max Run-Up', duTgt > 0 ? fmtRs(duTgt) : '—', 'c-green', duTgtDate ? fmtDateShort(duTgtDate) : '')}</div>
+      <div class="scard"><div class="scard-lbl">Capital</div><div class="scard-val c-white">${fmtCapital(INITIAL_CAPITAL)}</div><div class="scard-sub">Opening this month</div><div style="margin-top:10px;">${statRow('Trades', `${totalTrades}`, 'c-white', `${dates.length} day(s)`)}</div><div style="margin-top:8px;border-top:1px solid #2a2a3a;padding-top:8px;">${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange', `₹${BROKERAGE_PER_TRADE}/trade`)}${statRow('· NIFTY', fmtRs(-brokNIFTY), 'c-orange')}${statRow('· SENSEX', fmtRs(-brokSENSEX), 'c-orange')}</div></div>
+      <div class="scard"><div class="scard-lbl">Exit w/ SL</div>${statRow('Net P&amp;L', fmtRs(netSL), pnlClass(netSL))}${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}${statRow('Net (after)', fmtRs(netSLAfter), pnlClass(netSLAfter))}${statRow('Net Capital', fmtCapital(capSL), pnlClass(capSL - INITIAL_CAPITAL))}${statRow('Win Rate', `${wrSL}%`, 'c-purple', `${winSL} of ${totalTrades}`)}${statRow('Max Drawdown', ddSL < 0 ? fmtRs(ddSL) : '—', 'c-orange', ddSLDate ? fmtDateShort(ddSLDate) : '')}${statRow('Max Run-Up', duSL > 0 ? fmtRs(duSL) : '—', 'c-green', duSLDate ? fmtDateShort(duSLDate) : '')}</div>
+      <div class="scard"><div class="scard-lbl">Exit w/o SL</div>${statRow('Net P&amp;L', fmtRs(netNSL), pnlClass(netNSL))}${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}${statRow('Net (after)', fmtRs(netNSLAfter), pnlClass(netNSLAfter))}${statRow('Net Capital', fmtCapital(capNSL), pnlClass(capNSL - INITIAL_CAPITAL))}${statRow('Win Rate', `${wrNSL}%`, 'c-purple', `${winNSL} of ${totalTrades}`)}${statRow('Max Drawdown', ddNSL < 0 ? fmtRs(ddNSL) : '—', 'c-orange', ddNSLDate ? fmtDateShort(ddNSLDate) : '')}${statRow('Max Run-Up', duNSL > 0 ? fmtRs(duNSL) : '—', 'c-green', duNSLDate ? fmtDateShort(duNSLDate) : '')}</div>
+      <div class="scard"><div class="scard-lbl">Target Pts</div>${statRow('Net P&amp;L', fmtRs(netTgt), pnlClass(netTgt))}${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}${statRow('Net (after)', fmtRs(netTgtAfter), pnlClass(netTgtAfter))}${statRow('Net Capital', fmtCapital(capTgt), pnlClass(capTgt - INITIAL_CAPITAL))}${statRow('Win Rate', `${wrTgt}%`, 'c-purple', `${winTgt} of ${totalTrades}`)}${statRow('Max Drawdown', ddTgt < 0 ? fmtRs(ddTgt) : '—', 'c-orange', ddTgtDate ? fmtDateShort(ddTgtDate) : '')}${statRow('Max Run-Up', duTgt > 0 ? fmtRs(duTgt) : '—', 'c-green', duTgtDate ? fmtDateShort(duTgtDate) : '')}</div>
     </div>`;
       }
 
@@ -1166,6 +1178,25 @@
         totTr.className = 'total-row';
         totTr.innerHTML = `<td colspan="10">Day Total</td><td class="${pnlClass(totSL)}">${fmtRs(totSL)}</td><td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}</td><td class="${pnlClass(totNSL)}">${fmtRs(totNSL)}</td><td></td>`;
         tbody.appendChild(totTr);
+
+        // Per-day brokerage (editable) — default ₹200 × trades, deducted from every P&L column.
+        const dayBrok = brokerageFor(day, trades.length);
+        const brokOverridden = Number.isFinite(day.brokerage);
+        const brokTr = document.createElement('tr');
+        brokTr.className = 'total-row';
+        brokTr.innerHTML = `<td colspan="10" style="color:#fbbf24;">Brokerage
+          <input type="number" value="${dayBrok}" min="0" step="50" title="Default ₹${BROKERAGE_PER_TRADE} × ${trades.length} trades — edit to override"
+            onchange="saveBrokerage('${dateStr}', this.value, ${trades.length})"
+            style="width:96px;margin-left:8px;background:#1e1e2e;color:#fbbf24;border:1px solid #4b3d22;border-radius:4px;padding:2px 6px;font-size:12px">
+          ${brokOverridden ? '<span style="color:#64748b;font-size:10px;margin-left:6px">edited · ₹' + BROKERAGE_PER_TRADE + '×' + trades.length + '=' + fmtRs(BROKERAGE_PER_TRADE * trades.length) + ' default</span>' : ''}</td>
+          <td class="c-orange">${fmtRs(-dayBrok)}</td><td class="c-orange">${fmtRs(-dayBrok)}</td><td class="c-orange">${fmtRs(-dayBrok)}</td><td></td>`;
+        tbody.appendChild(brokTr);
+
+        const netTr = document.createElement('tr');
+        netTr.className = 'total-row';
+        netTr.innerHTML = `<td colspan="10" style="font-weight:700">Net after Brokerage</td><td class="${pnlClass(totSL - dayBrok)}">${fmtRs(totSL - dayBrok)}</td><td class="${pnlClass(totTgt - dayBrok)}">${fmtRs(totTgt - dayBrok)}</td><td class="${pnlClass(totNSL - dayBrok)}">${fmtRs(totNSL - dayBrok)}</td><td></td>`;
+        tbody.appendChild(netTr);
+
         const ddTr = document.createElement('tr');
         ddTr.className = 'total-row';
         ddTr.innerHTML = `<td colspan="10" style="color:#fb923c;">Max Drawdown</td><td class="c-orange">${dSL < 0 ? fmtRs(dSL) : '—'}</td><td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td><td class="c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td><td></td>`;
@@ -1177,8 +1208,8 @@
 
         const pnlEl = document.getElementById(`day-pnl-${dayKey}`);
         if (pnlEl) {
-          pnlEl.innerHTML = `${fmtRs(totSL)} w/SL`;
-          pnlEl.className = `day-pnl ${pnlClass(totSL)}`;
+          pnlEl.innerHTML = `${fmtRs(totSL - dayBrok)} w/SL`;
+          pnlEl.className = `day-pnl ${pnlClass(totSL - dayBrok)}`;
         }
       }
 
@@ -1369,6 +1400,28 @@
         bar.innerHTML = `<span class="note-text${note ? '' : ' empty'}" id="note-text-${dayKey}">${note ? escHtml(note) : 'Add a day note…'}</span><button class="note-edit-btn" onclick="editDayNote('${dateStr}');event.stopPropagation()">&#x270E; Edit</button>`;
       }
 
+      // Per-day brokerage (paper-trading cost). Default ₹200 per trade; an explicit
+      // numeric override on the day record wins. `n` is the trade count to charge.
+      const BROKERAGE_PER_TRADE = 200;
+      function brokerageFor(day, n) {
+        return day && Number.isFinite(day.brokerage) ? day.brokerage : BROKERAGE_PER_TRADE * n;
+      }
+
+      // Edit handler for the per-day Brokerage input in the day footer.
+      async function saveBrokerage(dateStr, raw, defaultCount) {
+        const day = allData[dateStr];
+        if (!day) return;
+        const v = parseFloat(raw);
+        if (raw === '' || !Number.isFinite(v) || v === BROKERAGE_PER_TRADE * defaultCount) {
+          delete day.brokerage;
+        } else {
+          day.brokerage = Math.round(v);
+        }
+        await persistDay(dateStr);
+        renderDay(dateStr);
+        renderSummary(dateStr.slice(0, 7));
+      }
+
       async function persistDay(dateStr) {
         try {
           const r = await fetch(SAVE_URL, {
@@ -1379,6 +1432,9 @@
               trades: allData[dateStr].trades,
               instrument: allData[dateStr].instrument,
               note: allData[dateStr].note || '',
+              brokerage: Number.isFinite(allData[dateStr].brokerage)
+                ? allData[dateStr].brokerage
+                : null,
             }),
           });
           const j = await r.json();

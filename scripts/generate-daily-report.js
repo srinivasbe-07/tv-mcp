@@ -17,6 +17,7 @@
 
 import { CDPManager } from '../src/cdp.js';
 import { ChartTools } from '../src/tools/chart.js';
+import { isMarketOff, readLiveAlertLog, lastTradingDay } from './read-live-log.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -317,19 +318,57 @@ async function fetchBarsForSymbol(cdp, cdpChart, qualifiedSymbol, fromUnix, toUn
 async function main() {
   const dateArg = process.argv.slice(2).find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
 
-  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-  const today = dateArg || istNow.toISOString().slice(0, 10);
+  // Default to the last completed trading session, not the calendar date — the
+  // alert log has no date, so a report run after close / weekend / holiday must
+  // be dated to the session the fires belong to (e.g. Sat run → Fri's trades).
+  const today = dateArg || lastTradingDay();
   console.log(`Generating report for: ${today}\n`);
 
   // Read position.json (grouped by strategy; supertrend snapshot, flat fallback)
   const position = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
-  const snapshot = position.supertrend?.logSnapshot || position.lastLogSnapshot || [];
+  let snapshot = position.supertrend?.logSnapshot || position.lastLogSnapshot || [];
+  const instrFilter = position.shared?.lastInstrument || position.lastInstrument || 'NIFTY';
+
+  // Connect to TradingView (supertrend tab) first — needed both for the live-log
+  // fallback below and for fetching option bars later.
+  let tabId = null;
+  try {
+    tabId = JSON.parse(fs.readFileSync(SUPERTREND_TAB, 'utf8')).targetId;
+  } catch {
+    /**/
+  }
+  const cdp = new CDPManager(tabId);
+  try {
+    await cdp.connect();
+    console.log('CDP connected');
+  } catch (e) {
+    console.error('CDP connect failed:', e.message);
+    console.error('Start TradingView first:  .\\launch-tv.ps1');
+    process.exit(1);
+  }
+  const cdpChart = new ChartTools(cdp);
+
+  // The monitor only writes logSnapshot to position.json during live market-hours
+  // ticks. When the market is off (weekend / holiday / after close) it's empty —
+  // read the Alerts Log tab live from TradingView instead. Gated on isMarketOff()
+  // so we never switch the Log tab while the monitor is actively trading.
+  if (snapshot.length === 0 && isMarketOff()) {
+    console.log('position.json has no alert snapshot — reading Alerts Log tab live...');
+    try {
+      snapshot = await readLiveAlertLog(cdp);
+      console.log(`  read ${snapshot.length} alert log item(s) live`);
+    } catch (e) {
+      console.error('  live alert log read failed:', e.message);
+    }
+  }
   if (snapshot.length === 0) {
-    console.error('position.json has no alert snapshot — nothing to parse');
+    console.error(
+      'No alert snapshot to parse — position.json is empty and no live log was available.'
+    );
+    await cdp.disconnect();
     process.exit(1);
   }
 
-  const instrFilter = position.shared?.lastInstrument || position.lastInstrument || 'NIFTY';
   const trades = parseTrades(snapshot, instrFilter);
   const openTrades = parseOpenTrades(snapshot, trades.length + 1, instrFilter);
   if (openTrades.length > 0) {
@@ -342,6 +381,7 @@ async function main() {
 
   if (allTrades.length === 0) {
     console.log('No complete trade pairs found in position.json');
+    await cdp.disconnect();
     process.exit(0);
   }
 
@@ -350,24 +390,6 @@ async function main() {
     const exitLabel = openTrades.includes(t) ? `${t.exitTime} (EOD)` : t.exitTime;
     console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${exitLabel}`);
   }
-
-  // Connect to TradingView using supertrend tab
-  let tabId = null;
-  try {
-    tabId = JSON.parse(fs.readFileSync(SUPERTREND_TAB, 'utf8')).targetId;
-  } catch {
-    /**/
-  }
-  const cdp = new CDPManager(tabId);
-  try {
-    await cdp.connect();
-    console.log('\nCDP connected');
-  } catch (e) {
-    console.error('CDP connect failed:', e.message);
-    console.error('Start TradingView first:  .\\launch-tv.ps1');
-    process.exit(1);
-  }
-  const cdpChart = new ChartTools(cdp);
 
   // Build per-symbol time windows: earliest entry (−2 bars for signal candle) → latest exit
   const symWindows = {};

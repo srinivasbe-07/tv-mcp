@@ -101,10 +101,18 @@ It runs **inside the merged monitor process** (`monitors/monitor.js`) — supert
 Same as the supertrend EOD report, for bias trades. Click **↧ EOD Report** on the `/bias` page (or `npm run report:bias` / `node scripts/generate-bias-report.js [YYYY-MM-DD]`).
 
 - Parses bias **entry → (exit OR target)** pairs from the alert log, maps up→CE / down→PE.
-- Fetches each option's 1m prices from TradingView, computes entry/exit/SL/target the same way as supertrend.
+- **Alert source**: uses `position.json`'s `logSnapshot` (written by the monitor during market hours). When the market is **off** (weekend / holiday / after close) that snapshot is empty, so the report reads the Alerts **Log** tab live from TradingView instead. The live read is skipped during market hours so it never disturbs the running monitor — same fallback applies to the supertrend EOD report.
+- Fetches each option's 1m prices from TradingView and computes two exit models (bias-specific, **different from supertrend**):
+  - **Exit w/SL** — stepped **trailing stop**: initial SL **NIFTY 15 / SENSEX 35** pts; for every **NIFTY 10 / SENSEX 22** pts of favourable movement the stop ratchets up to **NIFTY 12 / SENSEX 25** pts behind that milestone (never moves down). Exits at the stop if a 1m bar's low breaches it, else at the actual exit price.
+  - **Exit w/Tgt** — fixed bracket: **NIFTY SL 15 / target 31**, **SENSEX SL 35 / target 35**. Target hit intraday → +target; else actual exit clamped to [−SL, +target].
+- **Bias-only UI differences** (the shared `1min-reports.html` hides these when on `/bias-reports`):
+  - **Exit w/oSL** (raw, unclamped) columns + summary card — hidden (`exitNSL` is still stored as the trailing-stop input).
+  - **PB Entry** (pullback) card and its edit-mode inputs — removed (pullback doesn't apply to bias).
+  - **Candle** column and the **CANDLE ≥** filter — removed.
+  - **PINE SCRIPT SL** notes option + filter — removed (bias has no Pine-script exits).
 - `exitType` records whether the trade closed on `exit` (SL/signal) or `target`; notes auto-classify **TARGET HIT / SL HIT / price reach upto X / EXIT SIGNAL**.
-- Saves to `logs/supertrend/bias/daily-trades-YYYY-MM-DD.json` (same schema as supertrend).
-- View at **`/bias-reports`** — the same reports UI as `/1min-reports`, pointed at bias data (month tabs, filters, P&L, inline edit, Excel export).
+- Saves to `logs/bias/1min/daily-trades-YYYY-MM-DD.json` (same schema as supertrend).
+- View at **`/bias-reports`** — the same reports UI as `/1min-reports`, pointed at bias data (month tabs, filters, P&L, inline edit, Excel export). Inline edits recompute with simple clamp logic (intraday bars aren't available in the browser); re-run the report to restore exact trailing-stop values.
 
 ### What It Does NOT Do
 
@@ -527,13 +535,17 @@ Three cards — one per P&L type (w/SL, w/oSL, Tgt):
 
 | Stat         | Meaning                                                          |
 | ------------ | ---------------------------------------------------------------- |
-| Net P&L      | Sum of all day P&Ls for the filtered trades                      |
-| Net Capital  | ₹2,00,000 (initial) ± Net P&L                                    |
+| Net P&L      | Sum of all day P&Ls for the filtered trades (gross)              |
+| Brokerage    | Total paper-trading brokerage for the month (deducted)           |
+| Net (after)  | Net P&L − Brokerage                                              |
+| Net Capital  | ₹2,00,000 (initial) ± Net (after brokerage)                      |
 | Win Rate     | % of trades with positive P&L                                    |
 | Max Drawdown | Largest peak-to-trough cumulative P&L decline (worst losing run) |
 | Max Run-Up   | Largest trough-to-peak cumulative P&L gain (best winning run)    |
 
 Drawdown/Run-Up show the date of occurrence in brackets. These are calculated on the **filtered** data (instrument + time ranges applied).
+
+**Brokerage** (paper-trading cost) reduces every P&L type. Default = **₹200 × number of trades** per day, editable per day in the daily footer (see below) and persisted to the day's JSON (`brokerage` field; cleared back to default when set equal to it). The **Capital** card shows the month's total brokerage split by **NIFTY** and **SENSEX**. Applies to the 1-Min (supertrend), Bias, and 3-Min report pages.
 
 ---
 
@@ -541,11 +553,15 @@ Drawdown/Run-Up show the date of occurrence in brackets. These are calculated on
 
 Each day's trade table has two footer rows:
 
-| Row              | Columns                                    |
-| ---------------- | ------------------------------------------ |
-| **Day Total**    | Sum of P&L for all 3 types for that day    |
-| **Max Drawdown** | Intra-day peak-to-trough for each P&L type |
-| **Max Run-Up**   | Intra-day trough-to-peak for each P&L type |
+| Row                     | Columns                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| **Day Total**           | Sum of P&L for all 3 types for that day (gross)            |
+| **Brokerage**           | Editable ₹ input (default ₹200 × trades); shown as −amount |
+| **Net after Brokerage** | Day Total − Brokerage for each P&L type                    |
+| **Max Drawdown**        | Intra-day peak-to-trough for each P&L type                 |
+| **Max Run-Up**          | Intra-day trough-to-peak for each P&L type                 |
+
+Edit the **Brokerage** input to override that day's cost; clearing it (or setting it back to ₹200 × trades) reverts to the default. The day chip in the accordion header shows **Net after Brokerage** (w/SL).
 
 ---
 

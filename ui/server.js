@@ -810,12 +810,19 @@ app.post('/api/report/run', (req, res) => {
 
 const DIR_1MIN = path.join(ROOT, 'logs', 'supertrend', '1min');
 const DIR_3MIN = path.join(ROOT, 'logs', 'supertrend', '3min');
+const DIR_BIAS = path.join(ROOT, 'logs', 'bias', '1min');
+
+// The reports UI (1min-reports.html) is shared by supertrend (/1min-reports) and
+// bias (/bias-reports); requests pass strategy=bias to route to the bias folder.
+// Trade JSON + per-trade screenshots both live under the strategy's dir.
+const reportDir = (strategy) => (strategy === 'bias' ? DIR_BIAS : DIR_1MIN);
 
 // ── Trade screenshots ─────────────────────────────────────────────
 // GET /api/report/screenshots?date=YYYY-MM-DD
 // SSE stream: reads daily-trades JSON → navigates TradingView per trade
 // → scrolls to full entry→exit window → captures one screenshot per trade.
-// Saved to logs/supertrend/1min/{instrument}/{date}/{symbol}_{time}.png
+// Saved to {strategy dir}/{instrument}/{date}/{symbol}_{time}.png
+//   supertrend → logs/supertrend/1min/…   bias (strategy=bias) → logs/bias/1min/…
 const EXCHANGE_MAP = { NIFTY: 'NSE', SENSEX: 'BSE' };
 
 function istTimeToUnixLocal(timeStr, dateStr) {
@@ -844,7 +851,8 @@ app.get('/api/report/screenshots', async (req, res) => {
 
   if (shotRunning) return done(false, 'Screenshot capture already running');
 
-  const tradeFile = path.join(DIR_1MIN, `daily-trades-${date}.json`);
+  const baseDir = reportDir(req.query.strategy);
+  const tradeFile = path.join(baseDir, `daily-trades-${date}.json`);
   let record;
   try {
     record = JSON.parse(fs.readFileSync(tradeFile, 'utf8'));
@@ -857,7 +865,7 @@ app.get('/api/report/screenshots', async (req, res) => {
 
   const instrument = (record.instrument || 'NIFTY').toLowerCase();
   shotRunning = true;
-  const screenshotDir = path.join(DIR_1MIN, instrument, date);
+  const screenshotDir = path.join(baseDir, instrument, date);
   fs.mkdirSync(screenshotDir, { recursive: true });
   // Clear existing snapshots for this date before re-capturing
   try {
@@ -984,7 +992,7 @@ app.get('/api/report/screenshots', async (req, res) => {
       }
     }
 
-    done(true, `${files.length} screenshot(s) saved to 1min/${instrument}/${date}/`);
+    done(true, `${files.length} screenshot(s) saved to ${path.relative(ROOT, screenshotDir)}/`);
   } catch (e) {
     done(false, `Error: ${e.message}`);
   } finally {
@@ -997,7 +1005,7 @@ app.get('/api/report/screenshots', async (req, res) => {
 app.get('/api/report/screenshots/list', (req, res) => {
   const { date, instrument } = req.query;
   if (!date || !instrument) return res.json([]);
-  const dir = path.join(DIR_1MIN, instrument.toLowerCase(), date);
+  const dir = path.join(reportDir(req.query.strategy), instrument.toLowerCase(), date);
   try {
     const files = fs
       .readdirSync(dir)
@@ -1018,7 +1026,7 @@ app.get('/api/screenshots/:instrument/:date/:file', (req, res) => {
     !/^[\w-]+\.png$/.test(file)
   )
     return res.status(400).send('Invalid');
-  const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
+  const filePath = path.join(reportDir(req.query.strategy), instrument.toLowerCase(), date, file);
   if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
   res.sendFile(filePath);
 });
@@ -1032,7 +1040,7 @@ app.delete('/api/screenshots/:instrument/:date/:file', (req, res) => {
     !/^[\w-]+\.png$/.test(file)
   )
     return res.status(400).json({ ok: false, error: 'Invalid' });
-  const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
+  const filePath = path.join(reportDir(req.query.strategy), instrument.toLowerCase(), date, file);
   if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'Not found' });
   try {
     fs.unlinkSync(filePath);
@@ -1051,7 +1059,7 @@ app.post('/api/screenshots/:instrument/:date/:file/reveal', (req, res) => {
     !/^[\w-]+\.png$/.test(file)
   )
     return res.status(400).json({ ok: false, error: 'Invalid' });
-  const filePath = path.join(DIR_1MIN, instrument.toLowerCase(), date, file);
+  const filePath = path.join(reportDir(req.query.strategy), instrument.toLowerCase(), date, file);
   if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'Not found' });
   // explorer /select highlights the file in its folder. It returns exit code 1
   // even on success, so we don't treat a non-zero exit as an error.
@@ -1088,7 +1096,7 @@ function readTradesDir(dir) {
   return result;
 }
 
-function saveTradesFile(dir, date, trades, instrument, note) {
+function saveTradesFile(dir, date, trades, instrument, note, brokerage) {
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `daily-trades-${date}.json`);
   let record;
@@ -1099,6 +1107,12 @@ function saveTradesFile(dir, date, trades, instrument, note) {
   }
   record.trades = trades;
   if (note !== undefined) record.note = note || '';
+  // Per-day brokerage (paper-trading cost, editable). null clears the override
+  // back to the default (₹200 × trade count, computed in the UI).
+  if (brokerage !== undefined) {
+    if (brokerage === null) delete record.brokerage;
+    else record.brokerage = brokerage;
+  }
   fs.writeFileSync(filePath, JSON.stringify(record, null, 2));
 }
 
@@ -1106,11 +1120,11 @@ function saveTradesFile(dir, date, trades, instrument, note) {
 app.get('/api/report/data', (_req, res) => res.json(readTradesDir(DIR_1MIN)));
 
 app.post('/api/report/save', (req, res) => {
-  const { date, trades, note } = req.body;
+  const { date, trades, note, brokerage } = req.body;
   if (!date || !trades)
     return res.status(400).json({ ok: false, error: 'date and trades required' });
   try {
-    saveTradesFile(DIR_1MIN, date, trades, undefined, note);
+    saveTradesFile(DIR_1MIN, date, trades, undefined, note, brokerage);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -1121,11 +1135,11 @@ app.post('/api/report/save', (req, res) => {
 app.get('/api/3min-report/data', (_req, res) => res.json(readTradesDir(DIR_3MIN)));
 
 app.post('/api/3min-report/save', (req, res) => {
-  const { date, trades, instrument, note } = req.body;
+  const { date, trades, instrument, note, brokerage } = req.body;
   if (!date || !trades)
     return res.status(400).json({ ok: false, error: 'date and trades required' });
   try {
-    saveTradesFile(DIR_3MIN, date, trades, instrument, note);
+    saveTradesFile(DIR_3MIN, date, trades, instrument, note, brokerage);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -1133,16 +1147,15 @@ app.post('/api/3min-report/save', (req, res) => {
 });
 
 // ── Bias report endpoints (same schema/UI as supertrend 1-min) ────
-const DIR_BIAS = path.join(ROOT, 'logs', 'supertrend', 'bias');
-
+// DIR_BIAS is defined near DIR_1MIN so the shared screenshot endpoints can route to it.
 app.get('/api/bias-report/data', (_req, res) => res.json(readTradesDir(DIR_BIAS)));
 
 app.post('/api/bias-report/save', (req, res) => {
-  const { date, trades, note } = req.body;
+  const { date, trades, note, brokerage } = req.body;
   if (!date || !trades)
     return res.status(400).json({ ok: false, error: 'date and trades required' });
   try {
-    saveTradesFile(DIR_BIAS, date, trades, undefined, note);
+    saveTradesFile(DIR_BIAS, date, trades, undefined, note, brokerage);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

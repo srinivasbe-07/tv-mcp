@@ -15,7 +15,13 @@ import {
   deriveBiasStatus,
   INSTRUMENTS,
 } from '../monitors/monitor.js';
-import { classify, parseTrades, parseOpenTrades } from '../scripts/generate-bias-report.js';
+import {
+  classify,
+  parseTrades,
+  parseOpenTrades,
+  computeExitValues,
+} from '../scripts/generate-bias-report.js';
+import { isMarketOff, extractSnapshotItems, lastTradingDay } from '../scripts/read-live-log.js';
 
 // ---------------------------------------------------------------------------
 // Minimal test runner (same style as test-monitor.js)
@@ -392,6 +398,90 @@ test('entry then target → no open trade', () => {
   ];
   return parseOpenTrades(snap, 1, 'SENSEX').length === 0;
 });
+
+// ---------------------------------------------------------------------------
+// computeExitValues — stepped trailing stop (Exit w/SL) + fixed bracket (Exit w/Tgt)
+// ---------------------------------------------------------------------------
+const bar = (high, low) => ({ high, low, close: (high + low) / 2 });
+
+section('computeExitValues — trailing stop (NIFTY: SL15 step10 gap12)');
+test('no bars, profit exit → exit at actual; tgtPts clamped', () => {
+  const r = computeExitValues('NIFTY', 100, 105, []);
+  return r.exitSL === 105 && r.tgtPts === 5 && r.exitTgt === 131;
+});
+test('initial stop hit → exit at entry−15', () => {
+  const r = computeExitValues('NIFTY', 100, 84, [bar(101, 84)]);
+  return r.exitSL === 85 && r.tgtPts === -15;
+});
+test('trails to 98 after +10 milestone, then stopped', () => {
+  const r = computeExitValues('NIFTY', 100, 99, [bar(110, 100), bar(112, 108), bar(111, 97)]);
+  return r.exitSL === 98;
+});
+test('+20 milestone → stop 108, stopped on next bar', () => {
+  const r = computeExitValues('NIFTY', 100, 100, [bar(120, 100), bar(120, 107)]);
+  return r.exitSL === 108;
+});
+test('+30 milestone → stop 118; never stopped → exit at actual', () => {
+  const r = computeExitValues('NIFTY', 100, 130, [bar(135, 100)]);
+  return r.exitSL === 130;
+});
+
+section('computeExitValues — fixed bracket (Exit w/Tgt)');
+test('NIFTY target 131 hit intraday → tgtPts 31', () => {
+  const r = computeExitValues('NIFTY', 100, 120, [bar(131, 100)]);
+  return r.tgtPts === 31 && r.exitTgt === 131;
+});
+test('SENSEX target 35 / SL 35 (target hit)', () => {
+  const r = computeExitValues('SENSEX', 200, 236, [bar(236, 200)]);
+  return r.exitTgt === 235 && r.tgtPts === 35;
+});
+test('SENSEX no target → loss clamped to −35; stop floor 165', () => {
+  const r = computeExitValues('SENSEX', 200, 150, [bar(205, 200)]);
+  return r.exitSL === 165 && r.tgtPts === -35;
+});
+
+// ---------------------------------------------------------------------------
+// read-live-log helpers: isMarketOff (live-log fallback gate) + extractSnapshotItems
+// ---------------------------------------------------------------------------
+// Build a Date for a desired IST wall-clock time (isMarketOff adds +5:30 internally).
+const atIST = (y, mo, d, h, mi) => new Date(Date.UTC(y, mo - 1, d, h, mi) - 5.5 * 3600 * 1000);
+const HOL = new Set(['2026-06-26']); // Jun 26 2026 is a Friday NSE holiday
+
+section('isMarketOff — weekend / holiday / hours');
+test('Saturday noon → off', () => isMarketOff(atIST(2026, 6, 20, 12, 0), HOL) === true);
+test('Sunday noon → off', () => isMarketOff(atIST(2026, 6, 21, 12, 0), HOL) === true);
+test('Monday noon → on (not off)', () => isMarketOff(atIST(2026, 6, 15, 12, 0), HOL) === false);
+test('Friday holiday (Jun 26) noon → off', () =>
+  isMarketOff(atIST(2026, 6, 26, 12, 0), HOL) === true);
+test('Monday 09:00 pre-open → off', () => isMarketOff(atIST(2026, 6, 15, 9, 0), HOL) === true);
+test('Monday 09:10 open → on', () => isMarketOff(atIST(2026, 6, 15, 9, 10), HOL) === false);
+test('Monday 15:30 close → on', () => isMarketOff(atIST(2026, 6, 15, 15, 30), HOL) === false);
+test('Monday 15:31 after close → off', () => isMarketOff(atIST(2026, 6, 15, 15, 31), HOL) === true);
+
+section('lastTradingDay — most recent completed session (NSE holidays injected)');
+// Jun 2026: 15=Mon … 19=Fri, 20=Sat, 21=Sun. Jun 26 (Fri) is an NSE holiday.
+test('Saturday → previous Friday', () =>
+  lastTradingDay(atIST(2026, 6, 20, 10, 0), HOL) === '2026-06-19');
+test('Sunday → previous Friday', () =>
+  lastTradingDay(atIST(2026, 6, 21, 18, 0), HOL) === '2026-06-19');
+test('Friday after close → same Friday', () =>
+  lastTradingDay(atIST(2026, 6, 19, 16, 0), HOL) === '2026-06-19');
+test('Friday during market → same Friday', () =>
+  lastTradingDay(atIST(2026, 6, 19, 12, 0), HOL) === '2026-06-19');
+test('Monday pre-open → previous Friday (today not yet opened)', () =>
+  lastTradingDay(atIST(2026, 6, 15, 8, 0), HOL) === '2026-06-12');
+test('Monday after open → same Monday', () =>
+  lastTradingDay(atIST(2026, 6, 15, 9, 30), HOL) === '2026-06-15');
+test('Saturday Jun 27 → skips Fri Jun 26 holiday → Thu Jun 25', () =>
+  lastTradingDay(atIST(2026, 6, 27, 10, 0), HOL) === '2026-06-25');
+
+section('extractSnapshotItems — shape normalization');
+test('{items} → items array', () => extractSnapshotItems({ items: [{ name: 'a' }] }).length === 1);
+test('array passthrough', () => extractSnapshotItems([{ name: 'a' }, { name: 'b' }]).length === 2);
+test('raw CDP {result:{value:{items}}}', () =>
+  extractSnapshotItems({ result: { value: { items: [{ name: 'a' }] } } }).length === 1);
+test('null → empty', () => extractSnapshotItems(null).length === 0);
+test('object without items → empty', () => extractSnapshotItems({ diag: {} }).length === 0);
 
 // ---------------------------------------------------------------------------
 // Summary
