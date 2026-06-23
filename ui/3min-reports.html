@@ -778,7 +778,12 @@
           const m = note.match(new RegExp(kw + '\\s*[:=]?\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
           return m ? parseFloat(m[1]) : null;
         };
-        const v = { open: grab('open'), high: grab('high'), low: grab('low'), close: grab('close') };
+        const v = {
+          open: grab('open'),
+          high: grab('high'),
+          low: grab('low'),
+          close: grab('close'),
+        };
         return v.open === null && v.high === null && v.low === null && v.close === null ? null : v;
       }
 

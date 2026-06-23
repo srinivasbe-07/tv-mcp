@@ -931,7 +931,12 @@
           const m = note.match(new RegExp(kw + '\\s*[:=]?\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
           return m ? parseFloat(m[1]) : null;
         };
-        const v = { open: grab('open'), high: grab('high'), low: grab('low'), close: grab('close') };
+        const v = {
+          open: grab('open'),
+          high: grab('high'),
+          low: grab('low'),
+          close: grab('close'),
+        };
         return v.open === null && v.high === null && v.low === null && v.close === null ? null : v;
       }
 
@@ -1714,14 +1719,21 @@
           }
           const tgtPtsB = parseFloat(document.getElementById('e-tgt')?.value);
           const pSLb =
-            !isNaN(entry) && !isNaN(exitSLv) ? Math.round((exitSLv - entry) * nLotsB * lotSzB) : null;
+            !isNaN(entry) && !isNaN(exitSLv)
+              ? Math.round((exitSLv - entry) * nLotsB * lotSzB)
+              : null;
           const pTgtb = !isNaN(tgtPtsB) ? Math.round(tgtPtsB * nLotsB * lotSzB) : null;
           const pNSLb =
-            !isNaN(entry) && !isNaN(exitNSL) ? Math.round((exitNSL - entry) * nLotsB * lotSzB) : null;
+            !isNaN(entry) && !isNaN(exitNSL)
+              ? Math.round((exitNSL - entry) * nLotsB * lotSzB)
+              : null;
           const pnlB = document.getElementById('e-pnl-cell');
           if (pnlB) {
             const c = (v) => (v >= 0 ? 'c-green' : 'c-red');
-            const cell = (v) => (v === null ? '<span style="color:#6b7280">—</span>' : `<span class="${c(v)}">${fmtRs(v)}</span>`);
+            const cell = (v) =>
+              v === null
+                ? '<span style="color:#6b7280">—</span>'
+                : `<span class="${c(v)}">${fmtRs(v)}</span>`;
             pnlB.innerHTML = `${cell(pSLb)}<span style="color:#374151"> | </span>${cell(pTgtb)}<span style="color:#374151"> | </span>${cell(pNSLb)}`;
           }
           return;
@@ -2346,7 +2358,20 @@
           }
         }
         rows.push([]);
-        rows.push(['TOTAL', '', '', '', '', '', ...(IS_BIAS ? [''] : []), '', '', totSL, totNSL, totTgt]);
+        rows.push([
+          'TOTAL',
+          '',
+          '',
+          '',
+          '',
+          '',
+          ...(IS_BIAS ? [''] : []),
+          '',
+          '',
+          totSL,
+          totNSL,
+          totTgt,
+        ]);
         const wrFmt = (w) =>
           totalCount ? `${Math.round((w / totalCount) * 100)}% (${w}/${totalCount})` : '—';
         rows.push([

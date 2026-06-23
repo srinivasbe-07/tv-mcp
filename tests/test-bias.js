@@ -541,7 +541,10 @@ const vbar = (dateStr, o, h, l, c) => ({
 
 section('fetch-vix — pickDailyBar');
 test('matches the bar for the target date', () => {
-  const bars = [vbar('2026-06-22', 11, 12, 10, 11.5), vbar('2026-06-23', 12.67, 13.64, 12.07, 12.77)];
+  const bars = [
+    vbar('2026-06-22', 11, 12, 10, 11.5),
+    vbar('2026-06-23', 12.67, 13.64, 12.07, 12.77),
+  ];
   const r = pickDailyBar(bars, '2026-06-23');
   return r && r.open === 12.67 && r.high === 13.64 && r.low === 12.07 && r.close === 12.77;
 });
