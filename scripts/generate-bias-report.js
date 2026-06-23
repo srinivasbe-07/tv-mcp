@@ -17,11 +17,12 @@
 import { CDPManager } from '../src/cdp.js';
 import { ChartTools } from '../src/tools/chart.js';
 import { isMarketOff, readLiveAlertLog, lastTradingDay } from './read-live-log.js';
+import { fetchVixForDate, formatVixNote } from './fetch-vix.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-export { classify, parseTrades, parseOpenTrades, ALERT_NAMES as BIAS_REPORT_ALERTS };
+export { classify, parseTrades, ALERT_NAMES as BIAS_REPORT_ALERTS };
 
 function checkMarketClosed() {
   const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
@@ -65,10 +66,15 @@ const EXCHANGE = { NIFTY: 'NSE', SENSEX: 'BSE' };
 const LOT_SIZES = { NIFTY: 65, SENSEX: 20 };
 const LOTS = { NIFTY: 10, SENSEX: 15 };
 const SL = { NIFTY: 15, SENSEX: 35 }; // initial stop-loss (points)
-// Exit w/SL is a stepped trailing stop: for every TRAIL_STEP points of favourable
-// movement, the stop ratchets up to TRAIL_GAP points behind that milestone.
+// Exit w/SL is a stepped trailing stop: the stop starts at entry−SL and, for every
+// TRAIL_STEP points of favourable movement, RISES by TRAIL_RISE points (cumulative).
+// So after n steps the stop sits at  entry − SL + n·TRAIL_RISE.
+// e.g. NIFTY:  −15, −3, 9, 21, 33, …   (move 0, 10, 20, 30, 40, …)
+//      SENSEX: −35, −10, 15, 40, 65, … (move 0, 22, 44, 66, 88, …)
+// Because TRAIL_RISE > TRAIL_STEP, the stop accelerates and eventually overtakes
+// the move (locking in more than the latest milestone) — this is intended.
 const TRAIL_STEP = { NIFTY: 10, SENSEX: 22 };
-const TRAIL_GAP = { NIFTY: 12, SENSEX: 25 };
+const TRAIL_RISE = { NIFTY: 12, SENSEX: 25 };
 const TARGET_L = { NIFTY: 31, SENSEX: 35 }; // Exit w/Tgt fixed target (points)
 
 function clamp(v, lo, hi) {
@@ -94,43 +100,31 @@ async function scrollChartToRange(cdp, fromUnix, toUnix) {
 }
 
 // Bias exit model:
-//  • Exit w/SL  — stepped trailing stop. Initial stop = entry − SL. Each time the
-//    running high clears another TRAIL_STEP-point milestone above entry, the stop
-//    ratchets up to (milestone − TRAIL_GAP); it never moves down. The trade exits
-//    at the stop if a bar's low breaches it, otherwise at the actual exit price.
+//  • SL Target / Exit w/SL — a pure stepped trailing stop. The stop level is set
+//    by how far price ran in the trade's favour (the running high, "maxReach"):
+//    steps = floor(maxReach / TRAIL_STEP), and the locked level (slTarget, in
+//    points) = −SL + steps·TRAIL_RISE — the schedule −15, −3, 9, 21 … for NIFTY.
+//    Exit w/SL price = entry + slTarget. The actual signal/exit price does NOT
+//    affect this (it lives in the Manual Exit column); the trade is modelled as
+//    always exiting at the ratcheted trailing stop for the peak it reached.
 //  • Exit w/Tgt — fixed bracket: target hit intraday → +TARGET_L; else the actual
 //    exit clamped to [−SL, +TARGET_L].
 // tradeBars must be chronological (oldest → newest) and carry high/low/close.
 export function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
   if (entry === null || exitRaw === null) {
-    return { exitSL: null, exitTgt: null, exitNSL: exitRaw, tgtPts: null };
+    return { exitSL: null, exitTgt: null, exitNSL: exitRaw, tgtPts: null, slTarget: null };
   }
   const sl = SL[instrument] ?? 15;
   const step = TRAIL_STEP[instrument] ?? 10;
-  const gap = TRAIL_GAP[instrument] ?? 12;
+  const rise = TRAIL_RISE[instrument] ?? 12;
   const tgL = TARGET_L[instrument] ?? 31;
 
-  // ── Exit w/SL: stepped trailing stop ──
-  let stop = entry - sl;
+  // ── SL Target + Exit w/SL: trailing-stop level for the peak reached ──
   let maxHigh = entry;
-  let exitSLPrice = exitRaw;
-  let stopped = false;
-  for (const bar of tradeBars) {
-    // The stop reflects highs seen on prior bars — check this bar's low against it first.
-    if (bar.low <= stop) {
-      exitSLPrice = stop;
-      stopped = true;
-      break;
-    }
-    if (bar.high > maxHigh) maxHigh = bar.high;
-    const steps = Math.floor((maxHigh - entry) / step);
-    if (steps >= 1) {
-      const newStop = entry + steps * step - gap;
-      if (newStop > stop) stop = newStop;
-    }
-  }
-  // Never stopped out → exit at the actual price, but never worse than the locked stop.
-  if (!stopped && exitRaw < stop) exitSLPrice = stop;
+  for (const bar of tradeBars) if (bar.high > maxHigh) maxHigh = bar.high;
+  const steps = Math.max(0, Math.floor((maxHigh - entry) / step));
+  const slTarget = parseFloat((-sl + steps * rise).toFixed(2)); // locked level, points
+  const exitSLPrice = parseFloat((entry + slTarget).toFixed(2));
 
   // ── Exit w/Tgt: fixed SL/target bracket ──
   let tgtHit = false;
@@ -144,10 +138,11 @@ export function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
   const exitTgtPrice = parseFloat((entry + tgL).toFixed(2));
 
   return {
-    exitSL: parseFloat(exitSLPrice.toFixed(2)),
+    exitSL: exitSLPrice,
     exitTgt: exitTgtPrice,
     exitNSL: parseFloat(exitRaw.toFixed(2)),
     tgtPts,
+    slTarget,
   };
 }
 
@@ -170,73 +165,71 @@ function classify(alertName) {
   return null;
 }
 
-// Pair bias entry → (exit OR target). exitType records which one closed it.
+// Pair bias entry → (exit OR target). One trade per ENTRY fire.
+//
+// Behaviour (per CE/PE side, which fire independently):
+//   - Every entry produces a trade row.
+//   - Its close is the matching exit/target that fires AFTER it and BEFORE the
+//     next entry of the same side.
+//   - If several exits/targets fire in that window, keep the LATEST one and
+//     ignore the rest.
+//   - If NO exit/target fires before the next entry, the row is left with a
+//     blank exit (exitTime '', exitType 'manual') so it can be filled in by hand.
+//   - Closes that appear before any entry (e.g. yesterday's dangling exit) are
+//     skipped — there is no open entry to attach them to.
 function parseTrades(snapshot, instrFilter = null) {
   const items = [...snapshot].reverse(); // oldest → newest
-  const trades = [];
-  const pending = {};
-  let idSeq = 1;
 
+  // Split into per-side sequences — an exit/target only closes an entry of the
+  // same side (0/up → CE, z/down → PE).
+  const bySide = { CE: [], PE: [] };
   for (const item of items) {
     const meta = classify(item.name);
     if (!meta) continue;
     if (instrFilter && meta.instrument !== instrFilter) continue;
     const { symbol, time } = parseRaw(item.raw);
-    const { instrument, side, event } = meta;
+    bySide[meta.side].push({ ...meta, symbol, time });
+  }
 
-    if (event === 'entry') {
-      pending[side] = { instrument, symbol, entryTime: time };
-    } else if ((event === 'exit' || event === 'target') && pending[side]) {
+  const trades = [];
+  for (const side of ['CE', 'PE']) {
+    const seq = bySide[side];
+    let i = 0;
+    while (i < seq.length) {
+      if (seq[i].event !== 'entry') {
+        i++; // close with no preceding open entry → skip
+        continue;
+      }
+      const entry = seq[i];
+      // Walk forward to the next entry, keeping the LATEST close seen on the way.
+      let j = i + 1;
+      let close = null;
+      while (j < seq.length && seq[j].event !== 'entry') {
+        close = seq[j]; // overwrite → ends on the latest exit/target before next entry
+        j++;
+      }
       trades.push({
-        id: idSeq++,
-        instrument,
+        id: 0, // assigned after chronological sort below
+        instrument: entry.instrument,
         side,
-        entrySymbol: pending[side].symbol,
-        exitSymbol: symbol,
-        entryTime: pending[side].entryTime,
-        exitTime: time,
-        exitType: event, // 'exit' (SL/signal) or 'target'
-        lots: LOTS[instrument],
-        lotSize: LOT_SIZES[instrument],
+        entrySymbol: entry.symbol,
+        exitSymbol: close ? close.symbol : entry.symbol,
+        entryTime: entry.time,
+        exitTime: close ? close.time : '', // blank → fill manually
+        exitType: close ? close.event : 'manual', // 'exit' | 'target' | 'manual'
+        lots: LOTS[entry.instrument],
+        lotSize: LOT_SIZES[entry.instrument],
         entryPrice: null,
         exitPrice: null,
       });
-      pending[side] = null;
+      i = j; // continue from the next entry
     }
   }
-  return trades;
-}
 
-function parseOpenTrades(snapshot, startId = 1, instrFilter = null) {
-  const items = [...snapshot].reverse();
-  const pending = {};
-  for (const item of items) {
-    const meta = classify(item.name);
-    if (!meta) continue;
-    if (instrFilter && meta.instrument !== instrFilter) continue;
-    const { symbol, time } = parseRaw(item.raw);
-    const { instrument, side, event } = meta;
-    if (event === 'entry') pending[side] = { instrument, symbol, entryTime: time };
-    else if (event === 'exit' || event === 'target') pending[side] = null;
-  }
-  const EOD_EXIT = '15:26:00';
-  let idSeq = startId;
-  return Object.entries(pending)
-    .filter(([, v]) => v)
-    .map(([side, info]) => ({
-      id: idSeq++,
-      instrument: info.instrument,
-      side,
-      entrySymbol: info.symbol,
-      exitSymbol: info.symbol,
-      entryTime: info.entryTime,
-      exitTime: EOD_EXIT,
-      exitType: 'eod',
-      lots: LOTS[info.instrument],
-      lotSize: LOT_SIZES[info.instrument],
-      entryPrice: null,
-      exitPrice: null,
-    }));
+  // Interleave CE/PE chronologically by entry time, then number sequentially.
+  trades.sort((a, b) => a.entryTime.localeCompare(b.entryTime));
+  trades.forEach((t, k) => (t.id = k + 1));
+  return trades;
 }
 
 function istTimeToUnix(timeStr, dateStr) {
@@ -322,15 +315,22 @@ async function main() {
   }
   const cdpChart = new ChartTools(cdp);
 
-  // The monitor only writes logSnapshot to position.json during live market-hours
-  // ticks. When the market is off (weekend / holiday / after close) it's empty —
-  // read the Alerts Log tab live from TradingView instead. Gated on isMarketOff()
-  // so we never switch the Log tab while the monitor is actively trading.
-  if (snapshot.length === 0 && isMarketOff()) {
-    console.log('position.json has no alert snapshot — reading Alerts Log tab live...');
+  // The monitor only stores the most-recent 30 fires in position.json (enough for
+  // its per-tick position diffing). That truncates an active day — and since bias
+  // and supertrend share one Log tab, the morning's trades fall off the snapshot.
+  // So when the market is off (weekend / holiday / after close) read the FULL Log
+  // tab live and use it whenever it captured more fires than the stored snapshot.
+  // Gated on isMarketOff() so we never switch the Log tab while the monitor trades.
+  if (isMarketOff()) {
+    const reason =
+      snapshot.length === 0
+        ? 'position.json has no alert snapshot'
+        : `position.json snapshot is capped at ${snapshot.length} items`;
+    console.log(`${reason} — reading full Alerts Log tab live...`);
     try {
-      snapshot = await readLiveAlertLog(cdp);
-      console.log(`  read ${snapshot.length} alert log item(s) live`);
+      const live = await readLiveAlertLog(cdp);
+      console.log(`  read ${live.length} alert log item(s) live`);
+      if (live.length > snapshot.length) snapshot = live;
     } catch (e) {
       console.error('  live alert log read failed:', e.message);
     }
@@ -343,9 +343,7 @@ async function main() {
     process.exit(1);
   }
 
-  const trades = parseTrades(snapshot, instrFilter);
-  const openTrades = parseOpenTrades(snapshot, trades.length + 1, instrFilter);
-  const allTrades = [...trades, ...openTrades];
+  const allTrades = parseTrades(snapshot, instrFilter);
 
   if (allTrades.length === 0) {
     console.log('No bias trade pairs found in the alert snapshot');
@@ -354,13 +352,19 @@ async function main() {
   }
   console.log(`Bias trades found: ${allTrades.length}`);
   for (const t of allTrades)
-    console.log(`  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${t.exitTime} (${t.exitType})`);
+    console.log(
+      `  ${t.side} ${t.entrySymbol}  ${t.entryTime} → ${t.exitTime || '(manual)'} (${t.exitType})`
+    );
 
+  // Build per-symbol fetch windows. Entry-only trades (blank exit) contribute
+  // just their entry time — the exit half is filled in manually later.
   const symWindows = {};
   for (const t of allTrades) {
     const entryUnix = istTimeToUnix(t.entryTime, today);
-    const exitUnix = istTimeToUnix(t.exitTime, today);
-    for (const sym of [t.entrySymbol, t.exitSymbol]) {
+    const hasExit = !!t.exitTime;
+    const exitUnix = hasExit ? istTimeToUnix(t.exitTime, today) : entryUnix;
+    const syms = hasExit ? [t.entrySymbol, t.exitSymbol] : [t.entrySymbol];
+    for (const sym of syms) {
       if (!symWindows[sym]) symWindows[sym] = { from: entryUnix - 120, to: exitUnix };
       else {
         symWindows[sym].from = Math.min(symWindows[sym].from, entryUnix - 120);
@@ -382,8 +386,25 @@ async function main() {
   console.log('\nPrice lookup:');
   for (const t of allTrades) {
     const entryUnix = istTimeToUnix(t.entryTime, today);
-    const exitUnix = istTimeToUnix(t.exitTime, today);
     t.entryPrice = findPrice(barsCache[t.entrySymbol], entryUnix);
+
+    // Entry-only trade (no exit/target fired) → fill entry price, leave the exit
+    // side blank for manual entry. exitType 'manual' flags it in the report.
+    if (!t.exitTime) {
+      t.exitPrice = null;
+      t.exitSL = null;
+      t.exitTgt = null;
+      t.exitNSL = null;
+      t.tgtPts = null;
+      t.slTarget = null;
+      t.maxReach = 0;
+      t.notes = '';
+      const ep0 = t.entryPrice?.toFixed(2) ?? 'NOT FOUND';
+      console.log(`  ${t.side} ${t.entrySymbol}  entry=${ep0}  exit=(manual)`);
+      continue;
+    }
+
+    const exitUnix = istTimeToUnix(t.exitTime, today);
     t.exitPrice = findPrice(barsCache[t.exitSymbol], exitUnix);
 
     const tradeBars = (barsCache[t.entrySymbol] || [])
@@ -395,6 +416,7 @@ async function main() {
     t.exitTgt = derived.exitTgt;
     t.exitNSL = derived.exitNSL;
     t.tgtPts = derived.tgtPts;
+    t.slTarget = derived.slTarget; // locked trailing-stop level (points) → Exit w/SL = entry + slTarget
 
     t.maxReach =
       tradeBars.length > 0 && t.entryPrice !== null
@@ -421,10 +443,28 @@ async function main() {
     );
   }
 
+  // Open the India VIX chart and record the day's OHLC into the day note (the
+  // reports parse/filter VIX from this). Best-effort — failure leaves note blank.
+  let vixNote = '';
+  console.log('\nFetching India VIX (NSE:INDIAVIX) daily OHLC...');
+  const vix = await fetchVixForDate(cdp, cdpChart, today);
+  if (vix) {
+    vixNote = formatVixNote(vix);
+    console.log(`  ${vixNote}`);
+  } else {
+    console.warn('  could not read India VIX — leaving VIX note blank');
+  }
+
   await cdp.disconnect();
 
   fs.mkdirSync(LOGS_DIR, { recursive: true });
-  const output = { date: today, instrument: instrFilter, strategy: 'bias', trades: allTrades };
+  const output = {
+    date: today,
+    instrument: instrFilter,
+    strategy: 'bias',
+    trades: allTrades,
+    note: vixNote,
+  };
   const outFile = path.join(LOGS_DIR, `daily-trades-${today}.json`);
   fs.writeFileSync(outFile, JSON.stringify(output, null, 2));
   console.log(`\nSaved → ${outFile}`);

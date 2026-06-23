@@ -766,7 +766,34 @@
       let monthReachFilter = {};
       let monthCandleFilter = {};
       let monthDateFilter = {};
+      let monthVixFilter = {}; // { field:'close'|'open'|'high'|'low', min, max } per month
       let NSE_HOLIDAYS = new Set();
+
+      // Parse a day's VIX from its free-text day note, e.g.
+      //   "vix open: 12.67 low: 12.07 high: 13.64 close: 12.77"
+      // Returns { open, high, low, close } (any missing field = null), or null if no VIX.
+      function parseVix(note) {
+        if (!note || !/vix/i.test(note)) return null;
+        const grab = (kw) => {
+          const m = note.match(new RegExp(kw + '\\s*[:=]?\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
+          return m ? parseFloat(m[1]) : null;
+        };
+        const v = { open: grab('open'), high: grab('high'), low: grab('low'), close: grab('close') };
+        return v.open === null && v.high === null && v.low === null && v.close === null ? null : v;
+      }
+
+      // Day-level VIX filter: true if the day's selected VIX field is within [min,max].
+      // Days with no parseable VIX are excluded while the filter is active.
+      function dayPassesVix(dateStr, monthKey) {
+        const f = monthVixFilter[monthKey];
+        if (!f || (f.min === null && f.max === null)) return true;
+        const vix = parseVix(allData[dateStr]?.note);
+        const val = vix ? vix[f.field] : null;
+        if (val === null || val === undefined) return false;
+        if (f.min !== null && val < f.min) return false;
+        if (f.max !== null && val > f.max) return false;
+        return true;
+      }
 
       async function loadData() {
         try {
@@ -944,6 +971,21 @@
           <button class="add-range-btn" onclick="applyNotesFilter('${monthKey}')">&#x25BA; Apply</button>
           <button class="time-clear-all" id="nf-clear-${monthKey}" onclick="clearNotesFilter('${monthKey}')">&#x2715; Clear</button>
         </div>
+        <div class="time-section">
+          <span class="time-section-label" title="Parsed from the day note, e.g. 'vix open: 12.67 low: 12.07 high: 13.64 close: 12.77'">VIX</span>
+          <select class="date-filter-select" id="vf-field-${monthKey}" title="Which VIX value to filter on">
+            <option value="close">Close</option>
+            <option value="open">Open</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+          <span class="reach-label" style="margin-left:8px;">MIN</span>
+          <input type="number" class="reach-input" id="vf-min-${monthKey}" step="0.01" placeholder="vix">
+          <span class="reach-label" style="margin-left:8px;">MAX</span>
+          <input type="number" class="reach-input" id="vf-max-${monthKey}" step="0.01" placeholder="vix">
+          <button class="add-range-btn" onclick="applyVixFilter('${monthKey}')">&#x25BA; Apply</button>
+          <button class="time-clear-all" id="vf-clear-${monthKey}" onclick="clearVixFilter('${monthKey}')">&#x2715; Clear</button>
+        </div>
       </div>
       <button class="dl-btn" onclick="downloadExcel('${monthKey}')">&#x2B07; Download Excel</button>
     </div>
@@ -963,7 +1005,8 @@
           .filter((d) => {
             return (
               (filter === 'ALL' || (d.instrument || '').toUpperCase() === filter) &&
-              (!selectedDate || d.date === selectedDate)
+              (!selectedDate || d.date === selectedDate) &&
+              dayPassesVix(d.date, monthKey)
             );
           });
         const el = document.getElementById(`summary-${monthKey}`);
@@ -1101,9 +1144,16 @@
         const dayKey = dateStr.replace(/-/g, '');
         const tbody = document.getElementById(`tbody-${dayKey}`);
         if (!tbody || !day) return;
-        (day.trades || []).sort((a, b) =>
-          (a.entryTime || a.time || '').localeCompare(b.entryTime || b.time || '')
-        );
+        (day.trades || []).sort((a, b) => {
+          // Sort by entry time, but keep blank-time rows (e.g. a freshly added
+          // row being filled in) at the BOTTOM instead of floating to the top.
+          const ta = a.entryTime || a.time || '';
+          const tb = b.entryTime || b.time || '';
+          if (!ta && !tb) return 0;
+          if (!ta) return 1;
+          if (!tb) return -1;
+          return ta.localeCompare(tb);
+        });
         tbody.innerHTML = '';
         const monthKey = dateStr.slice(0, 7);
         const trades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
@@ -1262,7 +1312,7 @@
     <td colspan="3" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
     <td style="text-align:center">
       <button class="act-btn save" onclick="saveRow('${dateStr}','${id}',this)">&#x2713; Save</button>
-      <button class="act-btn cancel" onclick="renderDay('${dateStr}')">&#x2717;</button>
+      <button class="act-btn cancel" onclick="cancelEdit('${dateStr}','${id}')">&#x2717;</button>
     </td>`;
         tr.querySelector('#e-entry').focus();
         recalcEditRow();
@@ -1334,9 +1384,22 @@
         const cr = parseFloat(document.getElementById('e-candle').value);
         t.candleRange = isNaN(cr) ? null : cr;
         t.notes = document.getElementById('e-notes').value.trim();
+        delete t._unsaved; // it's now a real, saved row
         await persistDay(dateStr);
         renderDay(dateStr);
         renderSummary(activeMonth);
+      }
+
+      // Leave edit mode. A brand-new row that was never saved is discarded
+      // (so cancelling an "Add Row" doesn't leave an empty row behind);
+      // an existing row just re-renders unchanged.
+      function cancelEdit(dateStr, id) {
+        const day = allData[dateStr];
+        const t = (day?.trades || []).find((x) => String(x.id) === String(id));
+        if (t && t._unsaved) {
+          day.trades = day.trades.filter((x) => String(x.id) !== String(id));
+        }
+        renderDay(dateStr);
       }
 
       function insertRow(dateStr, atIndex) {
@@ -1356,17 +1419,23 @@
           tgtPts: null,
           candleRange: null,
           notes: '',
+          _unsaved: true, // transient — discarded if the user cancels before saving
         };
-        day.trades.push(newTrade);
+        // Insert at the clicked position (renderDay re-sorts by entry time, but
+        // splicing here keeps a sensible order for rows that share/lack a time).
+        day.trades.splice(atIndex, 0, newTrade);
         renderDay(dateStr);
+        // Open the NEW row for editing — locate it by its id, not by DOM position.
+        // renderDay sorts by entry time, so a blank-time row does NOT land last;
+        // grabbing the last DOM row would open an existing trade instead.
         const dayKey = dateStr.replace(/-/g, '');
         const tbody = document.getElementById(`tbody-${dayKey}`);
-        const allTrs = [...tbody.querySelectorAll('tr:not(.add-row-tr):not(.total-row)')];
-        const newTr = allTrs[allTrs.length - 1];
+        const newTr = tbody?.querySelector(`tr[data-id="${newTrade.id}"]`);
         if (newTr) newTr.querySelector('.act-btn')?.click();
       }
 
       async function deleteRow(dateStr, id) {
+        if (!confirm('Delete this trade row? This cannot be undone.')) return;
         const day = allData[dateStr];
         day.trades = day.trades.filter((t) => String(t.id) !== String(id));
         await persistDay(dateStr);
@@ -1429,7 +1498,11 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               date: dateStr,
-              trades: allData[dateStr].trades,
+              // Drop any never-saved placeholder rows and strip the transient flag
+              // so it never reaches the JSON on disk.
+              trades: (allData[dateStr].trades || [])
+                .filter((t) => !t._unsaved)
+                .map(({ _unsaved, ...rest }) => rest),
               instrument: allData[dateStr].instrument,
               note: allData[dateStr].note || '',
               brokerage: Number.isFinite(allData[dateStr].brokerage)
@@ -1815,6 +1888,33 @@
         renderMonthDays(monthKey);
         renderSummary(monthKey);
       }
+      function applyVixFilter(monthKey) {
+        const field = document.getElementById(`vf-field-${monthKey}`)?.value || 'close';
+        const minV = parseFloat(document.getElementById(`vf-min-${monthKey}`)?.value);
+        const maxV = parseFloat(document.getElementById(`vf-max-${monthKey}`)?.value);
+        monthVixFilter[monthKey] = {
+          field,
+          min: isNaN(minV) ? null : minV,
+          max: isNaN(maxV) ? null : maxV,
+        };
+        document
+          .getElementById(`vf-clear-${monthKey}`)
+          ?.classList.toggle(
+            'active',
+            monthVixFilter[monthKey].min !== null || monthVixFilter[monthKey].max !== null
+          );
+        applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
+      }
+      function clearVixFilter(monthKey) {
+        monthVixFilter[monthKey] = { field: 'close', min: null, max: null };
+        const fld = document.getElementById(`vf-field-${monthKey}`);
+        if (fld) fld.value = 'close';
+        const mn = document.getElementById(`vf-min-${monthKey}`);
+        if (mn) mn.value = '';
+        const mx = document.getElementById(`vf-max-${monthKey}`);
+        if (mx) mx.value = '';
+        applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
+      }
       function applyDateFilter(monthKey, dateStr) {
         monthDateFilter[monthKey] = dateStr || null;
         applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
@@ -1833,7 +1933,9 @@
             const instr = block.dataset.instrument || '',
               date = block.dataset.date || '';
             block.style.display =
-              (filter === 'ALL' || instr === filter) && (!selectedDate || date === selectedDate)
+              (filter === 'ALL' || instr === filter) &&
+              (!selectedDate || date === selectedDate) &&
+              dayPassesVix(date, monthKey)
                 ? ''
                 : 'none';
           });

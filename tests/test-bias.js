@@ -15,13 +15,9 @@ import {
   deriveBiasStatus,
   INSTRUMENTS,
 } from '../monitors/monitor.js';
-import {
-  classify,
-  parseTrades,
-  parseOpenTrades,
-  computeExitValues,
-} from '../scripts/generate-bias-report.js';
+import { classify, parseTrades, computeExitValues } from '../scripts/generate-bias-report.js';
 import { isMarketOff, extractSnapshotItems, lastTradingDay } from '../scripts/read-live-log.js';
+import { pickDailyBar, formatVixNote } from '../scripts/fetch-vix.js';
 
 // ---------------------------------------------------------------------------
 // Minimal test runner (same style as test-monitor.js)
@@ -311,7 +307,7 @@ test('unknown instrument → closed/null', () => {
 });
 
 // ---------------------------------------------------------------------------
-// EOD report parsing (generate-bias-report.js): classify / parseTrades / parseOpenTrades
+// EOD report parsing (generate-bias-report.js): classify / parseTrades
 // ---------------------------------------------------------------------------
 const mk = (name, sym, time) => ({
   name,
@@ -358,10 +354,6 @@ test('entry → target closes the trade (exitType=target)', () => {
   const t = parseTrades(snap, 'SENSEX');
   return t.length === 1 && t[0].exitType === 'target';
 });
-test('lone entry (no close) → no completed trade', () => {
-  const snap = [mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00')];
-  return parseTrades(snap, 'SENSEX').length === 0;
-});
 test('instrFilter excludes other instrument', () => {
   const snap = [
     mk('0NiftyBiasExit', 'NIFTY260603C23300', '11:30:00'),
@@ -378,25 +370,82 @@ test('down (PE) entry/exit pairs correctly', () => {
   return t.length === 1 && t[0].side === 'PE';
 });
 
-section('parseOpenTrades — entry with no close → open at EOD');
-test('lone entry → 1 open trade (EOD exit)', () => {
+// New behaviour: one trade per ENTRY. A close pairs to the entry before it; if
+// none fires before the next entry, the row is left with a blank exit ('manual').
+section('parseTrades — one trade per entry');
+test('lone entry (no close) → 1 entry-only trade with blank exit', () => {
   const snap = [mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00')];
-  const o = parseOpenTrades(snap, 1, 'SENSEX');
-  return o.length === 1 && o[0].exitTime === '15:26:00' && o[0].exitType === 'eod';
+  const t = parseTrades(snap, 'SENSEX');
+  return (
+    t.length === 1 &&
+    t[0].entryTime === '11:00:00' &&
+    t[0].exitTime === '' &&
+    t[0].exitType === 'manual' &&
+    t[0].exitSymbol === 'BSX260618C77300' // falls back to the entry symbol
+  );
 });
-test('entry then exit → no open trade', () => {
+test('two entries, one close between → 2 trades (first closed, second blank)', () => {
+  // newest-first: entry@12:00, target@11:30, entry@11:00
   const snap = [
-    mk('0SensexBiasExit', 'BSX260618C77300', '11:30:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
-  ];
-  return parseOpenTrades(snap, 1, 'SENSEX').length === 0;
-});
-test('entry then target → no open trade', () => {
-  const snap = [
+    mk('0SensexBiasEntry', 'BSX260618C77300', '12:00:00'),
     mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
     mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
-  return parseOpenTrades(snap, 1, 'SENSEX').length === 0;
+  const t = parseTrades(snap, 'SENSEX');
+  return (
+    t.length === 2 &&
+    t[0].entryTime === '11:00:00' &&
+    t[0].exitTime === '11:30:00' &&
+    t[0].exitType === 'target' &&
+    t[1].entryTime === '12:00:00' &&
+    t[1].exitTime === '' &&
+    t[1].exitType === 'manual'
+  );
+});
+test('multiple closes for one entry → keep the latest, ignore the rest', () => {
+  // newest-first: exit@11:45 (latest), exit@11:30, entry@11:00
+  const snap = [
+    mk('0SensexBiasExit', 'BSX260618C77300', '11:45:00'),
+    mk('0SensexBiasExit', 'BSX260618C77300', '11:30:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return t.length === 1 && t[0].exitTime === '11:45:00';
+});
+test('close before any entry → skipped (no orphan trade)', () => {
+  // newest-first: entry@11:00, exit@10:30 (dangling, no open entry)
+  const snap = [
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('0SensexBiasExit', 'BSX260618C77300', '10:30:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return t.length === 1 && t[0].entryTime === '11:00:00' && t[0].exitTime === '';
+});
+test('CE and PE entries are tracked independently and interleaved by time', () => {
+  // newest-first
+  const snap = [
+    mk('zSensexBiasExit', 'BSX260618P77600', '12:00:00'),
+    mk('zSensexBiasEntry', 'BSX260618P77600', '11:45:00'),
+    mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return (
+    t.length === 2 &&
+    t[0].side === 'CE' &&
+    t[0].entryTime === '11:00:00' &&
+    t[1].side === 'PE' &&
+    t[1].entryTime === '11:45:00'
+  );
+});
+test('ids are reassigned 1..N after the chronological sort', () => {
+  const snap = [
+    mk('zSensexBiasExit', 'BSX260618P77600', '12:00:00'),
+    mk('zSensexBiasEntry', 'BSX260618P77600', '11:45:00'),
+    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+  ];
+  const t = parseTrades(snap, 'SENSEX');
+  return t.length === 2 && t[0].id === 1 && t[1].id === 2;
 });
 
 // ---------------------------------------------------------------------------
@@ -404,27 +453,59 @@ test('entry then target → no open trade', () => {
 // ---------------------------------------------------------------------------
 const bar = (high, low) => ({ high, low, close: (high + low) / 2 });
 
-section('computeExitValues — trailing stop (NIFTY: SL15 step10 gap12)');
-test('no bars, profit exit → exit at actual; tgtPts clamped', () => {
+// Exit w/SL is now driven purely by the SL Target (the trailing level for the peak
+// reached); the actual exit price does NOT affect it. slTarget = −SL + steps·RISE,
+// exitSL = entry + slTarget.
+section('computeExitValues — SL Target / Exit w/SL (NIFTY: SL15 step10 rise12)');
+test('no bars (no favourable move) → slTarget −15, exitSL entry−15', () => {
   const r = computeExitValues('NIFTY', 100, 105, []);
-  return r.exitSL === 105 && r.tgtPts === 5 && r.exitTgt === 131;
+  return r.slTarget === -15 && r.exitSL === 85 && r.tgtPts === 5 && r.exitTgt === 131;
 });
-test('initial stop hit → exit at entry−15', () => {
+test('peak < 1 step → slTarget −15, exitSL 85', () => {
   const r = computeExitValues('NIFTY', 100, 84, [bar(101, 84)]);
-  return r.exitSL === 85 && r.tgtPts === -15;
+  return r.slTarget === -15 && r.exitSL === 85 && r.tgtPts === -15;
 });
-test('trails to 98 after +10 milestone, then stopped', () => {
-  const r = computeExitValues('NIFTY', 100, 99, [bar(110, 100), bar(112, 108), bar(111, 97)]);
-  return r.exitSL === 98;
+test('peak +12 (1 step) → slTarget −3, exitSL 97', () => {
+  const r = computeExitValues('NIFTY', 100, 99, [bar(110, 100), bar(112, 108), bar(111, 96)]);
+  return r.slTarget === -3 && r.exitSL === 97;
 });
-test('+20 milestone → stop 108, stopped on next bar', () => {
-  const r = computeExitValues('NIFTY', 100, 100, [bar(120, 100), bar(120, 107)]);
-  return r.exitSL === 108;
+test('peak +20 (2 steps) → slTarget 9, exitSL 109', () => {
+  const r = computeExitValues('NIFTY', 100, 100, [bar(120, 100), bar(120, 108)]);
+  return r.slTarget === 9 && r.exitSL === 109;
 });
-test('+30 milestone → stop 118; never stopped → exit at actual', () => {
+test('peak +35 (3 steps) → slTarget 21, exitSL 121 (actual exit 130 ignored)', () => {
   const r = computeExitValues('NIFTY', 100, 130, [bar(135, 100)]);
-  return r.exitSL === 130;
+  return r.slTarget === 21 && r.exitSL === 121;
 });
+
+// Lock the exact trailing schedule from the spec tables. Stop value = exitSL − entry
+// after the running high clears n full TRAIL_STEP milestones (low never breaches it,
+// so the stop is exposed by exiting just below it).
+section('computeExitValues — trailing schedule (NIFTY: −15 + 12·n)');
+const niftyStopAt = (n) => {
+  const high = 100 + n * 10; // clear exactly n milestones
+  // exit raw far below so a final bar's low breaches the ratcheted stop
+  const r = computeExitValues('NIFTY', 100, 0, [bar(high, 100), bar(high, 0)]);
+  return r.exitSL - 100;
+};
+test('n=0 → −15', () => niftyStopAt(0) === -15);
+test('n=1 (move 10) → −3', () => niftyStopAt(1) === -3);
+test('n=2 (move 20) → 9', () => niftyStopAt(2) === 9);
+test('n=3 (move 30) → 21', () => niftyStopAt(3) === 21);
+test('n=5 (move 50) → 45', () => niftyStopAt(5) === 45);
+test('n=10 (move 100) → 105', () => niftyStopAt(10) === 105);
+
+section('computeExitValues — trailing schedule (SENSEX: −35 + 25·n)');
+const sensexStopAt = (n) => {
+  const high = 200 + n * 22;
+  const r = computeExitValues('SENSEX', 200, 0, [bar(high, 200), bar(high, 0)]);
+  return r.exitSL - 200;
+};
+test('n=0 → −35', () => sensexStopAt(0) === -35);
+test('n=1 (move 22) → −10', () => sensexStopAt(1) === -10);
+test('n=2 (move 44) → 15', () => sensexStopAt(2) === 15);
+test('n=4 (move 88) → 65', () => sensexStopAt(4) === 65);
+test('n=10 (move 220) → 215', () => sensexStopAt(10) === 215);
 
 section('computeExitValues — fixed bracket (Exit w/Tgt)');
 test('NIFTY target 131 hit intraday → tgtPts 31', () => {
@@ -446,6 +527,39 @@ test('SENSEX no target → loss clamped to −35; stop floor 165', () => {
 // Build a Date for a desired IST wall-clock time (isMarketOff adds +5:30 internally).
 const atIST = (y, mo, d, h, mi) => new Date(Date.UTC(y, mo - 1, d, h, mi) - 5.5 * 3600 * 1000);
 const HOL = new Set(['2026-06-26']); // Jun 26 2026 is a Friday NSE holiday
+
+// ---------------------------------------------------------------------------
+// fetch-vix: pickDailyBar (date → daily bar) + formatVixNote (note line, 4dp)
+// ---------------------------------------------------------------------------
+const vbar = (dateStr, o, h, l, c) => ({
+  time: Math.floor(new Date(`${dateStr}T00:00:00Z`).getTime() / 1000),
+  open: o,
+  high: h,
+  low: l,
+  close: c,
+});
+
+section('fetch-vix — pickDailyBar');
+test('matches the bar for the target date', () => {
+  const bars = [vbar('2026-06-22', 11, 12, 10, 11.5), vbar('2026-06-23', 12.67, 13.64, 12.07, 12.77)];
+  const r = pickDailyBar(bars, '2026-06-23');
+  return r && r.open === 12.67 && r.high === 13.64 && r.low === 12.07 && r.close === 12.77;
+});
+test('rounds to 4 decimals', () => {
+  const r = pickDailyBar([vbar('2026-06-23', 12.671234, 13.6, 12.0, 12.7)], '2026-06-23');
+  return r.open === 12.6712;
+});
+test('no bar within a day → null', () => {
+  const r = pickDailyBar([vbar('2026-06-01', 11, 12, 10, 11.5)], '2026-06-23');
+  return r === null;
+});
+test('empty bars → null', () => pickDailyBar([], '2026-06-23') === null);
+
+section('fetch-vix — formatVixNote (4 decimal places)');
+test('formats with 4 dp incl. trailing zeros', () =>
+  formatVixNote({ open: 12.67, low: 12.07, high: 13.64, close: 12.77 }) ===
+  'vix open: 12.6700 low: 12.0700 high: 13.6400 close: 12.7700');
+test('null vix → empty string', () => formatVixNote(null) === '');
 
 section('isMarketOff — weekend / holiday / hours');
 test('Saturday noon → off', () => isMarketOff(atIST(2026, 6, 20, 12, 0), HOL) === true);

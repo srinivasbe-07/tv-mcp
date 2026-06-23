@@ -14,7 +14,12 @@
  * Reuses ALERT_HISTORY_SCRIPT + loadHolidays from the monitor so the two stay
  * in lockstep.
  */
-import { ALERT_HISTORY_SCRIPT, loadHolidays } from '../monitors/monitor.js';
+import { buildAlertHistoryScript, loadHolidays } from '../monitors/monitor.js';
+
+// EOD reports need a full trading day of fires. Both bias and supertrend alerts
+// share one Log tab, so an active day can exceed 100 interleaved items — read
+// generously so morning trades aren't dropped.
+const FULL_LOG_LIMIT = 400;
 
 const MARKET_OPEN_MIN = 9 * 60 + 10; // 09:10 IST pre-open
 const MARKET_CLOSE_MIN = 15 * 60 + 30; // 15:30 IST close
@@ -74,8 +79,9 @@ export function extractSnapshotItems(historyResult) {
   return [];
 }
 
-// Run ALERT_HISTORY_SCRIPT on a connected CDPManager and return the log items.
-export async function readLiveAlertLog(cdp) {
-  const historyResult = await cdp.executeScript(ALERT_HISTORY_SCRIPT);
+// Run the alert-history reader on a connected CDPManager and return the log items.
+// Defaults to a large limit so EOD reports capture the whole day's fires.
+export async function readLiveAlertLog(cdp, limit = FULL_LOG_LIMIT) {
+  const historyResult = await cdp.executeScript(buildAlertHistoryScript(limit));
   return extractSnapshotItems(historyResult);
 }

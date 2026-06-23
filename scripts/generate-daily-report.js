@@ -18,6 +18,7 @@
 import { CDPManager } from '../src/cdp.js';
 import { ChartTools } from '../src/tools/chart.js';
 import { isMarketOff, readLiveAlertLog, lastTradingDay } from './read-live-log.js';
+import { fetchVixForDate, formatVixNote } from './fetch-vix.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -348,15 +349,22 @@ async function main() {
   }
   const cdpChart = new ChartTools(cdp);
 
-  // The monitor only writes logSnapshot to position.json during live market-hours
-  // ticks. When the market is off (weekend / holiday / after close) it's empty —
-  // read the Alerts Log tab live from TradingView instead. Gated on isMarketOff()
-  // so we never switch the Log tab while the monitor is actively trading.
-  if (snapshot.length === 0 && isMarketOff()) {
-    console.log('position.json has no alert snapshot — reading Alerts Log tab live...');
+  // The monitor only stores the most-recent 30 fires in position.json (enough for
+  // its per-tick position diffing). That truncates an active day — and since bias
+  // and supertrend share one Log tab, the morning's trades fall off the snapshot.
+  // So when the market is off (weekend / holiday / after close) read the FULL Log
+  // tab live and use it whenever it captured more fires than the stored snapshot.
+  // Gated on isMarketOff() so we never switch the Log tab while the monitor trades.
+  if (isMarketOff()) {
+    const reason =
+      snapshot.length === 0
+        ? 'position.json has no alert snapshot'
+        : `position.json snapshot is capped at ${snapshot.length} items`;
+    console.log(`${reason} — reading full Alerts Log tab live...`);
     try {
-      snapshot = await readLiveAlertLog(cdp);
-      console.log(`  read ${snapshot.length} alert log item(s) live`);
+      const live = await readLiveAlertLog(cdp);
+      console.log(`  read ${live.length} alert log item(s) live`);
+      if (live.length > snapshot.length) snapshot = live;
     } catch (e) {
       console.error('  live alert log read failed:', e.message);
     }
@@ -486,10 +494,22 @@ async function main() {
     );
   }
 
+  // Open the India VIX chart and record the day's OHLC into the day note (the
+  // reports parse/filter VIX from this). Best-effort — failure leaves note blank.
+  let vixNote = '';
+  console.log('\nFetching India VIX (NSE:INDIAVIX) daily OHLC...');
+  const vix = await fetchVixForDate(cdp, cdpChart, today);
+  if (vix) {
+    vixNote = formatVixNote(vix);
+    console.log(`  ${vixNote}`);
+  } else {
+    console.warn('  could not read India VIX — leaving VIX note blank');
+  }
+
   await cdp.disconnect();
 
   // Write JSON report
-  const output = { date: today, instrument: instrFilter, trades: allTrades };
+  const output = { date: today, instrument: instrFilter, trades: allTrades, note: vixNote };
   const outFile = path.join(LOGS_DIR, `daily-trades-${today}.json`);
   fs.writeFileSync(outFile, JSON.stringify(output, null, 2));
 

@@ -19,6 +19,8 @@ import {
   shouldUpdateATM,
   ATM_COOLDOWN_MS,
   todayIST,
+  buildAlertHistoryScript,
+  ALERT_HISTORY_SCRIPT,
 } from '../monitors/monitor.js';
 
 // ---------------------------------------------------------------------------
@@ -97,6 +99,27 @@ test('itmDepth = 2', () => INSTRUMENTS.SENSEX.itmDepth === 2);
 test('expiryDay = 4 (Thursday)', () => INSTRUMENTS.SENSEX.expiryDay === 4);
 test('symbolPrefix = BSX', () => INSTRUMENTS.SENSEX.symbolPrefix === 'BSX');
 test('spotSymbol = BSE:SENSEX', () => INSTRUMENTS.SENSEX.spotSymbol === 'BSE:SENSEX');
+
+// ---------------------------------------------------------------------------
+// buildAlertHistoryScript — the in-browser Log reader is limit-parametrized so
+// EOD reports can grab a full day (bias + supertrend fires share one Log tab and
+// an active day exceeds the per-tick default of 30).
+// ---------------------------------------------------------------------------
+section('buildAlertHistoryScript — limit interpolation');
+test('default limit is 30', () => {
+  const s = buildAlertHistoryScript();
+  return (s.match(/< 30\b/g) || []).length === 2 && s.includes('.slice(0, 30)');
+});
+test('large limit reaches the scroll guards + final slice', () => {
+  const s = buildAlertHistoryScript(400);
+  return (s.match(/< 400\b/g) || []).length === 2 && s.includes('.slice(0, 400)');
+});
+test('no stray 30-cap remains when a larger limit is requested', () => {
+  const s = buildAlertHistoryScript(400);
+  return !/< 30\b/.test(s) && !s.includes('.slice(0, 30)');
+});
+test('exported ALERT_HISTORY_SCRIPT equals the 30-limit build (per-tick reader)', () =>
+  ALERT_HISTORY_SCRIPT === buildAlertHistoryScript(30));
 
 // ---------------------------------------------------------------------------
 // buildSymbol

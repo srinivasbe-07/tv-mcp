@@ -505,7 +505,14 @@ async function getSpot(cdp, spotSymbol) {
   return result?.price || null;
 }
 
-export const ALERT_HISTORY_SCRIPT = `
+// Build the in-browser Alerts "Log" tab reader. `limit` caps how many items are
+// collected (newest-first). The monitor's per-tick position diffing only needs the
+// most recent handful, so it uses the small default (30) to keep ticks fast. EOD
+// report generators pass a large limit to capture a full trading day — both bias
+// and supertrend fires share this one Log tab, so an active day can exceed 100
+// interleaved items and 30 would silently drop the morning's trades.
+export function buildAlertHistoryScript(limit = 30) {
+  return `
   (async function() {
     try {
       const visibleTabs = () => Array.from(document.querySelectorAll('[role="tab"]'))
@@ -572,13 +579,13 @@ export const ALERT_HISTORY_SCRIPT = `
         });
       };
 
-      // Scroll from top, stop once 30 items collected (newest are at top)
+      // Scroll from top, stop once ${limit} items collected (newest are at top)
       if (scroller) scroller.scrollTop = 0;
       await new Promise(r => setTimeout(r, 400));
       readCurrent();
       const countAfterTop = byAbsY.size;
 
-      if (scroller && byAbsY.size < 30) {
+      if (scroller && byAbsY.size < ${limit}) {
         const scrollTo = async (pos) => {
           scroller.scrollTop = pos;
           scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
@@ -586,7 +593,7 @@ export const ALERT_HISTORY_SCRIPT = `
         };
         const step = Math.max(100, Math.floor(scroller.clientHeight * 0.6));
         let pos = step;
-        while (pos <= scroller.scrollHeight && byAbsY.size < 30) {
+        while (pos <= scroller.scrollHeight && byAbsY.size < ${limit}) {
           await scrollTo(pos);
           readCurrent();
           if (pos >= scroller.scrollHeight - scroller.clientHeight) break;
@@ -601,7 +608,7 @@ export const ALERT_HISTORY_SCRIPT = `
       // Sort ascending absY = newest first (Log tab shows newest at top)
       const result = Array.from(byAbsY.entries())
         .sort((a, b) => a[0] - b[0])
-        .slice(0, 30)
+        .slice(0, ${limit})
         .map(([, item]) => item);
 
       // Switch back to Alerts tab and wait for items to reload
@@ -617,6 +624,10 @@ export const ALERT_HISTORY_SCRIPT = `
     }
   })()
 `;
+}
+
+// Per-tick monitor reader — small, fast (most-recent items only, for diffing).
+export const ALERT_HISTORY_SCRIPT = buildAlertHistoryScript(30);
 
 // ---------------------------------------------------------------------------
 // Core logic

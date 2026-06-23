@@ -868,24 +868,24 @@
       // STRAT_QS = only query param (?…), STRAT_QA = appended to an existing query (&…).
       const STRAT_QS = IS_BIAS ? '?strategy=bias' : '';
       const STRAT_QA = IS_BIAS ? '&strategy=bias' : '';
-      // Bias hides 3 columns (Exit w/oSL=7, Candle=9, P&L w/oSL=13). display:none
-      // removes them from the table grid, so footer/add-row colspans must shrink to
-      // match the visible column count — otherwise they over-span and distort the
-      // whole table. CS_FULL = a full-width row; CS_LABEL = footer label up to the
+      // Bias differs from supertrend by: + adds an "SL Target" column, repurposes
+      // the .col-wosl columns as the manual-exit pair, and hides Candle (.col-candle).
+      // Net visible-column count works out the same for both layouts (14), so the
+      // colspans match. CS_FULL = a full-width row; CS_LABEL = footer label up to the
       // P&L columns; CS_PNL = the merged P&L cell in the edit row.
-      const CS_FULL = IS_BIAS ? 11 : 14;
-      const CS_LABEL = IS_BIAS ? 8 : 10;
-      const CS_PNL = IS_BIAS ? 2 : 3;
+      const CS_FULL = 14;
+      const CS_LABEL = 10;
+      const CS_PNL = 3;
       if (IS_BIAS) {
         document.title = 'Bias Reports';
-        // Bias drops the "Exit w/oSL" model — hide those columns (CSS: .col-wosl).
+        // Bias keeps the .col-wosl columns (relabeled "Manual Exit" / "Manual P&L")
+        // but still hides the pullback (.col-pb) and Candle (.col-candle) columns.
         const _hideWosl = () => {
           document.body.classList.add('is-bias');
           if (!document.getElementById('bias-col-style')) {
             const st = document.createElement('style');
             st.id = 'bias-col-style';
             st.textContent =
-              'body.is-bias .col-wosl{display:none !important;}' +
               'body.is-bias .col-pb{display:none !important;}' +
               'body.is-bias .col-candle{display:none !important;}';
             document.head.appendChild(st);
@@ -919,7 +919,34 @@
       let monthReachFilter = {};
       let monthCandleFilter = {};
       let monthDateFilter = {};
+      let monthVixFilter = {}; // { field:'close'|'open'|'high'|'low', min, max } per month
       let pbTypeSelection = {};
+
+      // Parse a day's VIX from its free-text day note, e.g.
+      //   "vix open: 12.67 low: 12.07 high: 13.64 close: 12.77"
+      // Returns { open, high, low, close } (any missing field = null), or null if no VIX.
+      function parseVix(note) {
+        if (!note || !/vix/i.test(note)) return null;
+        const grab = (kw) => {
+          const m = note.match(new RegExp(kw + '\\s*[:=]?\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
+          return m ? parseFloat(m[1]) : null;
+        };
+        const v = { open: grab('open'), high: grab('high'), low: grab('low'), close: grab('close') };
+        return v.open === null && v.high === null && v.low === null && v.close === null ? null : v;
+      }
+
+      // Day-level VIX filter: true if the day's selected VIX field is within [min,max].
+      // Days with no parseable VIX are excluded while the filter is active.
+      function dayPassesVix(dateStr, monthKey) {
+        const f = monthVixFilter[monthKey];
+        if (!f || (f.min === null && f.max === null)) return true;
+        const vix = parseVix(allData[dateStr]?.note);
+        const val = vix ? vix[f.field] : null;
+        if (val === null || val === undefined) return false;
+        if (f.min !== null && val < f.min) return false;
+        if (f.max !== null && val > f.max) return false;
+        return true;
+      }
       let NSE_HOLIDAYS = new Set();
 
       async function loadData() {
@@ -1042,6 +1069,21 @@
           <button class="add-range-btn" onclick="applyNotesFilter('${monthKey}')">&#x25BA; Apply</button>
           <button class="time-clear-all" id="nf-clear-${monthKey}" onclick="clearNotesFilter('${monthKey}')">&#x2715; Clear</button>
         </div>
+        <div class="time-section">
+          <span class="time-section-label" title="Parsed from the day note, e.g. 'vix open: 12.67 low: 12.07 high: 13.64 close: 12.77'">VIX</span>
+          <select class="date-filter-select" id="vf-field-${monthKey}" title="Which VIX value to filter on">
+            <option value="close">Close</option>
+            <option value="open">Open</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+          <span class="reach-label" style="margin-left:8px;">MIN</span>
+          <input type="number" class="reach-input" id="vf-min-${monthKey}" step="0.01" placeholder="vix">
+          <span class="reach-label" style="margin-left:8px;">MAX</span>
+          <input type="number" class="reach-input" id="vf-max-${monthKey}" step="0.01" placeholder="vix">
+          <button class="add-range-btn" onclick="applyVixFilter('${monthKey}')">&#x25BA; Apply</button>
+          <button class="time-clear-all" id="vf-clear-${monthKey}" onclick="clearVixFilter('${monthKey}')">&#x2715; Clear</button>
+        </div>
       </div>
       <button class="dl-btn" onclick="downloadExcel('${monthKey}')">&#x2B07; Download Excel</button>
     </div>
@@ -1061,7 +1103,8 @@
           .filter((d) => {
             const instrOk = filter === 'ALL' || (d.instrument || '').toUpperCase() === filter;
             const dateOk = !selectedDate || d.date === selectedDate;
-            return instrOk && dateOk;
+            const vixOk = dayPassesVix(d.date, monthKey);
+            return instrOk && dateOk && vixOk;
           });
         const el = document.getElementById(`summary-${monthKey}`);
         if (!el) return;
@@ -1237,7 +1280,7 @@
         ${statRow('Max Run-Up', duSL > 0 && duSL !== netSL ? fmtRs(duSL) : '—', 'c-green', duSL > 0 && duSL !== netSL && duSLDate ? fmtDateShort(duSLDate) : '')}
       </div>
       <div class="scard col-wosl">
-        <div class="scard-lbl">Exit w/o SL</div>
+        <div class="scard-lbl">${IS_BIAS ? 'Manual P&amp;L' : 'Exit w/o SL'}</div>
         ${statRow('Net P&amp;L', fmtRs(netNSL), pnlClass(netNSL))}
         ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
         ${statRow('Net (after)', fmtRs(netNSLAfter), pnlClass(netNSLAfter))}
@@ -1353,9 +1396,9 @@
         <table>
           <thead><tr>
             <th>Time</th><th style="text-align:left">Symbol</th><th>Lots</th>
-            <th>Entry</th><th>Exit w/SL</th><th>Exit w/Tgt</th><th class="col-wosl">Exit w/oSL</th>
+            <th>Entry</th><th>Exit w/SL</th>${IS_BIAS ? '<th>SL Target</th>' : ''}<th>Exit w/Tgt</th><th class="col-wosl">${IS_BIAS ? 'Manual Exit' : 'Exit w/oSL'}</th>
             <th>Tgt Pts</th><th class="col-candle">Candle</th><th style="text-align:left">Notes</th>
-            <th>P&amp;L w/SL &#x20B9;</th><th>P&amp;L w/Tgt &#x20B9;</th><th class="col-wosl">P&amp;L w/oSL &#x20B9;</th>
+            <th>P&amp;L w/SL &#x20B9;</th><th>P&amp;L w/Tgt &#x20B9;</th><th class="col-wosl">${IS_BIAS ? 'Manual P&amp;L &#x20B9;' : 'P&amp;L w/oSL &#x20B9;'}</th>
             <th style="text-align:center">Actions</th>
           </tr></thead>
           <tbody id="tbody-${dayKey}"></tbody>
@@ -1371,9 +1414,16 @@
         const dayKey = dateStr.replace(/-/g, '');
         const tbody = document.getElementById(`tbody-${dayKey}`);
         if (!tbody || !day) return;
-        (day.trades || []).sort((a, b) =>
-          (a.entryTime || a.time || '').localeCompare(b.entryTime || b.time || '')
-        );
+        (day.trades || []).sort((a, b) => {
+          // Sort by entry time, but keep blank-time rows (e.g. a freshly added
+          // row being filled in) at the BOTTOM instead of floating to the top.
+          const ta = a.entryTime || a.time || '';
+          const tb = b.entryTime || b.time || '';
+          if (!ta && !tb) return 0;
+          if (!ta) return 1;
+          if (!tb) return -1;
+          return ta.localeCompare(tb);
+        });
         tbody.innerHTML = '';
         const monthKey = dateStr.slice(0, 7);
         const trades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
@@ -1465,6 +1515,7 @@
       <td>${t.lots}</td>
       <td>${fmt(t.entryPrice)}${hasPBEntry ? `<div style="color:#a78bfa;font-size:10px">${fmt(t.pbEntry)}</div>` : ''}</td>
       <td>${fmt(t.exitSL)}${hasPBEntry && pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>
+      ${IS_BIAS ? `<td class="${pnlClass(t.slTarget)}">${t.slTarget !== null && t.slTarget !== undefined ? fmtPts(t.slTarget) : '—'}</td>` : ''}
       <td>${fmt(t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : null)}${hasPBEntry && pbVals ? pb(pbVals.pbExitTgt, false) : ''}</td>
       <td class="col-wosl">${fmt(t.exitNSL)}</td>
       <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}${hasPBEntry && pbTgtPtsDisplay !== null ? `<div class="${pnlClass(pbTgtPtsDisplay)}" style="font-size:10px">${fmtPts(pbTgtPtsDisplay)}</div>` : ''}</td>
@@ -1576,7 +1627,8 @@
     <td ${fc('e-sym')}><input class="edit-input wide" id="e-sym" value="${t.entrySymbol || ''}"></td>
     <td ${fc('e-lots')}><input class="edit-input sm" id="e-lots" value="${t.lots}" type="number" oninput="recalcEditRow()"></td>
     <td ${fc('e-entry')}><input class="edit-input" id="e-entry" value="${t.entryPrice ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"><span class="col-pb"><br><input class="edit-input" id="e-pbEntry" value="${t.pbEntry ?? ''}" type="number" step="0.05" placeholder="PB entry" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()"></span></td>
-    <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
+    <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"${IS_BIAS ? ' readonly title="Derived: entry + SL Target"' : ''}>${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
+    ${IS_BIAS ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td>` : ''}
     <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitTgt" value="${t.pbExitTgt ?? (t.pbEntry !== null && t.pbTgtPts !== null ? parseFloat((t.pbEntry + t.pbTgtPts).toFixed(2)) : '')}" type="number" step="0.05" placeholder="PB w/Tgt" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     <td class="col-wosl" ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
     <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbTgtPts" value="${t.pbTgtPts ?? ''}" type="number" step="0.05" placeholder="PB tgt pts" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
@@ -1604,7 +1656,7 @@
     <td colspan="${CS_PNL}" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
     <td style="text-align:center">
       <button class="act-btn save" onclick="saveRow('${dateStr}','${id}',this)">&#x2713; Save</button>
-      <button class="act-btn cancel" onclick="renderDay('${dateStr}')">&#x2717;</button>
+      <button class="act-btn cancel" onclick="cancelEdit('${dateStr}','${id}')">&#x2717;</button>
     </td>`;
         tr.querySelector('#e-entry').focus();
         recalcEditRow();
@@ -1643,9 +1695,39 @@
         const entry = parseFloat(document.getElementById('e-entry')?.value);
         const exitNSL = parseFloat(document.getElementById('e-exitNSL')?.value);
         const lots = parseInt(document.getElementById('e-lots')?.value);
-        if (isNaN(entry) || isNaN(exitNSL)) return;
         const tr = document.getElementById('e-entry')?.closest('tr');
         const instr = tr?.dataset?.editInstr || 'NIFTY';
+
+        // Bias: the three exit columns are independent. "Manual Exit" drives the
+        // Manual P&L only — never recompute Exit w/SL / Exit w/Tgt from it (that
+        // would clobber the generator's trailing-stop / bracket values).
+        if (IS_BIAS) {
+          const lotSzB = LOT_SIZES[instr] || 65;
+          const nLotsB = isNaN(lots) ? 10 : lots;
+          // Exit w/SL is DERIVED from the SL Target: entry + slTarget.
+          const slTgt = parseFloat(document.getElementById('e-slTarget')?.value);
+          let exitSLv = parseFloat(document.getElementById('e-exitSL')?.value);
+          if (!isNaN(entry) && !isNaN(slTgt)) {
+            exitSLv = parseFloat((entry + slTgt).toFixed(2));
+            const elSL = document.getElementById('e-exitSL');
+            if (elSL) elSL.value = exitSLv;
+          }
+          const tgtPtsB = parseFloat(document.getElementById('e-tgt')?.value);
+          const pSLb =
+            !isNaN(entry) && !isNaN(exitSLv) ? Math.round((exitSLv - entry) * nLotsB * lotSzB) : null;
+          const pTgtb = !isNaN(tgtPtsB) ? Math.round(tgtPtsB * nLotsB * lotSzB) : null;
+          const pNSLb =
+            !isNaN(entry) && !isNaN(exitNSL) ? Math.round((exitNSL - entry) * nLotsB * lotSzB) : null;
+          const pnlB = document.getElementById('e-pnl-cell');
+          if (pnlB) {
+            const c = (v) => (v >= 0 ? 'c-green' : 'c-red');
+            const cell = (v) => (v === null ? '<span style="color:#6b7280">—</span>' : `<span class="${c(v)}">${fmtRs(v)}</span>`);
+            pnlB.innerHTML = `${cell(pSLb)}<span style="color:#374151"> | </span>${cell(pTgtb)}<span style="color:#374151"> | </span>${cell(pNSLb)}`;
+          }
+          return;
+        }
+
+        if (isNaN(entry) || isNaN(exitNSL)) return;
         const slPts = SL_PTS[instr] || 15,
           tgG = TGT_G[instr] || 50,
           tgL = TGT_L[instr] || 31,
@@ -1713,6 +1795,15 @@
         t.exitTgt = parseFloat(document.getElementById('e-exitTgt').value) || null;
         t.exitNSL = parseFloat(document.getElementById('e-exitNSL').value) || null;
         t.tgtPts = parseFloat(document.getElementById('e-tgt').value) || null;
+        // Bias: SL Target drives Exit w/SL → exitSL = entry + slTarget.
+        if (IS_BIAS) {
+          const st = parseFloat(document.getElementById('e-slTarget')?.value);
+          t.slTarget = isNaN(st) ? null : st;
+          t.exitSL =
+            t.entryPrice !== null && t.slTarget !== null
+              ? parseFloat((t.entryPrice + t.slTarget).toFixed(2))
+              : t.exitSL;
+        }
         const cr = parseFloat(document.getElementById('e-candle').value);
         t.candleRange = isNaN(cr) ? null : cr;
         t.notes = document.getElementById('e-notes').value.trim();
@@ -1725,9 +1816,22 @@
         t.pbExitSL = isNaN(pbExitSLV) ? null : pbExitSLV;
         const pbExitTgtV = parseFloat(document.getElementById('e-pbExitTgt')?.value);
         t.pbExitTgt = isNaN(pbExitTgtV) ? null : pbExitTgtV;
+        delete t._unsaved; // it's now a real, saved row
         await persistDay(dateStr);
         renderDay(dateStr);
         renderSummary(activeMonth);
+      }
+
+      // Leave edit mode. A brand-new row that was never saved is discarded
+      // (so cancelling an "Add Row" doesn't leave an empty row behind);
+      // an existing row just re-renders unchanged.
+      function cancelEdit(dateStr, id) {
+        const day = allData[dateStr];
+        const t = (day?.trades || []).find((x) => String(x.id) === String(id));
+        if (t && t._unsaved) {
+          day.trades = day.trades.filter((x) => String(x.id) !== String(id));
+        }
+        renderDay(dateStr);
       }
 
       function insertRow(dateStr, atIndex) {
@@ -1745,21 +1849,28 @@
           exitSL: null,
           exitNSL: null,
           tgtPts: null,
+          slTarget: null,
           candleRange: null,
           pbEntry: null,
           notes: '',
           pbNotes: '',
+          _unsaved: true, // transient — discarded if the user cancels before saving
         };
-        day.trades.push(newTrade);
+        // Insert at the clicked position (renderDay re-sorts by entry time, but
+        // splicing here keeps a sensible order for rows that share/lack a time).
+        day.trades.splice(atIndex, 0, newTrade);
         renderDay(dateStr);
+        // Open the NEW row for editing — locate it by its id, not by DOM position.
+        // renderDay sorts by entry time, so a blank-time row does NOT land last;
+        // grabbing the last DOM row would open an existing trade instead.
         const dayKey = dateStr.replace(/-/g, '');
         const tbody = document.getElementById(`tbody-${dayKey}`);
-        const allTrs = [...tbody.querySelectorAll('tr:not(.add-row-tr):not(.total-row)')];
-        const newTr = allTrs[allTrs.length - 1];
+        const newTr = tbody?.querySelector(`tr[data-id="${newTrade.id}"]`);
         if (newTr) newTr.querySelector('.act-btn')?.click();
       }
 
       async function deleteRow(dateStr, id) {
+        if (!confirm('Delete this trade row? This cannot be undone.')) return;
         const day = allData[dateStr];
         day.trades = day.trades.filter((t) => String(t.id) !== String(id));
         await persistDay(dateStr);
@@ -1804,7 +1915,11 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               date: dateStr,
-              trades: allData[dateStr].trades,
+              // Drop any never-saved placeholder rows and strip the transient flag
+              // so it never reaches the JSON on disk.
+              trades: (allData[dateStr].trades || [])
+                .filter((t) => !t._unsaved)
+                .map(({ _unsaved, ...rest }) => rest),
               instrument: allData[dateStr].instrument,
               note: allData[dateStr].note || '',
               // Persist an explicit brokerage override; null clears it back to the
@@ -2172,10 +2287,11 @@
           'Lots',
           'Entry',
           'Exit w/SL',
-          'Exit w/oSL',
+          ...(IS_BIAS ? ['SL Target'] : []),
+          IS_BIAS ? 'Manual Exit' : 'Exit w/oSL',
           'Tgt Pts',
           'P&L w/SL (₹)',
-          'P&L w/oSL (₹)',
+          IS_BIAS ? 'Manual P&L (₹)' : 'P&L w/oSL (₹)',
           'P&L Tgt (₹)',
         ];
         const rows = [HEADERS];
@@ -2207,6 +2323,7 @@
               t.lots,
               t.entryPrice ?? '',
               t.exitSL ?? '',
+              ...(IS_BIAS ? [t.slTarget ?? ''] : []),
               t.exitNSL ?? '',
               t.tgtPts ?? '',
               pSL,
@@ -2229,7 +2346,7 @@
           }
         }
         rows.push([]);
-        rows.push(['TOTAL', '', '', '', '', '', '', '', totSL, totNSL, totTgt]);
+        rows.push(['TOTAL', '', '', '', '', '', ...(IS_BIAS ? [''] : []), '', '', totSL, totNSL, totTgt]);
         const wrFmt = (w) =>
           totalCount ? `${Math.round((w / totalCount) * 100)}% (${w}/${totalCount})` : '—';
         rows.push([
@@ -2239,6 +2356,7 @@
           '',
           '',
           '',
+          ...(IS_BIAS ? [''] : []),
           '',
           '',
           wrFmt(winSL),
@@ -2252,19 +2370,15 @@
           { wch: 6 },
           { wch: 8 },
           { wch: 10 },
+          ...(IS_BIAS ? [{ wch: 10 }] : []),
           { wch: 11 },
           { wch: 8 },
           { wch: 14 },
           { wch: 14 },
           { wch: 12 },
         ];
-        // Bias has no "Exit w/oSL" model — drop those two columns (indices 6 & 9).
-        let outRows = rows;
-        if (IS_BIAS) {
-          const drop = new Set([6, 9]);
-          outRows = rows.map((r) => r.filter((_, i) => !drop.has(i)));
-          cols = cols.filter((_, i) => !drop.has(i));
-        }
+        // Bias keeps these columns as the manual-exit pair (relabeled in HEADERS).
+        const outRows = rows;
         const ws = XLSX.utils.aoa_to_sheet(outRows);
         ws['!cols'] = cols;
         const wb = XLSX.utils.book_new();
@@ -2415,6 +2529,35 @@
         renderSummary(monthKey);
       }
 
+      function applyVixFilter(monthKey) {
+        const field = document.getElementById(`vf-field-${monthKey}`)?.value || 'close';
+        const minV = parseFloat(document.getElementById(`vf-min-${monthKey}`)?.value);
+        const maxV = parseFloat(document.getElementById(`vf-max-${monthKey}`)?.value);
+        monthVixFilter[monthKey] = {
+          field,
+          min: isNaN(minV) ? null : minV,
+          max: isNaN(maxV) ? null : maxV,
+        };
+        document
+          .getElementById(`vf-clear-${monthKey}`)
+          ?.classList.toggle(
+            'active',
+            monthVixFilter[monthKey].min !== null || monthVixFilter[monthKey].max !== null
+          );
+        applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
+      }
+
+      function clearVixFilter(monthKey) {
+        monthVixFilter[monthKey] = { field: 'close', min: null, max: null };
+        const fld = document.getElementById(`vf-field-${monthKey}`);
+        if (fld) fld.value = 'close';
+        const mn = document.getElementById(`vf-min-${monthKey}`);
+        if (mn) mn.value = '';
+        const mx = document.getElementById(`vf-max-${monthKey}`);
+        if (mx) mx.value = '';
+        applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
+      }
+
       function applyDateFilter(monthKey, dateStr) {
         monthDateFilter[monthKey] = dateStr || null;
         applyFilter(monthKey, monthFilters[monthKey] || 'ALL');
@@ -2434,8 +2577,9 @@
             const instr = block.dataset.instrument || '',
               date = block.dataset.date || '';
             const instrOk = filter === 'ALL' || instr === filter,
-              dateOk = !selectedDate || date === selectedDate;
-            block.style.display = instrOk && dateOk ? '' : 'none';
+              dateOk = !selectedDate || date === selectedDate,
+              vixOk = dayPassesVix(date, monthKey);
+            block.style.display = instrOk && dateOk && vixOk ? '' : 'none';
           });
         }
         renderSummary(monthKey);

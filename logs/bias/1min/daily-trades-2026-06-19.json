@@ -16,10 +16,10 @@
       "lotSize": 65,
       "entryPrice": 151.8,
       "exitPrice": 150.65,
-      "exitSL": 160.95,
-      "exitTgt": 149.2,
-      "exitNSL": 150.65,
-      "tgtPts": -2.6,
+      "exitSL": 172.8,
+      "exitTgt": 182.8,
+      "exitNSL": 160.95,
+      "tgtPts": 31,
       "maxReach": 3.6,
       "notes": "EXIT SIGNAL",
       "time": "12:24",
@@ -28,7 +28,8 @@
       "pbEntry": null,
       "pbTgtPts": null,
       "pbExitSL": null,
-      "pbExitTgt": null
+      "pbExitTgt": null,
+      "slTarget": 21
     },
     {
       "id": 2,
@@ -43,10 +44,10 @@
       "lotSize": 65,
       "entryPrice": 148,
       "exitPrice": 135,
-      "exitSL": 135,
+      "exitSL": 148,
       "exitTgt": 172,
-      "exitNSL": 135,
-      "tgtPts": 24,
+      "exitNSL": 172,
+      "tgtPts": null,
       "maxReach": 37,
       "notes": "TARGET HIT",
       "time": "12:31",
@@ -55,7 +56,8 @@
       "pbEntry": null,
       "pbTgtPts": null,
       "pbExitSL": null,
-      "pbExitTgt": null
+      "pbExitTgt": null,
+      "slTarget": 0
     },
     {
       "id": 3,
@@ -70,10 +72,10 @@
       "lotSize": 65,
       "entryPrice": 146.25,
       "exitPrice": 168.35,
-      "exitSL": 180,
-      "exitTgt": 174.25,
-      "exitNSL": 168.35,
-      "tgtPts": 28,
+      "exitSL": 179.25,
+      "exitTgt": 177.25,
+      "exitNSL": 177.25,
+      "tgtPts": 31,
       "maxReach": 25.75,
       "notes": "price reach upto 40 points",
       "time": "13:07",
@@ -82,7 +84,8 @@
       "pbEntry": null,
       "pbTgtPts": null,
       "pbExitSL": null,
-      "pbExitTgt": null
+      "pbExitTgt": null,
+      "slTarget": 33
     },
     {
       "id": 4,
@@ -97,10 +100,10 @@
       "lotSize": 65,
       "entryPrice": 135.5,
       "exitPrice": 154.6,
-      "exitSL": 154.6,
-      "exitTgt": 155.5,
-      "exitNSL": 154.6,
-      "tgtPts": 20,
+      "exitSL": 180.5,
+      "exitTgt": 166.5,
+      "exitNSL": 175,
+      "tgtPts": 31,
       "maxReach": 23.8,
       "notes": "price reach upto 23.8 points",
       "time": "14:39",
@@ -109,8 +112,9 @@
       "pbEntry": null,
       "pbTgtPts": null,
       "pbExitSL": null,
-      "pbExitTgt": null
+      "pbExitTgt": null,
+      "slTarget": 45
     }
   ],
-  "note": ""
+  "note": "vix  open: 12.67   low : 12.07 high : 13.64 close: 12.77"
 }
