@@ -301,6 +301,33 @@
         font-weight: 600;
         color: #d1d5db;
       }
+      .day-lines-grid {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 10px 12px;
+        align-items: center;
+      }
+      .day-lines-grid .lbl {
+        font-size: 13px;
+        font-weight: 600;
+        color: #d1d5db;
+        white-space: nowrap;
+      }
+      .day-input {
+        width: 100%;
+        padding: 5px 8px;
+        background: #0f1117;
+        border: 1px solid #2a2d3a;
+        border-radius: 6px;
+        color: #d1d5db;
+        font-size: 13px;
+        box-sizing: border-box;
+      }
+      .day-tag {
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
       .switch {
         position: relative;
         width: 52px;
@@ -585,48 +612,23 @@
         <!-- Day H/L Lines -->
         <div class="card">
           <div class="sec">Day H/L Lines</div>
-          <div class="toggle-row">
-            <span class="lbl">High days</span>
-            <span style="display: flex; gap: 6px; align-items: center">
-              <input
-                type="text"
-                id="day-highs"
-                placeholder="1 2 3"
-                style="
-                  width: 90px;
-                  padding: 4px 6px;
-                  background: #0f1117;
-                  border: 1px solid #2a2d3a;
-                  border-radius: 6px;
-                  color: #d1d5db;
-                  font-size: 13px;
-                "
-              />
-              <span style="font-size: 11px; color: #FF4444">HIGH (red)</span>
-            </span>
+          <div class="day-lines-grid">
+            <label class="lbl" for="day-highs">High days</label>
+            <input type="text" id="day-highs" class="day-input" placeholder="1 2 3" />
+            <span class="day-tag" style="color: #ff4444">HIGH (red)</span>
+
+            <label class="lbl" for="day-lows">Low days</label>
+            <input type="text" id="day-lows" class="day-input" placeholder="0" />
+            <span class="day-tag" style="color: #22bb44">LOW (green)</span>
           </div>
-          <div class="toggle-row">
-            <span class="lbl">Low days</span>
-            <span style="display: flex; gap: 6px; align-items: center">
-              <input
-                type="text"
-                id="day-lows"
-                placeholder="0"
-                style="
-                  width: 90px;
-                  padding: 4px 6px;
-                  background: #0f1117;
-                  border: 1px solid #2a2d3a;
-                  border-radius: 6px;
-                  color: #d1d5db;
-                  font-size: 13px;
-                "
-              />
-              <button class="report-btn btn-teal" id="btn-day-lines" onclick="applyDayLines()">
-                Apply
-              </button>
-            </span>
-          </div>
+          <button
+            class="report-btn btn-teal"
+            id="btn-day-lines"
+            onclick="applyDayLines()"
+            style="width: 100%; margin-top: 10px"
+          >
+            Apply
+          </button>
           <div class="itm-hint">
             Enter day offsets separated by space/comma: <b>0</b> = today, <b>1</b> = previous day,
             <b>2</b> = 2 days prior, … <b>High days</b> draws a HIGH (red) line per offset;
