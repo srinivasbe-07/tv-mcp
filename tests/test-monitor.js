@@ -413,10 +413,11 @@ test('within cooldown → blocked, remaining seconds returned', () => {
   const r = shouldUpdateATM(state, { atmShifted: true });
   return r.update === false && r.remaining > 0 && r.remaining <= 90;
 });
-test('cooldown just started → ~120s remaining', () => {
+test('cooldown just started → ~full window remaining', () => {
   const state = { lastATMUpdateTime: Date.now() };
   const r = shouldUpdateATM(state, { atmShifted: true });
-  return r.update === false && r.remaining >= 119;
+  const fullSecs = ATM_COOLDOWN_MS / 1000;
+  return r.update === false && r.remaining >= fullSecs - 1;
 });
 
 section('shouldUpdateATM — bypass conditions');

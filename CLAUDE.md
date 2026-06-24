@@ -119,7 +119,20 @@ Same as the supertrend EOD report, for bias trades. Click **↧ EOD Report** on 
 - Does not detect candlestick patterns (removed) — direction is manual
 - Does not place orders — only manages TradingView alerts
 - Does not create alerts — the 12 bias alerts must already exist
-- Does not yet draw previous-day H/L levels (planned — phase 2)
+
+### Day H/L Lines (`/bias` page)
+
+Draws horizontal HIGH/LOW lines on the spot chart for the day offsets you choose. The
+`/bias` page has **two independent boxes**:
+
+- **High days** → draws a HIGH (red) line per offset (e.g. `1 2 3` = prev-3-days' highs)
+- **Low days** → draws a LOW (green) line per offset (e.g. `0` = today's developing low)
+
+Offset `0` = today, `1` = previous day, `2` = 2 days prior, … (range 0–60). The two lists
+are separate, so you can plot only highs of some days and only lows of others. Saved to
+`position.json` as `dayHighs` / `dayLows` (a legacy single `dayLines` array still works and
+means "both H and L for each offset"). The monitor draws these on its idle/cooldown tick so
+they never clash with supertrend's alert work; today's (offset 0) line refreshes every 2 min.
 
 ---
 
@@ -252,10 +265,10 @@ Step 2  Read alert Log tab → detect new entry/exit fires → update CE/PE posi
         └── exit  alert fired → CE or PE = CLOSED (logged: [POSITION] CE CLOSED)
 Step 3  Read spot price from dedicated chart tab → calculate ATM
         └── spot invalid → save state & skip tick
-Step 4  ATM Cooldown: update immediately on first ATM shift, then lock for 120s
+Step 4  ATM Cooldown: update immediately on first ATM shift, then lock for 60s
         └── ATM shifts → update alerts NOW (same tick)
-        └── Next 120s → further ATM shifts blocked ("cooldown active Xs remaining")
-        └── After 120s → next ATM shift updates again
+        └── Next 60s → further ATM shifts blocked ("cooldown active Xs remaining")
+        └── After 60s → next ATM shift updates again
         └── Force tick (startup) → always bypasses cooldown
         └── Trade just closed → always bypasses cooldown (sync to current strike)
 Step 5  Nothing changed (ATM same, depth same, instrument same, not force, no trade just closed,
@@ -312,7 +325,7 @@ When the trade exits, alerts are synced to current ITM strike immediately.
                               save to position.json — no waiting for first tick
 3. Poll alert_list every 5s until all 4 today-instrument alerts visible (up to 120s)
    → prevents "not found" failures when TV just restarted and alerts haven't synced
-4. First force tick → update CE + PE alerts immediately (bypasses 120s cooldown)
+4. First force tick → update CE + PE alerts immediately (bypasses 60s cooldown)
 5. Verify status → re-activate any stopped alerts
 6. Enter 60s poll loop
 ```

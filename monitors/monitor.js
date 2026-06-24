@@ -253,7 +253,7 @@ let state = {
   biasEnabledLast: null, // last-seen bias enabled flag (pause/resume edge detection)
 };
 let itmOverride = null; // set by --itm CLI flag (highest priority)
-export const ATM_COOLDOWN_MS = 120_000; // 2 min cooldown after an ATM-triggered update
+export const ATM_COOLDOWN_MS = 60_000; // 1 min cooldown after an ATM-triggered update
 
 /**
  * Decide whether an ATM shift should trigger alert updates.
@@ -347,18 +347,24 @@ function loadState() {
 function saveState() {
   try {
     state.lastDate = todayIST();
-    // Preserve the UI-owned dayLines selection living in position.json — the monitor
-    // reads it (loadDayLines) but never authoritatively writes it, so pass through.
+    // Preserve the UI-owned day-line selection living in position.json — the monitor
+    // reads it (loadDayLineSel) but never authoritatively writes it, so pass through.
     let dayLines = [];
+    let dayHighs = [];
+    let dayLows = [];
     try {
       const prev = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       if (Array.isArray(prev.dayLines)) dayLines = prev.dayLines;
+      if (Array.isArray(prev.dayHighs)) dayHighs = prev.dayHighs;
+      if (Array.isArray(prev.dayLows)) dayLows = prev.dayLows;
     } catch (_e) {
       /* ignore */
     }
     const out = {
       date: state.lastDate,
       dayLines,
+      dayHighs,
+      dayLows,
       shared: {
         lastATM: state.lastATM,
         lastATMUpdateTime: state.lastATMUpdateTime,
@@ -931,9 +937,11 @@ export function processBiasHistory(historyItems, stateObj, instrument, direction
 // ---------------------------------------------------------------------------
 // Day H/L line drawing (user-selected days)
 //
-// The user picks a list of day offsets (position.json → dayLines), e.g. [0,1,2]:
-//   0 = today's H/L, 1 = previous day's H/L, 2 = 2 days prior, …
-// The monitor draws a HIGH (red) and LOW (green) line for each selected day, on the
+// The user picks two independent offset lists (position.json → dayHighs / dayLows),
+// e.g. { dayHighs: [1,2,3], dayLows: [0] }: 0 = today, 1 = previous day, 2 = 2 days
+// prior, … A legacy single dayLines array means draw both H and L for each offset.
+// The monitor draws a HIGH (red) line per dayHighs offset and a LOW (green) line per
+// dayLows offset, on the
 // spot chart. Only our own lines are removed before redrawing (manual drawings are
 // left untouched). Drawing happens on an IDLE tick (supertrend not updating), i.e.
 // during the cooldown, so it never clashes with supertrend's chart/alert work.
@@ -959,14 +967,23 @@ function saveDrawnIds() {
   }
 }
 
-// Read the user's day-line offsets from position.json (UI-owned). e.g. [0,1,2].
-function loadDayLines() {
+// Read the user's day-line selection from position.json (UI-owned). Highs and lows
+// are independent offset lists, e.g. { highs: [1,2,3], lows: [0] }. Legacy: a single
+// dayLines array meant draw BOTH H and L for each offset — honoured as a fallback.
+function loadDayLineSel() {
+  const clean = (a) =>
+    (Array.isArray(a) ? a : [])
+      .map((n) => parseInt(n, 10))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
   try {
     const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    const arr = Array.isArray(p.dayLines) ? p.dayLines : [];
-    return arr.map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
+    if (!p.dayHighs && !p.dayLows && Array.isArray(p.dayLines)) {
+      const legacy = clean(p.dayLines);
+      return { highs: legacy, lows: legacy };
+    }
+    return { highs: clean(p.dayHighs), lows: clean(p.dayLows) };
   } catch (_e) {
-    return [];
+    return { highs: [], lows: [] };
   }
 }
 
@@ -1139,36 +1156,44 @@ async function drawLevels(cdp, levelObjects, spotSymbol) {
   return true;
 }
 
-// Draw H/L lines for the user-selected day offsets (position.json → dayLines).
+// Draw H/L lines for the user-selected offsets (position.json → dayHighs / dayLows).
 // offset 0 = today (developing bar), 1 = previous day, 2 = 2 days prior, …
 // Redraws when the selection changes, on force (startup), or — if "today" (0) is
 // selected — every few minutes so today's developing H/L stays current. Completed
 // days are static, so a no-today selection draws once. Empty selection clears all.
 async function updateDayLines(cdp, spotSymbol, force = false) {
-  const offsets = loadDayLines();
-  const key = 'days:' + offsets.join(',');
+  const { highs, lows } = loadDayLineSel();
+  const key = 'H:' + highs.join(',') + '|L:' + lows.join(',');
   const offsetsChanged = key !== lastDayLinesKey;
-  const refreshToday = offsets.includes(0) && Date.now() - lastDayLinesDrawAt > 2 * 60_000;
+  const refreshToday =
+    (highs.includes(0) || lows.includes(0)) && Date.now() - lastDayLinesDrawAt > 2 * 60_000;
   if (!force && !offsetsChanged && !refreshToday) return;
 
   let levels = [];
-  if (offsets.length) {
-    const maxOff = Math.max(...offsets);
+  const allOffsets = [...new Set([...highs, ...lows])];
+  if (allOffsets.length) {
+    const maxOff = Math.max(...allOffsets);
     const bars = await fetchDailyBars(cdp, spotSymbol, maxOff + 3); // oldest → newest
     if (bars.length < 1) {
       log('[LINES] no daily bars yet — will retry');
       return;
     }
-    for (const off of offsets) {
+    const labelFor = (off) => (off === 0 ? 'Today' : `D-${off}`);
+    const barFor = (off) => {
       const idx = bars.length - 1 - off; // 0 = last bar (today)
       if (idx < 0) {
         log(`[LINES] day ${off}: not enough history`);
-        continue;
+        return null;
       }
-      const b = bars[idx];
-      const label = off === 0 ? 'Today' : `D-${off}`;
-      levels.push({ price: b.high, label: `${label} H`, color: '#FF4444' });
-      levels.push({ price: b.low, label: `${label} L`, color: '#22BB44' });
+      return bars[idx];
+    };
+    for (const off of highs) {
+      const b = barFor(off);
+      if (b) levels.push({ price: b.high, label: `${labelFor(off)} H`, color: '#FF4444' });
+    }
+    for (const off of lows) {
+      const b = barFor(off);
+      if (b) levels.push({ price: b.low, label: `${labelFor(off)} L`, color: '#22BB44' });
     }
   }
 
@@ -1176,7 +1201,7 @@ async function updateDayLines(cdp, spotSymbol, force = false) {
   if (!drew) return; // API not ready — retry next idle tick
   lastDayLinesKey = key;
   lastDayLinesDrawAt = Date.now();
-  log(`[LINES] drew day lines for offsets [${offsets.join(', ')}]`);
+  log(`[LINES] drew highs [${highs.join(', ')}] lows [${lows.join(', ')}]`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,7 +1285,7 @@ async function main() {
   // ── Draw the user's day H/L lines immediately on connect ─────────
   // Drawing needs only the chart + daily bars, not the alerts panel — so do it now,
   // BEFORE waitForAlertsReady (which can take up to 120s). Lines are drawn from the
-  // persisted day-offset selection (position.json → dayLines).
+  // persisted day-offset selection (position.json → dayHighs / dayLows).
   try {
     await cdpChart.handle('chart_set_symbol', { symbol: todayInstr.spotSymbol });
     log('[LINES] waiting for chart drawing API...');

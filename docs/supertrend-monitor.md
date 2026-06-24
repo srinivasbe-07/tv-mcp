@@ -138,7 +138,7 @@ flowchart TD
     B -->|Yes| C[✓ Update — bypass cooldown]
     B -->|No| D{atmShifted?}
     D -->|No| E[✓ Update — not an ATM shift\nno cooldown applies]
-    D -->|Yes| F{elapsed ≥ 120s\nsince lastATMUpdateTime?}
+    D -->|Yes| F{elapsed ≥ 60s\nsince lastATMUpdateTime?}
     F -->|Yes| G[✓ Update — cooldown expired]
     F -->|No| H[✗ Block — cooldown active\nlog remaining seconds]
 ```
@@ -187,7 +187,7 @@ stateDiagram-v2
 | Scenario                             | CE alerts                                           | PE alerts                       |
 | ------------------------------------ | --------------------------------------------------- | ------------------------------- |
 | ATM shifts, no trade running         | Updated immediately (first shift)                   | Updated immediately             |
-| ATM shifts again within 120s         | Blocked by cooldown                                 | Blocked by cooldown             |
+| ATM shifts again within 60s          | Blocked by cooldown                                 | Blocked by cooldown             |
 | ATM shifts, CE trade running         | Skipped — trade running                             | Updated                         |
 | ATM shifts, PE trade running         | Updated                                             | Skipped — trade running         |
 | CE trade exits                       | Force-sync CE to current strike (cooldown bypassed) | Continues normally              |
@@ -225,7 +225,7 @@ stateDiagram-v2
 | Constant                     | Value      | Purpose                                       |
 | ---------------------------- | ---------- | --------------------------------------------- |
 | `POLL_MS`                    | 60 000 ms  | Tick interval                                 |
-| `ATM_COOLDOWN_MS`            | 120 000 ms | Min gap between ATM-shift updates             |
+| `ATM_COOLDOWN_MS`            | 60 000 ms  | Min gap between ATM-shift updates             |
 | `MARKET_OPEN_MIN`            | 09:10 IST  | Start of market hours                         |
 | `MARKET_CLOSE_MIN`           | 15:30 IST  | End of market hours                           |
 | `waitForAlertsReady` timeout | 120 000 ms | Max wait for alerts panel on startup          |

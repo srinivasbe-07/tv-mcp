@@ -586,12 +586,32 @@
         <div class="card">
           <div class="sec">Day H/L Lines</div>
           <div class="toggle-row">
-            <span class="lbl">Days to plot</span>
+            <span class="lbl">High days</span>
             <span style="display: flex; gap: 6px; align-items: center">
               <input
                 type="text"
-                id="day-lines"
-                placeholder="0 1 2"
+                id="day-highs"
+                placeholder="1 2 3"
+                style="
+                  width: 90px;
+                  padding: 4px 6px;
+                  background: #0f1117;
+                  border: 1px solid #2a2d3a;
+                  border-radius: 6px;
+                  color: #d1d5db;
+                  font-size: 13px;
+                "
+              />
+              <span style="font-size: 11px; color: #FF4444">HIGH (red)</span>
+            </span>
+          </div>
+          <div class="toggle-row">
+            <span class="lbl">Low days</span>
+            <span style="display: flex; gap: 6px; align-items: center">
+              <input
+                type="text"
+                id="day-lows"
+                placeholder="0"
                 style="
                   width: 90px;
                   padding: 4px 6px;
@@ -608,10 +628,11 @@
             </span>
           </div>
           <div class="itm-hint">
-            Enter day offsets separated by space/comma: <b>0</b> = today's H/L, <b>1</b> = previous
-            day, <b>2</b> = 2 days prior, … (e.g. <b>0 1 2</b>). The monitor draws a HIGH (red) and
-            LOW (green) line per day, on its cooldown so it never clashes with supertrend. Saved to
-            disk — redrawn on restart. Empty = no lines.
+            Enter day offsets separated by space/comma: <b>0</b> = today, <b>1</b> = previous day,
+            <b>2</b> = 2 days prior, … <b>High days</b> draws a HIGH (red) line per offset;
+            <b>Low days</b> draws a LOW (green) line — independently, so you can plot e.g. highs of
+            <b>1 2 3</b> with a low of <b>0</b>. The monitor draws on its cooldown so it never clashes
+            with supertrend. Saved to disk — redrawn on restart. Empty = no lines.
           </div>
           <div class="dir-msg" id="day-lines-msg"></div>
         </div>
@@ -688,30 +709,37 @@
         el.className = 'dir-msg ' + (cls || '');
         if (cls === 'ok-msg') setTimeout(() => (el.textContent = ''), 3000);
       }
+      function parseDayBox(id) {
+        return (document.getElementById(id).value || '')
+          .split(/[\s,]+/)
+          .map((s) => parseInt(s, 10))
+          .filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
+      }
       async function loadDayLines() {
         try {
           const r = await fetch('/api/bias/daylines').then((r) => r.json());
-          if (r.ok) document.getElementById('day-lines').value = (r.dayLines || []).join(' ');
+          if (r.ok) {
+            document.getElementById('day-highs').value = (r.dayHighs || []).join(' ');
+            document.getElementById('day-lows').value = (r.dayLows || []).join(' ');
+          }
         } catch (_e) {
           /* ignore */
         }
       }
       async function applyDayLines() {
-        const raw = document.getElementById('day-lines').value || '';
-        const days = raw
-          .split(/[\s,]+/)
-          .map((s) => parseInt(s, 10))
-          .filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
+        const dayHighs = parseDayBox('day-highs');
+        const dayLows = parseDayBox('day-lows');
         try {
           const r = await fetch('/api/bias/daylines', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dayLines: days }),
+            body: JSON.stringify({ dayHighs, dayLows }),
           }).then((r) => r.json());
           if (r.ok) {
-            document.getElementById('day-lines').value = (r.dayLines || []).join(' ');
+            document.getElementById('day-highs').value = (r.dayHighs || []).join(' ');
+            document.getElementById('day-lows').value = (r.dayLows || []).join(' ');
             flashDayLines(
-              `Saved [${(r.dayLines || []).join(', ')}] — monitor redraws on its cooldown tick`,
+              `Saved — highs [${(r.dayHighs || []).join(', ')}] lows [${(r.dayLows || []).join(', ')}] — monitor redraws on its cooldown tick`,
               'ok-msg'
             );
           } else flashDayLines(r.error || 'Failed', 'err-msg');

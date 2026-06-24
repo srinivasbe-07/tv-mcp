@@ -704,22 +704,34 @@ function saveStConfig(cfg) {
 // ── Bias day H/L lines ────────────────────────────────────────────
 // Bias is UI-only now (no alert ops, no run/pause, no direction). Position/direction
 // status reaches the page via the position SSE. The only setting is which days' H/L
-// to draw — a list of day offsets persisted in position.json (0=today, 1=prev day,…).
-// The monitor reads position.json.dayLines and draws on its cooldown (idle) tick.
+// to draw — two independent day-offset lists (dayHighs / dayLows) persisted in
+// position.json (0=today, 1=prev day,…). Legacy single dayLines = both H and L.
+// The monitor reads these and draws on its cooldown (idle) tick.
+function cleanDayList(a) {
+  if (!Array.isArray(a)) return null;
+  const out = a.map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
+  return [...new Set(out)].sort((x, y) => x - y);
+}
 app.get('/api/bias/daylines', (_req, res) => {
   try {
     const p = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
-    res.json({ ok: true, dayLines: Array.isArray(p.dayLines) ? p.dayLines : [] });
+    const arr = (a) => (Array.isArray(a) ? a : []);
+    if (!p.dayHighs && !p.dayLows && Array.isArray(p.dayLines)) {
+      // Legacy: dayLines meant draw both H and L for each offset.
+      res.json({ ok: true, dayHighs: p.dayLines, dayLows: p.dayLines });
+    } else {
+      res.json({ ok: true, dayHighs: arr(p.dayHighs), dayLows: arr(p.dayLows) });
+    }
   } catch (_e) {
-    res.json({ ok: true, dayLines: [] });
+    res.json({ ok: true, dayHighs: [], dayLows: [] });
   }
 });
 
 app.post('/api/bias/daylines', (req, res) => {
-  let days = req.body.dayLines;
-  if (!Array.isArray(days)) return res.json({ ok: false, error: 'dayLines must be an array' });
-  days = days.map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 60);
-  days = [...new Set(days)].sort((a, b) => a - b);
+  const dayHighs = cleanDayList(req.body.dayHighs);
+  const dayLows = cleanDayList(req.body.dayLows);
+  if (dayHighs === null || dayLows === null)
+    return res.json({ ok: false, error: 'dayHighs and dayLows must be arrays' });
   try {
     let p = {};
     try {
@@ -727,11 +739,15 @@ app.post('/api/bias/daylines', (req, res) => {
     } catch (_e) {
       /* new file */
     }
-    p.dayLines = days;
+    p.dayHighs = dayHighs;
+    p.dayLows = dayLows;
+    delete p.dayLines; // migrated to separate H/L lists
     fs.writeFileSync(POSITION_FILE + '.tmp', JSON.stringify(p, null, 2));
     fs.renameSync(POSITION_FILE + '.tmp', POSITION_FILE);
-    res.json({ ok: true, dayLines: days });
-    pushST(`[UI] Day lines set to [${days.join(', ')}] — monitor will redraw on cooldown`);
+    res.json({ ok: true, dayHighs, dayLows });
+    pushST(
+      `[UI] Day lines set — highs [${dayHighs.join(', ')}] lows [${dayLows.join(', ')}] — monitor will redraw on cooldown`
+    );
   } catch (e) {
     res.json({ ok: false, error: e.message });
   }

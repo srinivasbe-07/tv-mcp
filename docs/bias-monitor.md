@@ -152,7 +152,7 @@ stateDiagram-v2
 
 | Scenario                     | Behaviour                                                      |
 | ---------------------------- | -------------------------------------------------------------- |
-| ATM shifts, no open trade    | Chosen 3 updated to new strike (shares ST 120s cooldown)       |
+| ATM shifts, no open trade    | Chosen 3 updated to new strike (shares ST 60s cooldown)        |
 | Entry fires (trade opens)    | Entry **parked**: price 0 + disabled; exit/target left running |
 | Trade running (steady)       | Alerts untouched                                               |
 | Exit or target fires (close) | Re-enable entry; sync 3 alerts to current strike               |
