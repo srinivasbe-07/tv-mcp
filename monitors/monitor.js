@@ -64,21 +64,25 @@ const ALERT_NAMES = {
 
 // ---------------------------------------------------------------------------
 // Bias monitor alert names (manual up/down direction).
-// 6 alerts per instrument: 3 for "up" (CE), 3 for "down" (PE).
+// 6 SHARED alerts: 3 for "up" (CE), 3 for "down" (PE) — the SAME 6 alerts are
+// reused for both NIFTY and SENSEX. Only one instrument trades per day (NIFTY
+// Mon/Tue/Fri, SENSEX Wed/Thu) so the two never overlap; you just repoint these
+// 6 alerts at whichever instrument is active that day, instead of maintaining a
+// separate Nifty/Sensex set (12 alerts → 6).
 // Prefix convention: "0" sorts up-alerts to the top of the Alerts panel,
 // "z" sorts down-alerts to the bottom.
-// Only the today-instrument's chosen direction is ever active; the opposite
-// direction's 3 alerts are deactivated.
+// Only the chosen direction is ever active; the opposite direction's 3 alerts
+// are deactivated.
 // ---------------------------------------------------------------------------
+const SHARED_BIAS_ALERTS = {
+  up: { entry: '0BiasEntry', exit: '0BiasExit', target: '0BiasTarget' },
+  down: { entry: 'zBiasEntry', exit: 'zBiasExit', target: 'zBiasTarget' },
+};
+// Keyed by instrument for back-compat with callers (biasAlertPlan,
+// processBiasHistory, deriveBiasStatus) — both keys reference the one shared set.
 export const BIAS_ALERT_NAMES = {
-  NIFTY: {
-    up: { entry: '0NiftyBiasEntry', exit: '0NiftyBiasExit', target: '0NiftyBiasTarget' },
-    down: { entry: 'zNiftyBiasEntry', exit: 'zNiftyBiasExit', target: 'zNiftyBiasTarget' },
-  },
-  SENSEX: {
-    up: { entry: '0SensexBiasEntry', exit: '0SensexBiasExit', target: '0SensexBiasTarget' },
-    down: { entry: 'zSensexBiasEntry', exit: 'zSensexBiasExit', target: 'zSensexBiasTarget' },
-  },
+  NIFTY: SHARED_BIAS_ALERTS,
+  SENSEX: SHARED_BIAS_ALERTS,
 };
 
 // Day-of-week instrument routing (IST weekday: 1=Mon … 5=Fri)

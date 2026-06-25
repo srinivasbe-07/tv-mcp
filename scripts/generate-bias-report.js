@@ -22,7 +22,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-export { classify, parseTrades, ALERT_NAMES as BIAS_REPORT_ALERTS };
+export {
+  classify,
+  parseTrades,
+  instrumentForDate,
+  isNonTradingDay,
+  ALERT_NAMES as BIAS_REPORT_ALERTS,
+};
 
 function checkMarketClosed() {
   const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
@@ -50,17 +56,39 @@ const LOGS_DIR = path.join(ROOT, 'logs', 'bias', '1min');
 const POSITION_FILE = path.join(ROOT, 'config', 'position.json');
 const SUPERTREND_TAB = path.join(ROOT, 'logs', 'supertrend-tab.json');
 
-// Bias alert names — up = CE side (0 prefix), down = PE side (z prefix).
+// Bias alert names — 6 SHARED alerts reused for both NIFTY and SENSEX
+// (up = CE side, 0 prefix; down = PE side, z prefix). Because the names no
+// longer carry the instrument, the report decides NIFTY vs SENSEX from the
+// report DATE via the day-of-week rule (instrumentForDate below).
 const ALERT_NAMES = {
-  NIFTY: {
-    CE: { entry: '0NiftyBiasEntry', exit: '0NiftyBiasExit', target: '0NiftyBiasTarget' },
-    PE: { entry: 'zNiftyBiasEntry', exit: 'zNiftyBiasExit', target: 'zNiftyBiasTarget' },
-  },
-  SENSEX: {
-    CE: { entry: '0SensexBiasEntry', exit: '0SensexBiasExit', target: '0SensexBiasTarget' },
-    PE: { entry: 'zSensexBiasEntry', exit: 'zSensexBiasExit', target: 'zSensexBiasTarget' },
-  },
+  CE: { entry: '0BiasEntry', exit: '0BiasExit', target: '0BiasTarget' },
+  PE: { entry: 'zBiasEntry', exit: 'zBiasExit', target: 'zBiasTarget' },
 };
+
+// Day-of-week instrument routing (matches the monitor): Mon/Tue/Fri → NIFTY,
+// Wed/Thu → SENSEX. The monitor's routing is purely weekday-based — holidays
+// only shift expiry, never which index trades on a weekday — so this matches it.
+const DAY_INSTRUMENT = { 1: 'NIFTY', 2: 'NIFTY', 3: 'SENSEX', 4: 'SENSEX', 5: 'NIFTY' };
+function instrumentForDate(dateStr) {
+  const day = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+  return DAY_INSTRUMENT[day] || 'NIFTY';
+}
+
+// Reuse config/holidays.json (the same file the monitor uses) to flag a report
+// date that isn't a trading session. Read from ROOT so it works regardless of cwd.
+const HOLIDAYS_FILE = path.join(ROOT, 'config', 'holidays.json');
+function loadHolidays() {
+  try {
+    return new Set(JSON.parse(fs.readFileSync(HOLIDAYS_FILE, 'utf8')).holidays || []);
+  } catch {
+    return new Set();
+  }
+}
+// True when the date is a weekend or an NSE holiday → no trading session that day.
+function isNonTradingDay(dateStr, holidays = loadHolidays()) {
+  const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6 || holidays.has(dateStr);
+}
 
 const EXCHANGE = { NIFTY: 'NSE', SENSEX: 'BSE' };
 const LOT_SIZES = { NIFTY: 65, SENSEX: 20 };
@@ -153,14 +181,14 @@ function parseRaw(raw) {
   return { symbol, time };
 }
 
-// Classify a bias alert → { instrument, side (CE/PE), event (entry|exit|target) }
+// Classify a bias alert → { side (CE/PE), event (entry|exit|target) }
+// Names are shared across instruments, so the instrument is NOT derived here —
+// it comes from the report date (instrumentForDate) and is attached in parseTrades.
 function classify(alertName) {
-  for (const [instr, sides] of Object.entries(ALERT_NAMES)) {
-    for (const [side, roles] of Object.entries(sides)) {
-      if (alertName === roles.entry) return { instrument: instr, side, event: 'entry' };
-      if (alertName === roles.exit) return { instrument: instr, side, event: 'exit' };
-      if (alertName === roles.target) return { instrument: instr, side, event: 'target' };
-    }
+  for (const [side, roles] of Object.entries(ALERT_NAMES)) {
+    if (alertName === roles.entry) return { side, event: 'entry' };
+    if (alertName === roles.exit) return { side, event: 'exit' };
+    if (alertName === roles.target) return { side, event: 'target' };
   }
   return null;
 }
@@ -177,18 +205,18 @@ function classify(alertName) {
 //     blank exit (exitTime '', exitType 'manual') so it can be filled in by hand.
 //   - Closes that appear before any entry (e.g. yesterday's dangling exit) are
 //     skipped — there is no open entry to attach them to.
-function parseTrades(snapshot, instrFilter = null) {
+function parseTrades(snapshot, instrument = 'NIFTY') {
   const items = [...snapshot].reverse(); // oldest → newest
 
   // Split into per-side sequences — an exit/target only closes an entry of the
-  // same side (0/up → CE, z/down → PE).
+  // same side (0/up → CE, z/down → PE). The instrument is shared across all
+  // fires of the day and supplied by the caller (day-of-week rule).
   const bySide = { CE: [], PE: [] };
   for (const item of items) {
     const meta = classify(item.name);
     if (!meta) continue;
-    if (instrFilter && meta.instrument !== instrFilter) continue;
     const { symbol, time } = parseRaw(item.raw);
-    bySide[meta.side].push({ ...meta, symbol, time });
+    bySide[meta.side].push({ ...meta, instrument, symbol, time });
   }
 
   const trades = [];
@@ -294,7 +322,15 @@ async function main() {
   const position = JSON.parse(fs.readFileSync(POSITION_FILE, 'utf8'));
   // The supertrend logSnapshot is the full Alerts Log tab — it contains bias fires too.
   let snapshot = position.supertrend?.logSnapshot || position.lastLogSnapshot || [];
-  const instrFilter = position.shared?.lastInstrument || position.lastInstrument || 'NIFTY';
+  // Bias alerts are shared across instruments, so the instrument comes from the
+  // report DATE via the day-of-week rule (Mon/Tue/Fri → NIFTY, Wed/Thu → SENSEX).
+  const instrFilter = instrumentForDate(today);
+  console.log(`Instrument for ${today} (day rule): ${instrFilter}`);
+  if (isNonTradingDay(today)) {
+    console.warn(
+      `⚠ ${today} is a weekend or NSE holiday (config/holidays.json) — not a trading session; the report may be empty.`
+    );
+  }
 
   // Connect to TradingView first — needed both for the live-log fallback below
   // and for fetching option bars later.

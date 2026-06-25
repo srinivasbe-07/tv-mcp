@@ -173,14 +173,24 @@ Instrument / day / ITM-depth routing is shared with supertrend (see `supertrend-
 
 ## 9. Alert names (must already exist in TradingView)
 
-| Instrument | Direction | Entry              | Exit              | Target              |
-| ---------- | --------- | ------------------ | ----------------- | ------------------- |
-| NIFTY      | up (CE)   | `0NiftyBiasEntry`  | `0NiftyBiasExit`  | `0NiftyBiasTarget`  |
-| NIFTY      | down (PE) | `zNiftyBiasEntry`  | `zNiftyBiasExit`  | `zNiftyBiasTarget`  |
-| SENSEX     | up (CE)   | `0SensexBiasEntry` | `0SensexBiasExit` | `0SensexBiasTarget` |
-| SENSEX     | down (PE) | `zSensexBiasEntry` | `zSensexBiasExit` | `zSensexBiasTarget` |
+**6 SHARED alerts** — the same 6 are reused for both NIFTY and SENSEX. Only one
+instrument trades per day (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) so they never
+overlap; repoint these 6 at whichever instrument is active that day instead of
+maintaining a separate Nifty/Sensex set (12 → 6).
+
+| Direction | Entry        | Exit        | Target        |
+| --------- | ------------ | ----------- | ------------- |
+| up (CE)   | `0BiasEntry` | `0BiasExit` | `0BiasTarget` |
+| down (PE) | `zBiasEntry` | `zBiasExit` | `zBiasTarget` |
 
 `0` prefix sorts up-alerts to the top of the Alerts panel; `z` sorts down-alerts to the bottom.
+
+> The EOD report can no longer read the instrument from the alert name, so it
+> labels each trade NIFTY/SENSEX from the **report date** via the day-of-week
+> rule (Mon/Tue/Fri → NIFTY, Wed/Thu → SENSEX) — purely weekday-based, matching
+> the monitor (holidays only shift expiry, never the index). If the report date
+> is a weekend or NSE holiday (`config/holidays.json`), the report warns that it
+> isn't a trading session.
 
 ---
 

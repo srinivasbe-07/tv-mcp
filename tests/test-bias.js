@@ -15,7 +15,13 @@ import {
   deriveBiasStatus,
   INSTRUMENTS,
 } from '../monitors/monitor.js';
-import { classify, parseTrades, computeExitValues } from '../scripts/generate-bias-report.js';
+import {
+  classify,
+  parseTrades,
+  computeExitValues,
+  instrumentForDate,
+  isNonTradingDay,
+} from '../scripts/generate-bias-report.js';
 import { isMarketOff, extractSnapshotItems, lastTradingDay } from '../scripts/read-live-log.js';
 import { pickDailyBar, formatVixNote } from '../scripts/fetch-vix.js';
 
@@ -49,27 +55,22 @@ console.log('\n=== bias-monitor unit tests ===');
 // ---------------------------------------------------------------------------
 // BIAS_ALERT_NAMES — exact names the user specified
 // ---------------------------------------------------------------------------
-section('BIAS_ALERT_NAMES — NIFTY');
-test('up entry  = 0NiftyBiasEntry', () => BIAS_ALERT_NAMES.NIFTY.up.entry === '0NiftyBiasEntry');
-test('up exit   = 0NiftyBiasExit', () => BIAS_ALERT_NAMES.NIFTY.up.exit === '0NiftyBiasExit');
-test('up target = 0NiftyBiasTarget', () => BIAS_ALERT_NAMES.NIFTY.up.target === '0NiftyBiasTarget');
-test('down entry  = zNiftyBiasEntry', () =>
-  BIAS_ALERT_NAMES.NIFTY.down.entry === 'zNiftyBiasEntry');
-test('down exit   = zNiftyBiasExit', () => BIAS_ALERT_NAMES.NIFTY.down.exit === 'zNiftyBiasExit');
-test('down target = zNiftyBiasTarget', () =>
-  BIAS_ALERT_NAMES.NIFTY.down.target === 'zNiftyBiasTarget');
+// 6 SHARED bias alerts — the SAME names for both NIFTY and SENSEX.
+section('BIAS_ALERT_NAMES — shared 0Bias*/zBias*');
+test('up entry  = 0BiasEntry', () => BIAS_ALERT_NAMES.NIFTY.up.entry === '0BiasEntry');
+test('up exit   = 0BiasExit', () => BIAS_ALERT_NAMES.NIFTY.up.exit === '0BiasExit');
+test('up target = 0BiasTarget', () => BIAS_ALERT_NAMES.NIFTY.up.target === '0BiasTarget');
+test('down entry  = zBiasEntry', () => BIAS_ALERT_NAMES.NIFTY.down.entry === 'zBiasEntry');
+test('down exit   = zBiasExit', () => BIAS_ALERT_NAMES.NIFTY.down.exit === 'zBiasExit');
+test('down target = zBiasTarget', () => BIAS_ALERT_NAMES.NIFTY.down.target === 'zBiasTarget');
 
-section('BIAS_ALERT_NAMES — SENSEX');
-test('up entry  = 0SensexBiasEntry', () => BIAS_ALERT_NAMES.SENSEX.up.entry === '0SensexBiasEntry');
-test('up exit   = 0SensexBiasExit', () => BIAS_ALERT_NAMES.SENSEX.up.exit === '0SensexBiasExit');
-test('up target = 0SensexBiasTarget', () =>
-  BIAS_ALERT_NAMES.SENSEX.up.target === '0SensexBiasTarget');
-test('down entry  = zSensexBiasEntry', () =>
-  BIAS_ALERT_NAMES.SENSEX.down.entry === 'zSensexBiasEntry');
-test('down exit   = zSensexBiasExit', () =>
-  BIAS_ALERT_NAMES.SENSEX.down.exit === 'zSensexBiasExit');
-test('down target = zSensexBiasTarget', () =>
-  BIAS_ALERT_NAMES.SENSEX.down.target === 'zSensexBiasTarget');
+section('BIAS_ALERT_NAMES — NIFTY and SENSEX share one set');
+test('SENSEX up entry  = 0BiasEntry', () => BIAS_ALERT_NAMES.SENSEX.up.entry === '0BiasEntry');
+test('SENSEX down target = zBiasTarget', () =>
+  BIAS_ALERT_NAMES.SENSEX.down.target === 'zBiasTarget');
+test('NIFTY set === SENSEX set (same 6 alerts)', () =>
+  BIAS_ALERT_NAMES.NIFTY.up.entry === BIAS_ALERT_NAMES.SENSEX.up.entry &&
+  BIAS_ALERT_NAMES.NIFTY.down.exit === BIAS_ALERT_NAMES.SENSEX.down.exit);
 
 // ---------------------------------------------------------------------------
 // calcBiasStrike — up = CE (below ATM), down = PE (above ATM)
@@ -122,36 +123,36 @@ test('activates the 3 up alerts', () => {
   const p = biasAlertPlan('NIFTY', 'up');
   return (
     p.activate.length === 3 &&
-    p.activate.includes('0NiftyBiasEntry') &&
-    p.activate.includes('0NiftyBiasExit') &&
-    p.activate.includes('0NiftyBiasTarget')
+    p.activate.includes('0BiasEntry') &&
+    p.activate.includes('0BiasExit') &&
+    p.activate.includes('0BiasTarget')
   );
 });
 test('deactivates the 3 down alerts', () => {
   const p = biasAlertPlan('NIFTY', 'up');
   return (
     p.deactivate.length === 3 &&
-    p.deactivate.includes('zNiftyBiasEntry') &&
-    p.deactivate.includes('zNiftyBiasExit') &&
-    p.deactivate.includes('zNiftyBiasTarget')
+    p.deactivate.includes('zBiasEntry') &&
+    p.deactivate.includes('zBiasExit') &&
+    p.deactivate.includes('zBiasTarget')
   );
 });
 
 section('biasAlertPlan — NIFTY down (mirror)');
 test('activates the 3 down alerts', () => {
   const p = biasAlertPlan('NIFTY', 'down');
-  return p.activate.includes('zNiftyBiasEntry') && p.deactivate.includes('0NiftyBiasEntry');
+  return p.activate.includes('zBiasEntry') && p.deactivate.includes('0BiasEntry');
 });
 
-section('biasAlertPlan — SENSEX + edge cases');
-test('SENSEX up activates 0Sensex* and deactivates zSensex*', () => {
+section('biasAlertPlan — SENSEX (same shared plan) + edge cases');
+test('SENSEX up activates 0Bias* and deactivates zBias*', () => {
   const p = biasAlertPlan('SENSEX', 'up');
-  return p.activate.includes('0SensexBiasTarget') && p.deactivate.includes('zSensexBiasTarget');
+  return p.activate.includes('0BiasTarget') && p.deactivate.includes('zBiasTarget');
 });
-test('only touches today instrument — NIFTY plan has no SENSEX names', () => {
-  const p = biasAlertPlan('NIFTY', 'up');
-  const all = [...p.activate, ...p.deactivate];
-  return all.every((n) => n.includes('Nifty'));
+test('SENSEX plan === NIFTY plan (shared alerts)', () => {
+  const n = biasAlertPlan('NIFTY', 'up');
+  const s = biasAlertPlan('SENSEX', 'up');
+  return JSON.stringify(n) === JSON.stringify(s);
 });
 test('unknown instrument → empty plan', () => {
   const p = biasAlertPlan('BANKNIFTY', 'up');
@@ -161,9 +162,9 @@ test('unknown instrument → empty plan', () => {
 // ---------------------------------------------------------------------------
 // processBiasHistory — single-position open/closed tracking
 // ---------------------------------------------------------------------------
-const UP_ENTRY = '0NiftyBiasEntry';
-const UP_EXIT = '0NiftyBiasExit';
-const UP_TGT = '0NiftyBiasTarget';
+const UP_ENTRY = '0BiasEntry';
+const UP_EXIT = '0BiasExit';
+const UP_TGT = '0BiasTarget';
 
 function freshBiasState(overrides = {}) {
   return { biasPosition: 'closed', lastBiasLogSnapshot: [], ...overrides };
@@ -222,7 +223,7 @@ test('no bias alerts in history → stays closed', () => {
 test('opposite-direction alert ignored for active direction', () => {
   // We are tracking 'up' but only a down-entry exists → up stays closed
   const s = freshBiasState();
-  processBiasHistory([{ name: 'zNiftyBiasEntry', symbol: '' }], s, 'NIFTY', 'up');
+  processBiasHistory([{ name: 'zBiasEntry', symbol: '' }], s, 'NIFTY', 'up');
   return s.biasPosition === 'closed';
 });
 test('returns changed=true when derived differs', () => {
@@ -315,27 +316,47 @@ const mk = (name, sym, time) => ({
   raw: `${name}\n${sym}, 1m\n${time}\nWebhook`,
 });
 
+// classify is now instrument-agnostic (shared names) → returns { side, event }.
 section('classify (bias report)');
-test('0NiftyBiasEntry → NIFTY/CE/entry', () => {
-  const c = classify('0NiftyBiasEntry');
-  return c && c.instrument === 'NIFTY' && c.side === 'CE' && c.event === 'entry';
+test('0BiasEntry → CE/entry', () => {
+  const c = classify('0BiasEntry');
+  return c && c.side === 'CE' && c.event === 'entry';
 });
-test('zSensexBiasTarget → SENSEX/PE/target', () => {
-  const c = classify('zSensexBiasTarget');
-  return c && c.instrument === 'SENSEX' && c.side === 'PE' && c.event === 'target';
+test('zBiasTarget → PE/target', () => {
+  const c = classify('zBiasTarget');
+  return c && c.side === 'PE' && c.event === 'target';
 });
-test('zNiftyBiasExit → NIFTY/PE/exit', () => {
-  const c = classify('zNiftyBiasExit');
-  return c && c.instrument === 'NIFTY' && c.side === 'PE' && c.event === 'exit';
+test('zBiasExit → PE/exit', () => {
+  const c = classify('zBiasExit');
+  return c && c.side === 'PE' && c.event === 'exit';
 });
 test('non-bias alert → null', () => classify('niftySupertrendLongEntry') === null);
+
+// instrument routing + holiday guard (shared names → instrument from the date)
+// Jun 2026: 15=Mon, 16=Tue, 17=Wed, 18=Thu, 19=Fri, 20=Sat, 21=Sun. Jun 26 = NSE holiday.
+section('instrumentForDate — Mon/Tue/Fri → NIFTY, Wed/Thu → SENSEX');
+test('Mon → NIFTY', () => instrumentForDate('2026-06-15') === 'NIFTY');
+test('Tue → NIFTY', () => instrumentForDate('2026-06-16') === 'NIFTY');
+test('Wed → SENSEX', () => instrumentForDate('2026-06-17') === 'SENSEX');
+test('Thu → SENSEX', () => instrumentForDate('2026-06-18') === 'SENSEX');
+test('Fri → NIFTY', () => instrumentForDate('2026-06-19') === 'NIFTY');
+
+section('isNonTradingDay — weekend / NSE holiday (reuses holidays.json)');
+const HOL_RPT = new Set(['2026-06-26']);
+test('Monday → trading day (false)', () => isNonTradingDay('2026-06-15', HOL_RPT) === false);
+test('Saturday → non-trading (true)', () => isNonTradingDay('2026-06-20', HOL_RPT) === true);
+test('Sunday → non-trading (true)', () => isNonTradingDay('2026-06-21', HOL_RPT) === true);
+test('Friday NSE holiday → non-trading (true)', () =>
+  isNonTradingDay('2026-06-26', HOL_RPT) === true);
+test('weekday not in holiday set → trading day (false)', () =>
+  isNonTradingDay('2026-06-25', HOL_RPT) === false);
 
 section('parseTrades — entry → exit / target');
 test('entry → exit pairs into one trade', () => {
   // snapshot is newest-first
   const snap = [
-    mk('0SensexBiasExit', 'BSX260618C77300', '11:30:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('0BiasExit', 'BSX260618C77300', '11:30:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return (
@@ -348,23 +369,28 @@ test('entry → exit pairs into one trade', () => {
 });
 test('entry → target closes the trade (exitType=target)', () => {
   const snap = [
-    mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('0BiasTarget', 'BSX260618C77300', '11:30:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return t.length === 1 && t[0].exitType === 'target';
 });
-test('instrFilter excludes other instrument', () => {
+test('instrument is labelled from the caller (shared names, day rule)', () => {
   const snap = [
-    mk('0NiftyBiasExit', 'NIFTY260603C23300', '11:30:00'),
-    mk('0NiftyBiasEntry', 'NIFTY260603C23300', '11:00:00'),
+    mk('0BiasExit', 'NIFTY260603C23300', '11:30:00'),
+    mk('0BiasEntry', 'NIFTY260603C23300', '11:00:00'),
   ];
-  return parseTrades(snap, 'SENSEX').length === 0 && parseTrades(snap, 'NIFTY').length === 1;
+  const n = parseTrades(snap, 'NIFTY');
+  const s = parseTrades(snap, 'SENSEX');
+  // Same fires → same trade count; only the attached instrument label differs.
+  return (
+    n.length === 1 && s.length === 1 && n[0].instrument === 'NIFTY' && s[0].instrument === 'SENSEX'
+  );
 });
 test('down (PE) entry/exit pairs correctly', () => {
   const snap = [
-    mk('zSensexBiasExit', 'BSX260618P77600', '12:00:00'),
-    mk('zSensexBiasEntry', 'BSX260618P77600', '11:45:00'),
+    mk('zBiasExit', 'BSX260618P77600', '12:00:00'),
+    mk('zBiasEntry', 'BSX260618P77600', '11:45:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return t.length === 1 && t[0].side === 'PE';
@@ -374,7 +400,7 @@ test('down (PE) entry/exit pairs correctly', () => {
 // none fires before the next entry, the row is left with a blank exit ('manual').
 section('parseTrades — one trade per entry');
 test('lone entry (no close) → 1 entry-only trade with blank exit', () => {
-  const snap = [mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00')];
+  const snap = [mk('0BiasEntry', 'BSX260618C77300', '11:00:00')];
   const t = parseTrades(snap, 'SENSEX');
   return (
     t.length === 1 &&
@@ -387,9 +413,9 @@ test('lone entry (no close) → 1 entry-only trade with blank exit', () => {
 test('two entries, one close between → 2 trades (first closed, second blank)', () => {
   // newest-first: entry@12:00, target@11:30, entry@11:00
   const snap = [
-    mk('0SensexBiasEntry', 'BSX260618C77300', '12:00:00'),
-    mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '12:00:00'),
+    mk('0BiasTarget', 'BSX260618C77300', '11:30:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return (
@@ -405,9 +431,9 @@ test('two entries, one close between → 2 trades (first closed, second blank)',
 test('multiple closes for one entry → keep the latest, ignore the rest', () => {
   // newest-first: exit@11:45 (latest), exit@11:30, entry@11:00
   const snap = [
-    mk('0SensexBiasExit', 'BSX260618C77300', '11:45:00'),
-    mk('0SensexBiasExit', 'BSX260618C77300', '11:30:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('0BiasExit', 'BSX260618C77300', '11:45:00'),
+    mk('0BiasExit', 'BSX260618C77300', '11:30:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return t.length === 1 && t[0].exitTime === '11:45:00';
@@ -415,8 +441,8 @@ test('multiple closes for one entry → keep the latest, ignore the rest', () =>
 test('close before any entry → skipped (no orphan trade)', () => {
   // newest-first: entry@11:00, exit@10:30 (dangling, no open entry)
   const snap = [
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
-    mk('0SensexBiasExit', 'BSX260618C77300', '10:30:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('0BiasExit', 'BSX260618C77300', '10:30:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return t.length === 1 && t[0].entryTime === '11:00:00' && t[0].exitTime === '';
@@ -424,10 +450,10 @@ test('close before any entry → skipped (no orphan trade)', () => {
 test('CE and PE entries are tracked independently and interleaved by time', () => {
   // newest-first
   const snap = [
-    mk('zSensexBiasExit', 'BSX260618P77600', '12:00:00'),
-    mk('zSensexBiasEntry', 'BSX260618P77600', '11:45:00'),
-    mk('0SensexBiasTarget', 'BSX260618C77300', '11:30:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('zBiasExit', 'BSX260618P77600', '12:00:00'),
+    mk('zBiasEntry', 'BSX260618P77600', '11:45:00'),
+    mk('0BiasTarget', 'BSX260618C77300', '11:30:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return (
@@ -440,9 +466,9 @@ test('CE and PE entries are tracked independently and interleaved by time', () =
 });
 test('ids are reassigned 1..N after the chronological sort', () => {
   const snap = [
-    mk('zSensexBiasExit', 'BSX260618P77600', '12:00:00'),
-    mk('zSensexBiasEntry', 'BSX260618P77600', '11:45:00'),
-    mk('0SensexBiasEntry', 'BSX260618C77300', '11:00:00'),
+    mk('zBiasExit', 'BSX260618P77600', '12:00:00'),
+    mk('zBiasEntry', 'BSX260618P77600', '11:45:00'),
+    mk('0BiasEntry', 'BSX260618C77300', '11:00:00'),
   ];
   const t = parseTrades(snap, 'SENSEX');
   return t.length === 2 && t[0].id === 1 && t[1].id === 2;

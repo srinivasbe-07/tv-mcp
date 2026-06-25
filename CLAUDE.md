@@ -70,14 +70,12 @@ It runs **inside the merged monitor process** (`monitors/monitor.js`) — supert
 
 ### Alert Names (must already exist in TradingView)
 
-6 per instrument — 3 for `up` (CE), 3 for `down` (PE). Only the today-instrument's chosen direction is active; the opposite direction's 3 alerts are **deactivated**.
+**6 SHARED alerts total** — the SAME 6 are reused for both NIFTY and SENSEX (3 for `up`/CE, 3 for `down`/PE). Only one instrument trades per day (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) so they never overlap — you just repoint these 6 at whichever instrument is active that day instead of maintaining a separate Nifty/Sensex set. Only the chosen direction is active; the opposite direction's 3 alerts are **deactivated**.
 
-| Instrument | Direction | Entry              | Exit              | Target              |
-| ---------- | --------- | ------------------ | ----------------- | ------------------- |
-| NIFTY      | up        | `0NiftyBiasEntry`  | `0NiftyBiasExit`  | `0NiftyBiasTarget`  |
-| NIFTY      | down      | `zNiftyBiasEntry`  | `zNiftyBiasExit`  | `zNiftyBiasTarget`  |
-| SENSEX     | up        | `0SensexBiasEntry` | `0SensexBiasExit` | `0SensexBiasTarget` |
-| SENSEX     | down      | `zSensexBiasEntry` | `zSensexBiasExit` | `zSensexBiasTarget` |
+| Direction | Entry        | Exit        | Target        |
+| --------- | ------------ | ----------- | ------------- |
+| up (CE)   | `0BiasEntry` | `0BiasExit` | `0BiasTarget` |
+| down (PE) | `zBiasEntry` | `zBiasExit` | `zBiasTarget` |
 
 (`0` prefix sorts up-alerts to the top of the Alerts panel; `z` sorts down-alerts to the bottom.)
 
@@ -100,7 +98,7 @@ It runs **inside the merged monitor process** (`monitors/monitor.js`) — supert
 
 Same as the supertrend EOD report, for bias trades. Click **↧ EOD Report** on the `/bias` page (or `npm run report:bias` / `node scripts/generate-bias-report.js [YYYY-MM-DD]`).
 
-- Parses bias **entry → (exit OR target)** pairs from the alert log, maps up→CE / down→PE.
+- Parses bias **entry → (exit OR target)** pairs from the alert log, maps up→CE / down→PE. Because the 6 alerts are shared across instruments, the report labels each trade NIFTY or SENSEX from the **report date** via the day-of-week rule (Mon/Tue/Fri → NIFTY, Wed/Thu → SENSEX) — which picks the right SL/target/lot constants. (Index routing is purely weekday-based, matching the monitor — holidays only shift expiry, never the index.) If the report date is a weekend or NSE holiday (`config/holidays.json`), the report logs a warning that it isn't a trading session.
 - **Alert source**: uses `position.json`'s `logSnapshot` (written by the monitor during market hours). When the market is **off** (weekend / holiday / after close) that snapshot is empty, so the report reads the Alerts **Log** tab live from TradingView instead. The live read is skipped during market hours so it never disturbs the running monitor — same fallback applies to the supertrend EOD report.
 - Fetches each option's 1m prices from TradingView and computes two exit models (bias-specific, **different from supertrend**):
   - **Exit w/SL** — stepped **trailing stop**: initial SL **NIFTY 15 / SENSEX 35** pts; for every **NIFTY 10 / SENSEX 22** pts of favourable movement the stop ratchets up to **NIFTY 12 / SENSEX 25** pts behind that milestone (never moves down). Exits at the stop if a 1m bar's low breaches it, else at the actual exit price.
@@ -118,7 +116,7 @@ Same as the supertrend EOD report, for bias trades. Click **↧ EOD Report** on 
 
 - Does not detect candlestick patterns (removed) — direction is manual
 - Does not place orders — only manages TradingView alerts
-- Does not create alerts — the 12 bias alerts must already exist
+- Does not create alerts — the 6 shared bias alerts must already exist
 
 ### Day H/L Lines (`/bias` page)
 
@@ -140,7 +138,7 @@ they never clash with supertrend's alert work; today's (offset 0) line refreshes
 
 A dedicated UI page for verifying that all 8 supertrend alerts exist in TradingView and can be updated correctly. Use this after TradingView restarts, after renaming alerts, or when debugging alert update failures.
 
-The page also has a **BIAS ALERTS** section (NIFTY + SENSEX) that tests the 6 bias alerts per instrument (UP=CE entry/exit/target, DOWN=PE entry/exit/target) via `/api/test/bias` — same flow, updating each to its ITM strike at price 0.
+The page also has a **BIAS ALERTS** section (NIFTY + SENSEX) that tests the 6 **shared** bias alerts (UP=CE entry/exit/target, DOWN=PE entry/exit/target) via `/api/test/bias` — same flow, updating each to its ITM strike at price 0. Both cards target the same 6 alerts; pick NIFTY or SENSEX to point them at that instrument's option symbols.
 
 ### How to access
 

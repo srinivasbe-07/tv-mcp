@@ -547,15 +547,15 @@ app.post('/api/test/supertrend', async (req, res) => {
 // ── Bias Alert Test ───────────────────────────────────────────────
 // Verifies the bias alerts (up=CE entry/exit/target, down=PE entry/exit/target)
 // can be updated. Mirrors /api/test/supertrend but updates symbol + price 0.
+// 6 SHARED bias alerts reused for both NIFTY and SENSEX (see BIAS_ALERT_NAMES in
+// monitors/monitor.js) — testing either instrument repoints the same 6 alerts.
+const SHARED_BIAS_TEST = {
+  up: { entry: '0BiasEntry', exit: '0BiasExit', target: '0BiasTarget' },
+  down: { entry: 'zBiasEntry', exit: 'zBiasExit', target: 'zBiasTarget' },
+};
 const BIAS_TEST_NAMES = {
-  NIFTY: {
-    up: { entry: '0NiftyBiasEntry', exit: '0NiftyBiasExit', target: '0NiftyBiasTarget' },
-    down: { entry: 'zNiftyBiasEntry', exit: 'zNiftyBiasExit', target: 'zNiftyBiasTarget' },
-  },
-  SENSEX: {
-    up: { entry: '0SensexBiasEntry', exit: '0SensexBiasExit', target: '0SensexBiasTarget' },
-    down: { entry: 'zSensexBiasEntry', exit: 'zSensexBiasExit', target: 'zSensexBiasTarget' },
-  },
+  NIFTY: SHARED_BIAS_TEST,
+  SENSEX: SHARED_BIAS_TEST,
 };
 
 app.post('/api/test/bias', async (req, res) => {
