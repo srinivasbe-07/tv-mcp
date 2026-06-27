@@ -634,7 +634,9 @@
             <b>2</b> = 2 days prior, … <b>High days</b> draws a HIGH (red) line per offset;
             <b>Low days</b> draws a LOW (green) line — independently, so you can plot e.g. highs of
             <b>1 2 3</b> with a low of <b>0</b>. The monitor draws on its cooldown so it never
-            clashes with supertrend. Saved to disk — redrawn on restart. Empty = no lines.
+            clashes with supertrend. Lines are a one-time snapshot — today's (<b>0</b>) high/low is
+            captured live and then frozen; click <b>Apply</b> again to re-snapshot, or restart the
+            monitor. Saved to disk. Empty = no lines.
           </div>
           <div class="dir-msg" id="day-lines-msg"></div>
         </div>
@@ -741,7 +743,7 @@
             document.getElementById('day-highs').value = (r.dayHighs || []).join(' ');
             document.getElementById('day-lows').value = (r.dayLows || []).join(' ');
             flashDayLines(
-              `Saved — highs [${(r.dayHighs || []).join(', ')}] lows [${(r.dayLows || []).join(', ')}] — monitor redraws on its cooldown tick`,
+              `Saved — highs [${(r.dayHighs || []).join(', ')}] lows [${(r.dayLows || []).join(', ')}] — monitor re-snapshots (incl. today's live H/L) on its next cooldown tick`,
               'ok-msg'
             );
           } else flashDayLines(r.error || 'Failed', 'err-msg');

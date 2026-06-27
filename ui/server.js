@@ -741,6 +741,9 @@ app.post('/api/bias/daylines', (req, res) => {
     }
     p.dayHighs = dayHighs;
     p.dayLows = dayLows;
+    // Bump a nonce so the monitor redraws once even when the offsets are unchanged —
+    // a re-Apply re-captures today's (offset 0) live high/low, then freezes it again.
+    p.dayLinesNonce = Date.now();
     delete p.dayLines; // migrated to separate H/L lists
     fs.writeFileSync(POSITION_FILE + '.tmp', JSON.stringify(p, null, 2));
     fs.renameSync(POSITION_FILE + '.tmp', POSITION_FILE);

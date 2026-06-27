@@ -124,13 +124,16 @@ Draws horizontal HIGH/LOW lines on the spot chart for the day offsets you choose
 `/bias` page has **two independent boxes**:
 
 - **High days** → draws a HIGH (red) line per offset (e.g. `1 2 3` = prev-3-days' highs)
-- **Low days** → draws a LOW (green) line per offset (e.g. `0` = today's developing low)
+- **Low days** → draws a LOW (green) line per offset (e.g. `0` = today's live low, frozen at draw)
 
 Offset `0` = today, `1` = previous day, `2` = 2 days prior, … (range 0–60). The two lists
 are separate, so you can plot only highs of some days and only lows of others. Saved to
 `position.json` as `dayHighs` / `dayLows` (a legacy single `dayLines` array still works and
 means "both H and L for each offset"). The monitor draws these on its idle/cooldown tick so
-they never clash with supertrend's alert work; today's (offset 0) line refreshes every 2 min.
+they never clash with supertrend's alert work. Lines are a **one-time snapshot** — today's
+(offset 0) high/low is captured **live** when drawn and then **frozen**. It does NOT
+auto-refresh; it redraws only when you **re-Apply** on `/bias` (Apply bumps `dayLinesNonce`,
+forcing one redraw even if the offsets are unchanged) or **restart** the monitor.
 
 ---
 

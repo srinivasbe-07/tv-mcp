@@ -953,7 +953,6 @@ export function processBiasHistory(historyItems, stateObj, instrument, direction
 const DRAWN_IDS_FILE = './logs/drawn-ids.json';
 let MONITOR_TAB_ID = ''; // chart tab the monitor draws on (for diagnostics)
 let lastDayLinesKey = ''; // signature of what's drawn — skip redraw when unchanged
-let lastDayLinesDrawAt = 0; // throttle today's developing-H/L refresh
 
 function loadDrawnIds() {
   try {
@@ -974,6 +973,8 @@ function saveDrawnIds() {
 // Read the user's day-line selection from position.json (UI-owned). Highs and lows
 // are independent offset lists, e.g. { highs: [1,2,3], lows: [0] }. Legacy: a single
 // dayLines array meant draw BOTH H and L for each offset — honoured as a fallback.
+// `nonce` is bumped by the /bias Apply endpoint so a re-Apply forces one redraw even
+// when the offsets are unchanged (re-snapshots today's live high/low).
 function loadDayLineSel() {
   const clean = (a) =>
     (Array.isArray(a) ? a : [])
@@ -983,11 +984,11 @@ function loadDayLineSel() {
     const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
     if (!p.dayHighs && !p.dayLows && Array.isArray(p.dayLines)) {
       const legacy = clean(p.dayLines);
-      return { highs: legacy, lows: legacy };
+      return { highs: legacy, lows: legacy, nonce: p.dayLinesNonce };
     }
-    return { highs: clean(p.dayHighs), lows: clean(p.dayLows) };
+    return { highs: clean(p.dayHighs), lows: clean(p.dayLows), nonce: p.dayLinesNonce };
   } catch (_e) {
-    return { highs: [], lows: [] };
+    return { highs: [], lows: [], nonce: null };
   }
 }
 
@@ -1161,17 +1162,15 @@ async function drawLevels(cdp, levelObjects, spotSymbol) {
 }
 
 // Draw H/L lines for the user-selected offsets (position.json → dayHighs / dayLows).
-// offset 0 = today (developing bar), 1 = previous day, 2 = 2 days prior, …
-// Redraws when the selection changes, on force (startup), or — if "today" (0) is
-// selected — every few minutes so today's developing H/L stays current. Completed
-// days are static, so a no-today selection draws once. Empty selection clears all.
+// offset 0 = today (live bar), 1 = previous day, 2 = 2 days prior, …
+// One-time snapshot: draws only on force (startup/restart) or when the selection /
+// nonce changes (user re-applies on /bias). Today's (offset 0) high/low is captured
+// live at draw time and then FROZEN — it does NOT auto-refresh. Empty selection clears.
 async function updateDayLines(cdp, spotSymbol, force = false) {
-  const { highs, lows } = loadDayLineSel();
-  const key = 'H:' + highs.join(',') + '|L:' + lows.join(',');
+  const { highs, lows, nonce } = loadDayLineSel();
+  const key = 'H:' + highs.join(',') + '|L:' + lows.join(',') + '|N:' + (nonce ?? '');
   const offsetsChanged = key !== lastDayLinesKey;
-  const refreshToday =
-    (highs.includes(0) || lows.includes(0)) && Date.now() - lastDayLinesDrawAt > 2 * 60_000;
-  if (!force && !offsetsChanged && !refreshToday) return;
+  if (!force && !offsetsChanged) return;
 
   let levels = [];
   const allOffsets = [...new Set([...highs, ...lows])];
@@ -1204,7 +1203,6 @@ async function updateDayLines(cdp, spotSymbol, force = false) {
   const drew = await drawLevels(cdp, levels, spotSymbol);
   if (!drew) return; // API not ready — retry next idle tick
   lastDayLinesKey = key;
-  lastDayLinesDrawAt = Date.now();
   log(`[LINES] drew highs [${highs.join(', ')}] lows [${lows.join(', ')}]`);
 }
 
