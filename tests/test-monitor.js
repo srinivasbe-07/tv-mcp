@@ -506,6 +506,30 @@ test('fresh-start: returns changed=false when derived state matches existing', (
   return processHistoryForPositionChanges([{ name: CE_ENTRY }], s) === false;
 });
 
+// Cross-instrument fallback: fresh start, no today-instrument alerts in the log,
+// but a persisted 'open' from a DIFFERENT instrument (e.g. leftover NIFTY open on a
+// SENSEX day). It can't be a live trade for today → reset to closed, don't preserve.
+test('fresh-start: stale NIFTY open on SENSEX day → CE reset to closed', () => {
+  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: 'NIFTY' });
+  processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'SENSEX');
+  return s.CE === 'closed' && s.PE === 'closed';
+});
+test('fresh-start: stale NIFTY PE open on SENSEX day → PE reset to closed', () => {
+  const s = makeFreshState({ CE: 'closed', PE: 'open', lastInstrument: 'NIFTY' });
+  processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'SENSEX');
+  return s.PE === 'closed';
+});
+test('fresh-start: same-instrument open preserved (no today alerts in log)', () => {
+  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: 'NIFTY' });
+  processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'NIFTY');
+  return s.CE === 'open';
+});
+test('fresh-start: unknown lastInstrument → open preserved (no reset)', () => {
+  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: null });
+  processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'SENSEX');
+  return s.CE === 'open';
+});
+
 // ---------------------------------------------------------------------------
 // processHistoryForPositionChanges — new-day pre-market (snapshot pre-sealed).
 // Snapshot is pre-populated with current history before processHistory is called,
