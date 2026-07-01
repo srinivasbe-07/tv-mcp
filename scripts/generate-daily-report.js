@@ -72,6 +72,18 @@ const SL = { NIFTY: 15, SENSEX: 35 }; // max loss in pts
 const TARGET_G = { NIFTY: 50, SENSEX: 100 }; // max gain for exitSL
 const TARGET_L = { NIFTY: 31, SENSEX: 70 }; // max gain for tgtPts
 
+// Trailing-stop model (mirrors the bias report). The stop starts at entry−SL and, for
+// every TRAIL_STEP pts of favourable movement (measured by the running high), RISES by
+// TRAIL_RISE pts (cumulative, never down). After n steps the locked level (slTarget, in
+// points) = −SL + n·TRAIL_RISE, and Exit w/Trail SL = entry + slTarget. Because
+// TRAIL_RISE > TRAIL_STEP the stop accelerates and eventually locks in more than the
+// latest milestone — intended, identical to bias.
+const TRAIL_STEP = { NIFTY: 10, SENSEX: 22 };
+const TRAIL_RISE = { NIFTY: 12, SENSEX: 25 };
+// The trailing model is new as of this date — only reports for TRAIL_START onward get
+// slTarget/exitTrail. Earlier reports are left exactly as they were (no new fields).
+const TRAIL_START = '2026-07-01';
+
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
@@ -113,9 +125,9 @@ async function scrollChartToRange(cdp, fromUnix, toUnix) {
 // tradeBars: 1m bars between entry and exit, sorted oldest-first.
 // Scans each bar's high/low to check if SL or target was touched during the trade.
 // This correctly captures cases where price hit the target but Supertrend exit fired later at a lower price.
-function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
+function computeExitValues(instrument, entry, exitRaw, tradeBars = [], withTrail = false) {
   if (entry === null || exitRaw === null) {
-    return { exitSL: null, exitNSL: exitRaw, tgtPts: null };
+    return { exitSL: null, exitNSL: exitRaw, tgtPts: null, slTarget: null, exitTrail: null };
   }
   const sl = SL[instrument] || 15;
   const tgG = TARGET_G[instrument] || 50;
@@ -144,11 +156,27 @@ function computeExitValues(instrument, entry, exitRaw, tradeBars = []) {
   const tgtPts = tgtHit ? tgL : parseFloat((exitSLPrice - entry).toFixed(2));
   const exitTgtPrice = parseFloat((entry + tgL).toFixed(2));
 
+  // Trailing stop (bias-style, July+ only): locked level for the peak the option
+  // reached during the trade. Independent of the actual exit price.
+  let slTarget = null;
+  let exitTrail = null;
+  if (withTrail) {
+    const step = TRAIL_STEP[instrument] || 10;
+    const rise = TRAIL_RISE[instrument] || 12;
+    let maxHigh = entry;
+    for (const bar of tradeBars) if (parseFloat(bar.high) > maxHigh) maxHigh = parseFloat(bar.high);
+    const steps = Math.max(0, Math.floor((maxHigh - entry) / step));
+    slTarget = parseFloat((-sl + steps * rise).toFixed(2));
+    exitTrail = parseFloat((entry + slTarget).toFixed(2));
+  }
+
   return {
     exitSL: parseFloat(exitSLPrice.toFixed(2)),
     exitTgt: exitTgtPrice,
     exitNSL: parseFloat(exitRaw.toFixed(2)),
     tgtPts: tgtPts,
+    slTarget,
+    exitTrail,
   };
 }
 
@@ -437,11 +465,24 @@ async function main() {
       .filter((b) => b.time >= entryUnix - 60 && b.time <= exitUnix)
       .sort((a, b) => a.time - b.time);
 
-    const derived = computeExitValues(t.instrument, t.entryPrice, t.exitPrice, tradeBars);
+    const withTrail = today >= TRAIL_START;
+    const derived = computeExitValues(
+      t.instrument,
+      t.entryPrice,
+      t.exitPrice,
+      tradeBars,
+      withTrail
+    );
     t.exitSL = derived.exitSL;
     t.exitTgt = derived.exitTgt;
     t.exitNSL = derived.exitNSL;
     t.tgtPts = derived.tgtPts;
+    // Trailing stop — July+ only (see TRAIL_START). Older reports never get these
+    // fields, so they render exactly as before.
+    if (withTrail) {
+      t.slTarget = derived.slTarget;
+      t.exitTrail = derived.exitTrail;
+    }
 
     // Max intraday points above entry during the trade (how far price moved favorably)
     t.maxReach =

@@ -506,6 +506,10 @@ Dropdown at the top of each month tab. Shows only dates that have at least one t
 
 ### Trade Table Columns
 
+The column set **differs by report date** (per-day gated):
+
+**June 2026 and earlier** (unchanged):
+
 | Column      | What it shows                                                 |
 | ----------- | ------------------------------------------------------------- |
 | Time        | Entry time (HH:MM)                                            |
@@ -521,7 +525,41 @@ Dropdown at the top of each month tab. Shows only dates that have at least one t
 | P&L w/Tgt ₹ | `tgtPts × lots × lotSize` — P&L with SL and target discipline |
 | P&L w/oSL ₹ | P&L using actual exit — what actually happened                |
 
+**July 2026 onward** — the fixed **Exit w/SL** and raw **Exit w/oSL** columns (and their
+P&L) are **dropped**, leaving exactly two exit models (**target + trail**):
+
+| Column                       | What it shows                               |
+| ---------------------------- | ------------------------------------------- |
+| Time / Symbol / Lots / Entry | (same as above)                             |
+| SL Target                    | Locked trailing-stop level, in points       |
+| Exit w/Trail SL              | `entry + slTarget` — the trailing-stop exit |
+| Exit w/Tgt                   | `entry + TARGET_L` always                   |
+| Tgt Pts                      | `clamp(exitNSL − entry, −SL, TARGET_L)`     |
+| Notes                        | Auto-classified                             |
+| P&L w/Trail ₹                | P&L using the trailing-stop exit            |
+| P&L w/Tgt ₹                  | `tgtPts × lots × lotSize`                   |
+
 P&L = (exit − entry) × lots × lotSize. Green = profit, red = loss. Trades sorted by entry time.
+
+#### Trailing SL (Exit w/Trail SL) — added 2026-07-01
+
+A **bias-style stepped trailing stop**. From **2026-07-01 the supertrend report shows
+only two exit models — Exit w/Tgt and Exit w/Trail SL** — and the old fixed Exit w/SL and
+raw Exit w/oSL columns are hidden. June and earlier render exactly as before (still all
+three original columns, no trail). The stop starts at `entry − SL` and, for every
+`TRAIL_STEP` pts of favourable movement (the trade's running high), rises by `TRAIL_RISE`
+pts (cumulative, never down). After `n` steps the locked level
+`slTarget = −SL + n·TRAIL_RISE`, and `exitTrail = entry + slTarget`. It follows the
+**peak reached**, not the actual exit price. Same parameters as bias:
+
+| Constant   | NIFTY | SENSEX |
+| ---------- | ----- | ------ |
+| TRAIL_STEP | 10    | 22     |
+| TRAIL_RISE | 12    | 25     |
+
+Computed by `generate-daily-report.js` (gated on `TRAIL_START`). Inline edits let you
+adjust **SL Target** (derives Exit w/Trail SL = entry + slTarget); the browser can't
+recompute the peak-based level, so re-run the report to restore exact values.
 
 ---
 
@@ -545,7 +583,8 @@ Clamping prevents outlier exits from skewing the "disciplined" P&L columns.
 
 ### Monthly Summary Cards
 
-Three cards — one per P&L type (w/SL, w/oSL, Tgt):
+One card per P&L type. Up to June 2026: **w/SL, w/oSL, Tgt**. From July 2026 (supertrend):
+**Trail SL, Tgt** only — the w/SL and w/oSL cards are dropped to match the two-exit table.
 
 | Stat         | Meaning                                                          |
 | ------------ | ---------------------------------------------------------------- |

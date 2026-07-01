@@ -876,6 +876,19 @@
       const CS_FULL = 14;
       const CS_LABEL = 10;
       const CS_PNL = 3;
+      // Trailing-stop layout (supertrend only, from 2026-07-01). A trailing day SWAPS
+      // the exit region to [SL Target, Exit w/Trail SL, Exit w/Tgt] and the P&L region
+      // to [P&L w/Trail, P&L w/Tgt] — i.e. the old fixed Exit w/SL and raw Exit w/oSL
+      // (and their P&L columns) are DROPPED, leaving exactly two exit models: target +
+      // trail. Exit region stays 3 wide (w/SL,w/Tgt,w/oSL → SLTarget,Trail,w/Tgt); the
+      // P&L region shrinks 3→2, so csFull −1 and csPnl −1 (csLabel unchanged). Gated
+      // per-day so June and earlier render exactly as before. Bias never trails (it has
+      // its own SL Target column and keeps all three P&L columns).
+      const TRAIL_START = '2026-07-01';
+      const hasTrail = (dateStr) => !IS_BIAS && (dateStr || '') >= TRAIL_START;
+      const csFull = (dateStr) => CS_FULL - (hasTrail(dateStr) ? 1 : 0);
+      const csLabel = (dateStr) => CS_LABEL;
+      const csPnl = (dateStr) => CS_PNL - (hasTrail(dateStr) ? 1 : 0);
       if (IS_BIAS) {
         document.title = 'Bias Reports';
         // Bias keeps the .col-wosl columns (relabeled "Manual Exit" / "Manual P&L")
@@ -1118,12 +1131,16 @@
           return;
         }
 
-        const dayPnl = { sl: [], nsl: [], tgt: [] };
+        // Trailing SL summary is supertrend-only, July 2026 onward (matches the per-day
+        // trail columns). June/earlier months never show a trail card.
+        const monthHasTrail = !IS_BIAS && monthKey >= '2026-07';
+        const dayPnl = { sl: [], nsl: [], tgt: [], trail: [] };
         const pbTrades = { sl: [], nsl: [], tgt: [], dates: [] };
         let totalTrades = 0,
           winSL = 0,
           winNSL = 0,
           winTgt = 0,
+          winTrail = 0,
           winPBSL = 0,
           winPBNSL = 0,
           winPBTgt = 0,
@@ -1136,7 +1153,8 @@
         for (const day of dates.sort((a, b) => (a.date < b.date ? -1 : 1))) {
           let dSL = 0,
             dNSL = 0,
-            dTgt = 0;
+            dTgt = 0,
+            dTrail = 0;
           const filteredTrades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
           // Per-day brokerage (₹200 × trades, or an explicit override), split by instrument.
           const dayBrok = brokerageFor(day, filteredTrades.length);
@@ -1149,11 +1167,20 @@
             if (t.exitNSL !== null && t.entryPrice !== null)
               dNSL += (t.exitNSL - t.entryPrice) * tq;
             if (t.tgtPts !== null) dTgt += t.tgtPts * tq;
+            if (t.exitTrail !== null && t.exitTrail !== undefined && t.entryPrice !== null)
+              dTrail += (t.exitTrail - t.entryPrice) * tq;
             totalTrades++;
             if (t.exitSL !== null && t.entryPrice !== null && t.exitSL - t.entryPrice > 0) winSL++;
             if (t.exitNSL !== null && t.entryPrice !== null && t.exitNSL - t.entryPrice > 0)
               winNSL++;
             if (t.tgtPts !== null && t.tgtPts > 0) winTgt++;
+            if (
+              t.exitTrail !== null &&
+              t.exitTrail !== undefined &&
+              t.entryPrice !== null &&
+              t.exitTrail - t.entryPrice > 0
+            )
+              winTrail++;
             if (t.entryPrice !== null) {
               const hasPB = t.pbEntry !== null && t.pbEntry !== undefined;
               let pSL = null,
@@ -1198,11 +1225,13 @@
           dayPnl.sl.push(Math.round(dSL));
           dayPnl.nsl.push(Math.round(dNSL));
           dayPnl.tgt.push(Math.round(dTgt));
+          dayPnl.trail.push(Math.round(dTrail));
           dayDates.push(day.date);
         }
         const netSL = dayPnl.sl.reduce((a, b) => a + b, 0);
         const netNSL = dayPnl.nsl.reduce((a, b) => a + b, 0);
         const netTgt = dayPnl.tgt.reduce((a, b) => a + b, 0);
+        const netTrail = dayPnl.trail.reduce((a, b) => a + b, 0);
         const netPBSL = pbTrades.sl.reduce((a, b) => a + b, 0);
         const {
           maxDown: ddSL,
@@ -1222,6 +1251,12 @@
           maxDownDate: ddTgtDate,
           maxUpDate: duTgtDate,
         } = calcMonthPeaks(dayPnl.tgt, dayDates);
+        const {
+          maxDown: ddTrail,
+          maxUp: duTrail,
+          maxDownDate: ddTrailDate,
+          maxUpDate: duTrailDate,
+        } = calcMonthPeaks(dayPnl.trail, dayDates);
         const {
           maxDown: ddPBSL,
           maxUp: duPBSL,
@@ -1245,6 +1280,7 @@
         const wrSL = totalTrades ? Math.round((winSL / totalTrades) * 100) : 0;
         const wrNSL = totalTrades ? Math.round((winNSL / totalTrades) * 100) : 0;
         const wrTgt = totalTrades ? Math.round((winTgt / totalTrades) * 100) : 0;
+        const wrTrail = totalTrades ? Math.round((winTrail / totalTrades) * 100) : 0;
         const wrPBSL = pbTradeCount ? Math.round((winPBSL / pbTradeCount) * 100) : 0;
         const wrPBNSL = pbTradeCount ? Math.round((winPBNSL / pbTradeCount) * 100) : 0;
         const wrPBTgt = pbTradeCount ? Math.round((winPBTgt / pbTradeCount) * 100) : 0;
@@ -1252,12 +1288,14 @@
         const netSLAfter = netSL - totalBrokerage,
           netNSLAfter = netNSL - totalBrokerage,
           netTgtAfter = netTgt - totalBrokerage,
+          netTrailAfter = netTrail - totalBrokerage,
           netPBSLAfter = netPBSL - totalBrokerage,
           netPBNSLAfter = netPBNSL - totalBrokerage,
           netPBTgtAfter = netPBTgt - totalBrokerage;
         const capSL = INITIAL_CAPITAL + netSLAfter,
           capNSL = INITIAL_CAPITAL + netNSLAfter,
           capTgt = INITIAL_CAPITAL + netTgtAfter,
+          capTrail = INITIAL_CAPITAL + netTrailAfter,
           capPBSL = INITIAL_CAPITAL + netPBSLAfter,
           capPBNSL = INITIAL_CAPITAL + netPBNSLAfter,
           capPBTgt = INITIAL_CAPITAL + netPBTgtAfter;
@@ -1274,7 +1312,10 @@
           ${statRow('· SENSEX', fmtRs(-brokSENSEX), 'c-orange')}
         </div>
       </div>
-      <div class="scard">
+      ${
+        monthHasTrail
+          ? ''
+          : `<div class="scard">
         <div class="scard-lbl">Exit w/ SL</div>
         ${statRow('Net P&amp;L', fmtRs(netSL), pnlClass(netSL))}
         ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
@@ -1283,8 +1324,26 @@
         ${statRow('Win Rate', `${wrSL}%`, 'c-purple', `${winSL} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddSL < 0 ? fmtRs(ddSL) : '—', 'c-orange', ddSLDate ? fmtDateShort(ddSLDate) : '')}
         ${statRow('Max Run-Up', duSL > 0 && duSL !== netSL ? fmtRs(duSL) : '—', 'c-green', duSL > 0 && duSL !== netSL && duSLDate ? fmtDateShort(duSLDate) : '')}
-      </div>
-      <div class="scard col-wosl">
+      </div>`
+      }
+      ${
+        monthHasTrail
+          ? `<div class="scard" style="border-color:#3a4b6a">
+        <div class="scard-lbl" style="color:#60a5fa">Exit w/ Trail SL</div>
+        ${statRow('Net P&amp;L', fmtRs(netTrail), pnlClass(netTrail))}
+        ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
+        ${statRow('Net (after)', fmtRs(netTrailAfter), pnlClass(netTrailAfter))}
+        ${statRow('Net Capital', fmtCapital(capTrail), pnlClass(capTrail - INITIAL_CAPITAL))}
+        ${statRow('Win Rate', `${wrTrail}%`, 'c-purple', `${winTrail} of ${totalTrades}`)}
+        ${statRow('Max Drawdown', ddTrail < 0 ? fmtRs(ddTrail) : '—', 'c-orange', ddTrailDate ? fmtDateShort(ddTrailDate) : '')}
+        ${statRow('Max Run-Up', duTrail > 0 && duTrail !== netTrail ? fmtRs(duTrail) : '—', 'c-green', duTrail > 0 && duTrail !== netTrail && duTrailDate ? fmtDateShort(duTrailDate) : '')}
+      </div>`
+          : ''
+      }
+      ${
+        monthHasTrail
+          ? ''
+          : `<div class="scard col-wosl">
         <div class="scard-lbl">${IS_BIAS ? 'Manual P&amp;L' : 'Exit w/o SL'}</div>
         ${statRow('Net P&amp;L', fmtRs(netNSL), pnlClass(netNSL))}
         ${statRow('Brokerage', fmtRs(-totalBrokerage), 'c-orange')}
@@ -1293,7 +1352,8 @@
         ${statRow('Win Rate', `${wrNSL}%`, 'c-purple', `${winNSL} of ${totalTrades}`)}
         ${statRow('Max Drawdown', ddNSL < 0 ? fmtRs(ddNSL) : '—', 'c-orange', ddNSLDate ? fmtDateShort(ddNSLDate) : '')}
         ${statRow('Max Run-Up', duNSL > 0 && duNSL !== netNSL ? fmtRs(duNSL) : '—', 'c-green', duNSL > 0 && duNSL !== netNSL && duNSLDate ? fmtDateShort(duNSLDate) : '')}
-      </div>
+      </div>`
+      }
       <div class="scard">
         <div class="scard-lbl">Target Pts</div>
         ${statRow('Net P&amp;L', fmtRs(netTgt), pnlClass(netTgt))}
@@ -1401,9 +1461,9 @@
         <table>
           <thead><tr>
             <th>Time</th><th style="text-align:left">Symbol</th><th>Lots</th>
-            <th>Entry</th><th>Exit w/SL</th>${IS_BIAS ? '<th>SL Target</th>' : ''}<th>Exit w/Tgt</th><th class="col-wosl">${IS_BIAS ? 'Manual Exit' : 'Exit w/oSL'}</th>
+            <th>Entry</th>${hasTrail(dateStr) ? '<th>SL Target</th><th>Exit w/Trail SL</th>' : `<th>Exit w/SL</th>${IS_BIAS ? '<th>SL Target</th>' : ''}`}<th>Exit w/Tgt</th>${hasTrail(dateStr) ? '' : `<th class="col-wosl">${IS_BIAS ? 'Manual Exit' : 'Exit w/oSL'}</th>`}
             <th>Tgt Pts</th><th class="col-candle">Candle</th><th style="text-align:left">Notes</th>
-            <th>P&amp;L w/SL &#x20B9;</th><th>P&amp;L w/Tgt &#x20B9;</th><th class="col-wosl">${IS_BIAS ? 'Manual P&amp;L &#x20B9;' : 'P&amp;L w/oSL &#x20B9;'}</th>
+            ${hasTrail(dateStr) ? '<th>P&amp;L w/Trail &#x20B9;</th>' : '<th>P&amp;L w/SL &#x20B9;</th>'}<th>P&amp;L w/Tgt &#x20B9;</th>${hasTrail(dateStr) ? '' : `<th class="col-wosl">${IS_BIAS ? 'Manual P&amp;L &#x20B9;' : 'P&amp;L w/oSL &#x20B9;'}</th>`}
             <th style="text-align:center">Actions</th>
           </tr></thead>
           <tbody id="tbody-${dayKey}"></tbody>
@@ -1431,16 +1491,19 @@
         });
         tbody.innerHTML = '';
         const monthKey = dateStr.slice(0, 7);
+        const showTrail = hasTrail(dateStr);
         const trades = (day.trades || []).filter((t) => tradePassesFilters(t, monthKey));
         let totSL = 0,
           totNSL = 0,
-          totTgt = 0;
+          totTgt = 0,
+          totTrail = 0;
         let totPBSL = 0,
           totPBTgt = 0,
           totPBNSL = 0;
         const seriesSL = [],
           seriesNSL = [],
-          seriesTgt = [];
+          seriesTgt = [],
+          seriesTrail = [];
 
         trades.forEach((t, idx) => {
           const tq = qty(day.instrument, t.lots);
@@ -1453,6 +1516,10 @@
             t.exitNSL !== null && t.entryPrice !== null
               ? Math.round((t.exitNSL - t.entryPrice) * tq)
               : null;
+          const pTrail =
+            t.exitTrail !== null && t.exitTrail !== undefined && t.entryPrice !== null
+              ? Math.round((t.exitTrail - t.entryPrice) * tq)
+              : null;
           if (pSL !== null) {
             totSL += pSL;
             seriesSL.push(pSL);
@@ -1464,6 +1531,10 @@
           if (pNSL !== null) {
             totNSL += pNSL;
             seriesNSL.push(pNSL);
+          }
+          if (pTrail !== null) {
+            totTrail += pTrail;
+            seriesTrail.push(pTrail);
           }
 
           const hasPBEntry = t.pbEntry !== null && t.pbEntry !== undefined;
@@ -1509,7 +1580,7 @@
 
           const addTr = document.createElement('tr');
           addTr.className = 'add-row-tr';
-          addTr.innerHTML = `<td colspan="${CS_FULL}" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${idx})">+ Add Row Here</button></td>`;
+          addTr.innerHTML = `<td colspan="${csFull(dateStr)}" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${idx})">+ Add Row Here</button></td>`;
           tbody.appendChild(addTr);
 
           const tr = document.createElement('tr');
@@ -1519,16 +1590,15 @@
       <td class="sym-text">${t.entrySymbol || '—'}</td>
       <td>${t.lots}</td>
       <td>${fmt(t.entryPrice)}${hasPBEntry ? `<div style="color:#a78bfa;font-size:10px">${fmt(t.pbEntry)}</div>` : ''}</td>
-      <td>${fmt(t.exitSL)}${hasPBEntry && pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>
-      ${IS_BIAS ? `<td class="${pnlClass(t.slTarget)}">${t.slTarget !== null && t.slTarget !== undefined ? fmtPts(t.slTarget) : '—'}</td>` : ''}
+      ${showTrail ? `<td class="${pnlClass(t.slTarget)}">${t.slTarget !== null && t.slTarget !== undefined ? fmtPts(t.slTarget) : '—'}</td><td>${fmt(t.exitTrail)}</td>` : `<td>${fmt(t.exitSL)}${hasPBEntry && pbVals ? pb(pbVals.pbExitSL, false) : ''}</td>${IS_BIAS ? `<td class="${pnlClass(t.slTarget)}">${t.slTarget !== null && t.slTarget !== undefined ? fmtPts(t.slTarget) : '—'}</td>` : ''}`}
       <td>${fmt(t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : null)}${hasPBEntry && pbVals ? pb(pbVals.pbExitTgt, false) : ''}</td>
-      <td class="col-wosl">${fmt(t.exitNSL)}</td>
+      ${showTrail ? '' : `<td class="col-wosl">${fmt(t.exitNSL)}</td>`}
       <td class="${pnlClass(t.tgtPts)}">${t.tgtPts !== null && t.tgtPts !== undefined ? fmtPts(t.tgtPts) : '—'}${hasPBEntry && pbTgtPtsDisplay !== null ? `<div class="${pnlClass(pbTgtPtsDisplay)}" style="font-size:10px">${fmtPts(pbTgtPtsDisplay)}</div>` : ''}</td>
       <td class="col-candle" style="color:#94a3b8">${t.candleRange !== null && t.candleRange !== undefined ? fmtPts(t.candleRange) : '—'}</td>
       <td class="notes-cell ${notesClass(t.notes)}" title="${t.notes || ''}">${t.notes || '—'}${t.pbNotes ? `<div style="color:#a78bfa;font-size:10px;margin-top:2px">${t.pbNotes}</div>` : ''}</td>
-      <td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${hasPBEntry && pbSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>
+      ${showTrail ? `<td class="${pnlClass(pTrail)}">${pTrail !== null ? fmtRs(pTrail) : '—'}</td>` : `<td class="${pnlClass(pSL)}">${pSL !== null ? fmtRs(pSL) : '—'}${hasPBEntry && pbSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbSL)}">${fmtRs(pbSL)}</span></div>` : ''}</td>`}
       <td class="${pnlClass(pTgt)}">${pTgt !== null ? fmtRs(pTgt) : '—'}${hasPBEntry && pbTgt !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbTgt)}">${fmtRs(pbTgt)}</span></div>` : ''}</td>
-      <td class="col-wosl ${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>
+      ${showTrail ? '' : `<td class="col-wosl ${pnlClass(pNSL)}">${pNSL !== null ? fmtRs(pNSL) : '—'}${hasPBEntry && pbNSL !== null ? `<div style="font-size:10px"><span class="${pnlClass(pbNSL)}">${fmtRs(pbNSL)}</span></div>` : ''}</td>`}
       <td style="text-align:center">
         <button class="act-btn" onclick="editRow('${dateStr}', '${t.id}', this)">&#x270F; Edit</button>
         <button class="act-btn del" onclick="deleteRow('${dateStr}', '${t.id}')">&#x2715;</button>
@@ -1538,18 +1608,29 @@
 
         const addTrEnd = document.createElement('tr');
         addTrEnd.className = 'add-row-tr';
-        addTrEnd.innerHTML = `<td colspan="${CS_FULL}" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${trades.length})">+ Add Row Here</button></td>`;
+        addTrEnd.innerHTML = `<td colspan="${csFull(dateStr)}" style="position:relative;height:6px;"><button class="add-row-btn" onclick="insertRow('${dateStr}', ${trades.length})">+ Add Row Here</button></td>`;
         tbody.appendChild(addTrEnd);
 
         const { maxDown: dSL, maxUp: uSL } = calcDayPeaks(seriesSL);
         const { maxDown: dTgt, maxUp: uTgt } = calcDayPeaks(seriesTgt);
         const { maxDown: dNSL, maxUp: uNSL } = calcDayPeaks(seriesNSL);
+        const { maxDown: dTrail, maxUp: uTrail } = calcDayPeaks(seriesTrail);
         const pbSubTot = (v) =>
           !IS_BIAS && v !== 0 ? `<div style="color:#a78bfa;font-size:10px">${fmtRs(v)}</div>` : '';
+        // Trail P&L cell (supertrend July+ only) slots in right after the w/SL cell.
+        const trailCell = (v, cls = '') =>
+          showTrail ? `<td class="${cls} ${pnlClass(v)}">${fmtRs(v)}</td>` : '';
+        const trailPeak = (v, up) =>
+          showTrail
+            ? `<td class="${up ? 'c-green' : 'c-orange'}">${(up ? v > 0 : v < 0) ? fmtRs(v) : '—'}</td>`
+            : '';
 
         const totTr = document.createElement('tr');
         totTr.className = 'total-row';
-        totTr.innerHTML = `<td colspan="${CS_LABEL}">Day Total</td><td class="${pnlClass(totSL)}">${fmtRs(totSL)}${pbSubTot(totPBSL)}</td><td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}${pbSubTot(totPBTgt)}</td><td class="col-wosl ${pnlClass(totNSL)}">${fmtRs(totNSL)}${pbSubTot(totPBNSL)}</td><td></td>`;
+        // On trail days the trail P&L takes the (dropped) w/SL slot; w/SL and w/oSL are
+        // hidden. slC/woslC render only on non-trail (June + bias) days.
+        const slC = (html) => (showTrail ? '' : html);
+        totTr.innerHTML = `<td colspan="${csLabel(dateStr)}">Day Total</td>${trailCell(totTrail)}${slC(`<td class="${pnlClass(totSL)}">${fmtRs(totSL)}${pbSubTot(totPBSL)}</td>`)}<td class="${pnlClass(totTgt)}">${fmtRs(totTgt)}${pbSubTot(totPBTgt)}</td>${slC(`<td class="col-wosl ${pnlClass(totNSL)}">${fmtRs(totNSL)}${pbSubTot(totPBNSL)}</td>`)}<td></td>`;
         tbody.appendChild(totTr);
 
         // Per-day brokerage (editable) — default ₹200 × trades, deducted from every P&L column.
@@ -1557,33 +1638,35 @@
         const brokOverridden = Number.isFinite(day.brokerage);
         const brokTr = document.createElement('tr');
         brokTr.className = 'total-row';
-        brokTr.innerHTML = `<td colspan="${CS_LABEL}" style="color:#fbbf24;">Brokerage
+        brokTr.innerHTML = `<td colspan="${csLabel(dateStr)}" style="color:#fbbf24;">Brokerage
           <input type="number" value="${dayBrok}" min="0" step="50" title="Default ₹${BROKERAGE_PER_TRADE} × ${trades.length} trades — edit to override"
             onchange="saveBrokerage('${dateStr}', this.value, ${trades.length})"
             style="width:96px;margin-left:8px;background:#1e1e2e;color:#fbbf24;border:1px solid #4b3d22;border-radius:4px;padding:2px 6px;font-size:12px">
           ${brokOverridden ? '<span style="color:#64748b;font-size:10px;margin-left:6px">edited · ₹' + BROKERAGE_PER_TRADE + '×' + trades.length + '=' + fmtRs(BROKERAGE_PER_TRADE * trades.length) + ' default</span>' : ''}</td>
-          <td class="c-orange">${fmtRs(-dayBrok)}</td><td class="c-orange">${fmtRs(-dayBrok)}</td><td class="col-wosl c-orange">${fmtRs(-dayBrok)}</td><td></td>`;
+          ${showTrail ? `<td class="c-orange">${fmtRs(-dayBrok)}</td>` : ''}${slC(`<td class="c-orange">${fmtRs(-dayBrok)}</td>`)}<td class="c-orange">${fmtRs(-dayBrok)}</td>${slC(`<td class="col-wosl c-orange">${fmtRs(-dayBrok)}</td>`)}<td></td>`;
         tbody.appendChild(brokTr);
 
         const netTr = document.createElement('tr');
         netTr.className = 'total-row';
-        netTr.innerHTML = `<td colspan="${CS_LABEL}" style="font-weight:700">Net after Brokerage</td><td class="${pnlClass(totSL - dayBrok)}">${fmtRs(totSL - dayBrok)}</td><td class="${pnlClass(totTgt - dayBrok)}">${fmtRs(totTgt - dayBrok)}</td><td class="col-wosl ${pnlClass(totNSL - dayBrok)}">${fmtRs(totNSL - dayBrok)}</td><td></td>`;
+        netTr.innerHTML = `<td colspan="${csLabel(dateStr)}" style="font-weight:700">Net after Brokerage</td>${trailCell(totTrail - dayBrok)}${slC(`<td class="${pnlClass(totSL - dayBrok)}">${fmtRs(totSL - dayBrok)}</td>`)}<td class="${pnlClass(totTgt - dayBrok)}">${fmtRs(totTgt - dayBrok)}</td>${slC(`<td class="col-wosl ${pnlClass(totNSL - dayBrok)}">${fmtRs(totNSL - dayBrok)}</td>`)}<td></td>`;
         tbody.appendChild(netTr);
 
         const ddTr = document.createElement('tr');
         ddTr.className = 'total-row';
-        ddTr.innerHTML = `<td colspan="${CS_LABEL}" style="color:#fb923c;">Max Drawdown</td><td class="c-orange">${dSL < 0 ? fmtRs(dSL) : '—'}</td><td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td><td class="col-wosl c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td><td></td>`;
+        ddTr.innerHTML = `<td colspan="${csLabel(dateStr)}" style="color:#fb923c;">Max Drawdown</td>${trailPeak(dTrail, false)}${slC(`<td class="c-orange">${dSL < 0 ? fmtRs(dSL) : '—'}</td>`)}<td class="c-orange">${dTgt < 0 ? fmtRs(dTgt) : '—'}</td>${slC(`<td class="col-wosl c-orange">${dNSL < 0 ? fmtRs(dNSL) : '—'}</td>`)}<td></td>`;
         tbody.appendChild(ddTr);
 
         const duTr = document.createElement('tr');
         duTr.className = 'total-row';
-        duTr.innerHTML = `<td colspan="${CS_LABEL}" style="color:#4ade80;">Max Run-Up</td><td class="c-green">${uSL > 0 ? fmtRs(uSL) : '—'}</td><td class="c-green">${uTgt > 0 ? fmtRs(uTgt) : '—'}</td><td class="col-wosl c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td><td></td>`;
+        duTr.innerHTML = `<td colspan="${csLabel(dateStr)}" style="color:#4ade80;">Max Run-Up</td>${trailPeak(uTrail, true)}${slC(`<td class="c-green">${uSL > 0 ? fmtRs(uSL) : '—'}</td>`)}<td class="c-green">${uTgt > 0 ? fmtRs(uTgt) : '—'}</td>${slC(`<td class="col-wosl c-green">${uNSL > 0 ? fmtRs(uNSL) : '—'}</td>`)}<td></td>`;
         tbody.appendChild(duTr);
 
         const pnlEl = document.getElementById(`day-pnl-${dayKey}`);
         if (pnlEl) {
-          pnlEl.innerHTML = `${fmtRs(totSL - dayBrok)} w/SL`;
-          pnlEl.className = `day-pnl ${pnlClass(totSL - dayBrok)}`;
+          // Trail days dropped the w/SL column — headline the day chip with w/Tgt instead.
+          const chipVal = showTrail ? totTgt - dayBrok : totSL - dayBrok;
+          pnlEl.innerHTML = `${fmtRs(chipVal)} ${showTrail ? 'w/Tgt' : 'w/SL'}`;
+          pnlEl.className = `day-pnl ${pnlClass(chipVal)}`;
         }
         loadScreenshots(dateStr, allData[dateStr]?.instrument);
       }
@@ -1632,10 +1715,13 @@
     <td ${fc('e-sym')}><input class="edit-input wide" id="e-sym" value="${t.entrySymbol || ''}"></td>
     <td ${fc('e-lots')}><input class="edit-input sm" id="e-lots" value="${t.lots}" type="number" oninput="recalcEditRow()"></td>
     <td ${fc('e-entry')}><input class="edit-input" id="e-entry" value="${t.entryPrice ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"><span class="col-pb"><br><input class="edit-input" id="e-pbEntry" value="${t.pbEntry ?? ''}" type="number" step="0.05" placeholder="PB entry" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()"></span></td>
-    <td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"${IS_BIAS ? ' readonly title="Derived: entry + SL Target"' : ''}>${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
-    ${IS_BIAS ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td>` : ''}
+    ${
+      hasTrail(dateStr)
+        ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td><td ${fc('e-exitTrail')}><input class="edit-input" id="e-exitTrail" value="${t.exitTrail ?? ''}" type="number" step="0.05" readonly title="Derived: entry + SL Target"></td>`
+        : `<td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"${IS_BIAS ? ' readonly title="Derived: entry + SL Target"' : ''}>${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>${IS_BIAS ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td>` : ''}`
+    }
     <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitTgt" value="${t.pbExitTgt ?? (t.pbEntry !== null && t.pbTgtPts !== null ? parseFloat((t.pbEntry + t.pbTgtPts).toFixed(2)) : '')}" type="number" step="0.05" placeholder="PB w/Tgt" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
-    <td class="col-wosl" ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>
+    ${hasTrail(dateStr) ? '' : `<td class="col-wosl" ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>`}
     <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbTgtPts" value="${t.pbTgtPts ?? ''}" type="number" step="0.05" placeholder="PB tgt pts" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     <td class="col-candle" ${fc('e-candle')}><input class="edit-input" id="e-candle" value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
     <td>
@@ -1658,7 +1744,7 @@
         <input type="hidden" id="e-pb-notes" value="${existingPBNotes}">
       </div>
     </td>
-    <td colspan="${CS_PNL}" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
+    <td colspan="${csPnl(dateStr)}" id="e-pnl-cell" style="text-align:center;font-size:11px;color:#6b7280;">auto-calculated</td>
     <td style="text-align:center">
       <button class="act-btn save" onclick="saveRow('${dateStr}','${id}',this)">&#x2713; Save</button>
       <button class="act-btn cancel" onclick="cancelEdit('${dateStr}','${id}')">&#x2717;</button>
@@ -1739,6 +1825,39 @@
           return;
         }
 
+        // Supertrend trailing layout (July+): no raw-exit input. SL Target drives
+        // Exit w/Trail SL (= entry + slTarget); Tgt Pts drives Exit w/Tgt. Preview shows
+        // Trail | Tgt only. The browser can't recompute the peak-based SL Target — re-run
+        // the report to restore the exact value.
+        if (document.getElementById('e-exitTrail')) {
+          const lotSzT = LOT_SIZES[instr] || 65;
+          const nLotsT = isNaN(lots) ? 10 : lots;
+          const slTgtV = parseFloat(document.getElementById('e-slTarget')?.value);
+          const tgtV = parseFloat(document.getElementById('e-tgt')?.value);
+          let pTrailT = null,
+            pTgtT = null;
+          if (!isNaN(entry) && !isNaN(slTgtV)) {
+            const el = document.getElementById('e-exitTrail');
+            if (el) el.value = parseFloat((entry + slTgtV).toFixed(2));
+            pTrailT = Math.round(slTgtV * nLotsT * lotSzT);
+          }
+          if (!isNaN(entry) && !isNaN(tgtV)) {
+            const el = document.getElementById('e-exitTgt');
+            if (el) el.value = parseFloat((entry + tgtV).toFixed(2));
+            pTgtT = Math.round(tgtV * nLotsT * lotSzT);
+          }
+          const pnlT = document.getElementById('e-pnl-cell');
+          if (pnlT) {
+            const c = (v) => (v >= 0 ? 'c-green' : 'c-red');
+            const cell = (v) =>
+              v === null
+                ? '<span style="color:#6b7280">—</span>'
+                : `<span class="${c(v)}">${fmtRs(v)}</span>`;
+            pnlT.innerHTML = `${cell(pTrailT)}<span style="color:#374151"> | </span>${cell(pTgtT)}`;
+          }
+          return;
+        }
+
         if (isNaN(entry) || isNaN(exitNSL)) return;
         const slPts = SL_PTS[instr] || 15,
           tgG = TGT_G[instr] || 50,
@@ -1803,9 +1922,13 @@
         t.entrySymbol = document.getElementById('e-sym').value.trim();
         t.lots = parseInt(document.getElementById('e-lots').value) || t.lots;
         t.entryPrice = parseFloat(document.getElementById('e-entry').value) || null;
-        t.exitSL = parseFloat(document.getElementById('e-exitSL').value) || null;
+        // Exit w/SL and raw Exit w/oSL inputs are absent on trail (July+) rows — only
+        // update them when present so trail saves don't wipe the stored values.
+        const exitSLEl = document.getElementById('e-exitSL');
+        if (exitSLEl) t.exitSL = parseFloat(exitSLEl.value) || null;
         t.exitTgt = parseFloat(document.getElementById('e-exitTgt').value) || null;
-        t.exitNSL = parseFloat(document.getElementById('e-exitNSL').value) || null;
+        const exitNSLEl = document.getElementById('e-exitNSL');
+        if (exitNSLEl) t.exitNSL = parseFloat(exitNSLEl.value) || null;
         t.tgtPts = parseFloat(document.getElementById('e-tgt').value) || null;
         // Bias: SL Target drives Exit w/SL → exitSL = entry + slTarget.
         if (IS_BIAS) {
@@ -1815,6 +1938,14 @@
             t.entryPrice !== null && t.slTarget !== null
               ? parseFloat((t.entryPrice + t.slTarget).toFixed(2))
               : t.exitSL;
+        } else if (hasTrail(dateStr)) {
+          // Supertrend July+: SL Target drives Exit w/Trail SL = entry + slTarget.
+          const st = parseFloat(document.getElementById('e-slTarget')?.value);
+          t.slTarget = isNaN(st) ? null : st;
+          t.exitTrail =
+            t.entryPrice !== null && t.slTarget !== null
+              ? parseFloat((t.entryPrice + t.slTarget).toFixed(2))
+              : null;
         }
         const cr = parseFloat(document.getElementById('e-candle').value);
         t.candleRange = isNaN(cr) ? null : cr;
@@ -2292,28 +2423,36 @@
           showToast('No trades to export', true);
           return;
         }
+        // Trailing SL columns: supertrend only, July 2026 onward (matches the report).
+        const XT = !IS_BIAS && monthKey >= '2026-07';
+        // On trail months (XT) the fixed Exit w/SL and raw Exit w/oSL columns (and their
+        // P&L) are dropped, leaving SL Target · Exit w/Trail SL · Tgt · their P&L.
         const HEADERS = [
           'Date',
           'Instrument',
           'Entry Time',
           'Lots',
           'Entry',
-          'Exit w/SL',
+          ...(XT ? [] : ['Exit w/SL']),
           ...(IS_BIAS ? ['SL Target'] : []),
-          IS_BIAS ? 'Manual Exit' : 'Exit w/oSL',
+          ...(XT ? ['SL Target', 'Exit w/Trail SL'] : []),
+          ...(XT ? [] : [IS_BIAS ? 'Manual Exit' : 'Exit w/oSL']),
           'Tgt Pts',
-          'P&L w/SL (₹)',
-          IS_BIAS ? 'Manual P&L (₹)' : 'P&L w/oSL (₹)',
+          ...(XT ? [] : ['P&L w/SL (₹)']),
+          ...(XT ? ['P&L w/Trail (₹)'] : []),
+          ...(XT ? [] : [IS_BIAS ? 'Manual P&L (₹)' : 'P&L w/oSL (₹)']),
           'P&L Tgt (₹)',
         ];
         const rows = [HEADERS];
         let totSL = 0,
           totNSL = 0,
           totTgt = 0,
+          totTrail = 0,
           totalCount = 0,
           winSL = 0,
           winNSL = 0,
-          winTgt = 0;
+          winTgt = 0,
+          winTrail = 0;
         for (const date of dates) {
           const day = allData[date];
           if (!day) continue;
@@ -2328,18 +2467,24 @@
                 ? Math.round((t.exitNSL - t.entryPrice) * tq)
                 : '';
             const pTgt = t.tgtPts !== null ? Math.round(t.tgtPts * tq) : '';
+            const pTrail =
+              t.exitTrail !== null && t.exitTrail !== undefined && t.entryPrice !== null
+                ? Math.round((t.exitTrail - t.entryPrice) * tq)
+                : '';
             rows.push([
               date,
               day.instrument || '',
               (t.entryTime || t.time || '').slice(0, 5),
               t.lots,
               t.entryPrice ?? '',
-              t.exitSL ?? '',
+              ...(XT ? [] : [t.exitSL ?? '']),
               ...(IS_BIAS ? [t.slTarget ?? ''] : []),
-              t.exitNSL ?? '',
+              ...(XT ? [t.slTarget ?? '', t.exitTrail ?? ''] : []),
+              ...(XT ? [] : [t.exitNSL ?? '']),
               t.tgtPts ?? '',
-              pSL,
-              pNSL,
+              ...(XT ? [] : [pSL]),
+              ...(XT ? [pTrail] : []),
+              ...(XT ? [] : [pNSL]),
               pTgt,
             ]);
             if (pSL !== '') {
@@ -2354,6 +2499,10 @@
               totTgt += pTgt;
               if (pTgt > 0) winTgt++;
             }
+            if (pTrail !== '') {
+              totTrail += pTrail;
+              if (pTrail > 0) winTrail++;
+            }
             totalCount++;
           }
         }
@@ -2364,12 +2513,14 @@
           '',
           '',
           '',
-          '',
+          ...(XT ? [] : ['']),
           ...(IS_BIAS ? [''] : []),
+          ...(XT ? ['', ''] : []),
+          ...(XT ? [] : ['']),
           '',
-          '',
-          totSL,
-          totNSL,
+          ...(XT ? [] : [totSL]),
+          ...(XT ? [totTrail] : []),
+          ...(XT ? [] : [totNSL]),
           totTgt,
         ]);
         const wrFmt = (w) =>
@@ -2380,12 +2531,14 @@
           '',
           '',
           '',
-          '',
+          ...(XT ? [] : ['']),
           ...(IS_BIAS ? [''] : []),
+          ...(XT ? ['', ''] : []),
+          ...(XT ? [] : ['']),
           '',
-          '',
-          wrFmt(winSL),
-          wrFmt(winNSL),
+          ...(XT ? [] : [wrFmt(winSL)]),
+          ...(XT ? [wrFmt(winTrail)] : []),
+          ...(XT ? [] : [wrFmt(winNSL)]),
           wrFmt(winTgt),
         ]);
         let cols = [
@@ -2394,12 +2547,14 @@
           { wch: 10 },
           { wch: 6 },
           { wch: 8 },
-          { wch: 10 },
+          ...(XT ? [] : [{ wch: 10 }]),
           ...(IS_BIAS ? [{ wch: 10 }] : []),
-          { wch: 11 },
+          ...(XT ? [{ wch: 10 }, { wch: 14 }] : []),
+          ...(XT ? [] : [{ wch: 11 }]),
           { wch: 8 },
-          { wch: 14 },
-          { wch: 14 },
+          ...(XT ? [] : [{ wch: 14 }]),
+          ...(XT ? [{ wch: 14 }] : []),
+          ...(XT ? [] : [{ wch: 14 }]),
           { wch: 12 },
         ];
         // Bias keeps these columns as the manual-exit pair (relabeled in HEADERS).

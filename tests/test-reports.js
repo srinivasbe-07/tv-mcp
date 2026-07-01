@@ -275,6 +275,58 @@ test('SENSEX: bar hits TARGET_L=70 but exit at loss → tgtPts=70', () => {
 });
 
 // ---------------------------------------------------------------------------
+// computeExitValues — trailing stop (bias-style, July+ only via withTrail flag)
+// NIFTY: SL=15 step=10 rise=12 → schedule -15, -3, 9, 21…
+// SENSEX: SL=35 step=22 rise=25 → schedule -35, -10, 15…
+// ---------------------------------------------------------------------------
+section('computeExitValues — trailing stop (withTrail)');
+test('withTrail omitted → slTarget/exitTrail null (legacy reports untouched)', () => {
+  const r = computeExitValues('NIFTY', 200, 210, [{ high: 230 }]);
+  return r.slTarget === null && r.exitTrail === null;
+});
+test('NIFTY peak < entry+10 → 0 steps → slTarget=-15, exitTrail=entry-15', () => {
+  const r = computeExitValues('NIFTY', 200, 205, [{ high: 208 }], true);
+  return r.slTarget === -15 && r.exitTrail === 185;
+});
+test('NIFTY no bars → 0 steps → slTarget=-15', () => {
+  const r = computeExitValues('NIFTY', 200, 205, [], true);
+  return r.slTarget === -15 && r.exitTrail === 185;
+});
+test('NIFTY peak entry+10 → 1 step → slTarget=-3, exitTrail=entry-3', () => {
+  const r = computeExitValues('NIFTY', 200, 205, [{ high: 210 }], true);
+  return r.slTarget === -3 && r.exitTrail === 197;
+});
+test('NIFTY peak entry+20 → 2 steps → slTarget=9, exitTrail=entry+9', () => {
+  const r = computeExitValues('NIFTY', 200, 205, [{ high: 220 }], true);
+  return r.slTarget === 9 && r.exitTrail === 209;
+});
+test('NIFTY peak entry+35 → 3 steps → slTarget=21, exitTrail=entry+21', () => {
+  const r = computeExitValues('NIFTY', 200, 205, [{ high: 235 }], true);
+  return r.slTarget === 21 && r.exitTrail === 221;
+});
+test('trail follows running high, NOT the actual loss exit', () => {
+  // exit is a loss (190) but price ran to entry+21 → stop locked at +9
+  const r = computeExitValues('NIFTY', 200, 190, [{ high: 221 }], true);
+  return r.slTarget === 9 && r.exitTrail === 209;
+});
+test('SENSEX peak < entry+22 → 0 steps → slTarget=-35', () => {
+  const r = computeExitValues('SENSEX', 500, 510, [{ high: 515 }], true);
+  return r.slTarget === -35 && r.exitTrail === 465;
+});
+test('SENSEX peak entry+22 → 1 step → slTarget=-10', () => {
+  const r = computeExitValues('SENSEX', 500, 510, [{ high: 522 }], true);
+  return r.slTarget === -10 && r.exitTrail === 490;
+});
+test('SENSEX peak entry+44 → 2 steps → slTarget=15', () => {
+  const r = computeExitValues('SENSEX', 500, 510, [{ high: 544 }], true);
+  return r.slTarget === 15 && r.exitTrail === 515;
+});
+test('null entry with withTrail → slTarget/exitTrail null', () => {
+  const r = computeExitValues('NIFTY', null, 210, [], true);
+  return r.slTarget === null && r.exitTrail === null;
+});
+
+// ---------------------------------------------------------------------------
 // auto-classification of notes (maxReach + autoNotes logic, inlined)
 // ---------------------------------------------------------------------------
 section('auto-classification: notes');
