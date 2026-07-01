@@ -1177,22 +1177,20 @@ async function drawLevels(cdp, levelObjects, spotSymbol) {
 }
 
 // Draw H/L lines for the user-selected offsets (position.json → dayHighs / dayLows).
-// offset 0 = today (developing bar), 1 = previous day, 2 = 2 days prior, …
-// Redraws when the selection changes, on force (startup), or — if "today" (0) is
-// selected — every few minutes so today's developing H/L stays current. Completed
-// days are static, so a no-today selection draws once. Empty selection clears all.
+// offset 0 = today (live bar), 1 = previous day, 2 = 2 days prior, …
+// One-time snapshot: draws only on force (startup/restart) or when the selection /
+// nonce changes (user re-applies on /bias). Today's (offset 0) high/low is captured
+// live at draw time and then FROZEN — it does NOT auto-refresh. Empty selection clears.
 async function updateDayLines(cdp, spotSymbol, force = false) {
-  const { highs, lows } = loadDayLineSel();
-  const key = 'H:' + highs.join(',') + '|L:' + lows.join(',');
+  const { highs, lows, nonce } = loadDayLineSel();
+  const key = 'H:' + highs.join(',') + '|L:' + lows.join(',') + '|N:' + (nonce ?? '');
   const offsetsChanged = key !== lastDayLinesKey;
-  const refreshToday =
-    (highs.includes(0) || lows.includes(0)) && Date.now() - lastDayLinesDrawAt > 2 * 60_000;
-  if (!force && !offsetsChanged && !refreshToday) return;
+  if (!force && !offsetsChanged) return;
 
   let levels = [];
   const allOffsets = [...new Set([...highs, ...lows])];
   if (allOffsets.length) {
-    const maxOff = Math.max(...allOffsets);1
+    const maxOff = Math.max(...allOffsets);
     const bars = await fetchDailyBars(cdp, spotSymbol, maxOff + 3); // oldest → newest
     if (bars.length < 1) {
       log('[LINES] no daily bars yet — will retry');
@@ -1220,7 +1218,6 @@ async function updateDayLines(cdp, spotSymbol, force = false) {
   const drew = await drawLevels(cdp, levels, spotSymbol);
   if (!drew) return; // API not ready — retry next idle tick
   lastDayLinesKey = key;
-  lastDayLinesDrawAt = Date.now();
   log(`[LINES] drew highs [${highs.join(', ')}] lows [${lows.join(', ')}]`);
 }
 
