@@ -818,24 +818,25 @@ export function processHistoryForPositionChanges(historyItems, stateObj, instrum
       }
     }
     if (!seenTodayInstr) {
-      // No today-instrument alerts found in the log at all — the log is empty or
-      // contains only other days/instruments.
-      if (instrument && stateObj.lastInstrument && stateObj.lastInstrument !== instrument) {
-        // The persisted open belongs to a DIFFERENT instrument (e.g. a leftover NIFTY
-        // 'open' surfacing on a SENSEX day). It can't be a live trade for today, so
-        // reset both sides to closed instead of preserving stale cross-instrument state.
-        stateObj.CE = 'closed';
-        stateObj.PE = 'closed';
-        if (prevCE === 'open' || prevPE === 'open') {
-          log(
-            `[POSITION] Ignoring stale ${stateObj.lastInstrument} position on ${instrument} day — CE/PE reset to closed`
-          );
-        }
-      } else {
-        // Same instrument (or unknown): keep whatever was already in position.json
-        // (user may have set it manually) rather than forcing both sides to 'closed'.
+      // No today-instrument alert found in the visible log.
+      if (historyItems.length === 0) {
+        // Log empty — the Alerts panel likely isn't loaded yet (e.g. TV just restarted).
+        // No data to trust, so preserve persisted state rather than resetting blind.
         stateObj.CE = prevCE;
         stateObj.PE = prevPE;
+      } else {
+        // Log HAS fires but none for today's instrument. A trade that genuinely opened
+        // today would have its entry fire visible here (which would set seenTodayInstr),
+        // so there is no live trade for today — reset both sides to closed. This clears
+        // stale opens carried over from a prior day/instrument (e.g. a NIFTY 'open' whose
+        // exit never fired, still 'open' at a NIFTY strike on a later SENSEX day).
+        if (prevCE === 'open' || prevPE === 'open') {
+          log(
+            `[POSITION] No ${instrument || 'today'}-instrument fires in log — clearing stale open (CE/PE → closed)`
+          );
+        }
+        stateObj.CE = 'closed';
+        stateObj.PE = 'closed';
       }
     }
     const changed = stateObj.CE !== prevCE || stateObj.PE !== prevPE;

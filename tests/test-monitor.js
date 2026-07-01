@@ -506,27 +506,23 @@ test('fresh-start: returns changed=false when derived state matches existing', (
   return processHistoryForPositionChanges([{ name: CE_ENTRY }], s) === false;
 });
 
-// Cross-instrument fallback: fresh start, no today-instrument alerts in the log,
-// but a persisted 'open' from a DIFFERENT instrument (e.g. leftover NIFTY open on a
-// SENSEX day). It can't be a live trade for today → reset to closed, don't preserve.
-test('fresh-start: stale NIFTY open on SENSEX day → CE reset to closed', () => {
-  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: 'NIFTY' });
+// Fallback when the log has fires but NONE for today's instrument. A real trade
+// opened today would show its entry fire (→ seenTodayInstr), so a stale 'open' here
+// can't be live → reset to closed. Covers a leftover NIFTY open surfacing on a
+// later SENSEX day even after lastInstrument has advanced to SENSEX.
+test('fresh-start: stale open, log has non-today fires → CE reset to closed', () => {
+  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: 'SENSEX' });
   processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'SENSEX');
   return s.CE === 'closed' && s.PE === 'closed';
 });
-test('fresh-start: stale NIFTY PE open on SENSEX day → PE reset to closed', () => {
-  const s = makeFreshState({ CE: 'closed', PE: 'open', lastInstrument: 'NIFTY' });
+test('fresh-start: stale PE open, log has non-today fires → PE reset to closed', () => {
+  const s = makeFreshState({ CE: 'closed', PE: 'open', lastInstrument: 'SENSEX' });
   processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'SENSEX');
   return s.PE === 'closed';
 });
-test('fresh-start: same-instrument open preserved (no today alerts in log)', () => {
-  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: 'NIFTY' });
-  processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'NIFTY');
-  return s.CE === 'open';
-});
-test('fresh-start: unknown lastInstrument → open preserved (no reset)', () => {
-  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: null });
-  processHistoryForPositionChanges([{ name: 'someOtherAlert' }], s, 'SENSEX');
+test('fresh-start: empty log → open preserved (panel not loaded, no data to trust)', () => {
+  const s = makeFreshState({ CE: 'open', PE: 'closed', lastInstrument: 'SENSEX' });
+  processHistoryForPositionChanges([], s, 'SENSEX');
   return s.CE === 'open';
 });
 
