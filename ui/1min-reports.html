@@ -99,6 +99,10 @@
       .month-panel.active {
         display: block;
       }
+      /* Pullback (PB) model retired — hide its summary card / column on all reports. */
+      .col-pb {
+        display: none !important;
+      }
       .summary {
         display: grid;
         /* auto-fit collapses empty tracks, so hidden cards (bias hides Exit w/oSL
@@ -862,6 +866,11 @@
       // Served at both /1min-reports (supertrend) and /bias-reports (bias).
       // Pick the data source from the URL so the same UI renders either dataset.
       const IS_BIAS = location.pathname.startsWith('/bias-reports');
+      // Pullback (PB) entry model is retired — never rendered on either report.
+      // (Bias already hid it via CSS; supertrend now hides it too.) Gates the inline
+      // PB sub-values and the edit-mode PB inputs; the .col-pb card/column is hidden
+      // globally by CSS below.
+      const SHOW_PB = false;
       const DATA_URL = IS_BIAS ? '/api/bias-report/data' : '/api/report/data';
       const SAVE_URL = IS_BIAS ? '/api/bias-report/save' : '/api/report/save';
       // Screenshot endpoints are shared; route them to the bias folder when in bias mode.
@@ -1537,7 +1546,7 @@
             seriesTrail.push(pTrail);
           }
 
-          const hasPBEntry = t.pbEntry !== null && t.pbEntry !== undefined;
+          const hasPBEntry = SHOW_PB && t.pbEntry !== null && t.pbEntry !== undefined;
           let pbSL = null,
             pbTgt = null,
             pbNSL = null,
@@ -1718,11 +1727,11 @@
     ${
       hasTrail(dateStr)
         ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td><td ${fc('e-exitTrail')}><input class="edit-input" id="e-exitTrail" value="${t.exitTrail ?? ''}" type="number" step="0.05" readonly title="Derived: entry + SL Target"></td>`
-        : `<td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"${IS_BIAS ? ' readonly title="Derived: entry + SL Target"' : ''}>${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>${IS_BIAS ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td>` : ''}`
+        : `<td ${fc('e-exitSL')}><input class="edit-input" id="e-exitSL" value="${t.exitSL ?? ''}" type="number" step="0.05"${IS_BIAS ? ' readonly title="Derived: entry + SL Target"' : ''}>${SHOW_PB && t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitSL" value="${t.pbExitSL ?? ''}" type="number" step="0.05" placeholder="PB w/SL" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>${IS_BIAS ? `<td ${fc('e-slTarget')}><input class="edit-input" id="e-slTarget" value="${t.slTarget ?? ''}" type="number" step="0.05" placeholder="SL tgt pts" oninput="recalcEditRow()"></td>` : ''}`
     }
-    <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : ''}" type="number" step="0.05">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitTgt" value="${t.pbExitTgt ?? (t.pbEntry !== null && t.pbTgtPts !== null ? parseFloat((t.pbEntry + t.pbTgtPts).toFixed(2)) : '')}" type="number" step="0.05" placeholder="PB w/Tgt" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
+    <td ${fc('e-exitTgt')}><input class="edit-input" id="e-exitTgt" value="${t.entryPrice !== null && t.tgtPts !== null ? parseFloat((t.entryPrice + t.tgtPts).toFixed(2)) : ''}" type="number" step="0.05">${SHOW_PB && t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbExitTgt" value="${t.pbExitTgt ?? (t.pbEntry !== null && t.pbTgtPts !== null ? parseFloat((t.pbEntry + t.pbTgtPts).toFixed(2)) : '')}" type="number" step="0.05" placeholder="PB w/Tgt" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     ${hasTrail(dateStr) ? '' : `<td class="col-wosl" ${fc('e-exitNSL')}><input class="edit-input" id="e-exitNSL" value="${t.exitNSL ?? ''}" type="number" step="0.05" oninput="recalcEditRow()"></td>`}
-    <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()">${t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbTgtPts" value="${t.pbTgtPts ?? ''}" type="number" step="0.05" placeholder="PB tgt pts" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
+    <td ${fc('e-tgt')}><input class="edit-input" id="e-tgt" value="${t.tgtPts ?? ''}" type="number" step="0.05" oninput="recalcEditRow()">${SHOW_PB && t.pbEntry !== null && t.pbEntry !== undefined ? `<br><input class="edit-input" id="e-pbTgtPts" value="${t.pbTgtPts ?? ''}" type="number" step="0.05" placeholder="PB tgt pts" style="margin-top:3px;border-color:#4b3d7a;color:#a78bfa" oninput="recalcEditRow()">` : ''}</td>
     <td class="col-candle" ${fc('e-candle')}><input class="edit-input" id="e-candle" value="${t.candleRange ?? ''}" type="number" step="0.05"></td>
     <td>
       <select id="e-notes-sel" class="edit-select" onchange="applyNotesType()">
